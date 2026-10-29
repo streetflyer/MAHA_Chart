@@ -121,12 +121,48 @@ export function Keyplan({ p, top, template, sheetIndex }: { p: Panel; top: numbe
                 >
                   <title>{`Chart ${i + 1}: drag along the line to fine-tune`}</title>
                 </polygon>
+                {i === sheetIndex && <RotateHandle f={f} sx={sx} sy={sy} index={i} viewAttr={[view.minE, view.maxN, k, area.x, area.y].join(',')} lw={lw} color={st.currentColor} />}
               </g>
             );
           })}
       </g>
       {st.showGrid && <Grid area={area} view={view} sx={sx} sy={sy} spacing={st.gridSpacing || niceGrid(Math.max(view.maxE - view.minE, view.maxN - view.minN))} color={st.gridColor} lw={lw} />}
       {st.showNorthArrow && <NorthArrow x={area.x + area.w - Math.min(area.w, area.h) * 0.08} y={area.y + Math.min(area.w, area.h) * 0.12} size={Math.min(area.w, area.h) * 0.13} />}
+    </g>
+  );
+}
+
+/** A round grip off the end of the current chart's frame; drag it to turn the frame. */
+function RotateHandle({ f, sx, sy, index, viewAttr, lw, color }: { f: [number, number][]; sx: (e: number) => number; sy: (n: number) => number; index: number; viewAttr: string; lw: number; color: string }) {
+  const ce = (f[0][0] + f[2][0]) / 2;
+  const cn = (f[0][1] + f[2][1]) / 2;
+  const me = (f[1][0] + f[2][0]) / 2;
+  const mn = (f[1][1] + f[2][1]) / 2;
+  const [cx, cy] = [sx(ce), sy(cn)];
+  const [mx, my] = [sx(me), sy(mn)];
+  const d = Math.hypot(mx - cx, my - cy) || 1;
+  const off = Math.max(lw * 10, 1.6);
+  const hx = mx + ((mx - cx) / d) * off;
+  const hy = my + ((my - cy) / d) * off;
+  const r = Math.max(lw * 4, 0.7);
+  return (
+    <g>
+      <line x1={mx} y1={my} x2={hx} y2={hy} stroke={color} strokeWidth={lw} />
+      <circle
+        className="kp-rotate"
+        cx={hx}
+        cy={hy}
+        r={r}
+        fill="#fff"
+        stroke={color}
+        strokeWidth={lw * 1.4}
+        pointerEvents="all"
+        data-frame={index}
+        data-view={viewAttr}
+        data-centre={`${ce},${cn}`}
+      >
+        <title>Drag to rotate this chart (hold Shift for any angle)</title>
+      </circle>
     </g>
   );
 }

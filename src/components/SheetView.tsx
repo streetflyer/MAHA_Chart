@@ -6,7 +6,8 @@ import type { ChartTemplate, ImageItem, Panel, Selection, TextItem } from '../mo
 import { useEditor } from '../state/store';
 import { fitInto, readImageFile } from './imageImport';
 import { InlineEditor } from './InlineEditor';
-import { nearestChainage } from '../model/route';
+import { distanceBeforeStart, nearestChainage } from '../model/route';
+import { editSheet, sheetRange, sheetRotation } from '../model/scale';
 import { useSurvey } from '../state/surveyData';
 import { importSurveyFiles } from './surveyImport';
 import { PanelContent, TITLE_CAP, titleInsideHeight, titleLineHeight, titleLines } from './PanelContent';
@@ -36,7 +37,8 @@ interface ViewBox {
 type Drag =
   | { type: 'move'; start: Pt; panelIds: string[]; textIds: string[]; imageIds: string[]; moved: boolean; wasSelected: boolean; hit: Selection }
   | { type: 'imgResize'; start: Pt; id: string; sx: number; sy: number; origin: ImageItem }
-  | { type: 'frame'; index: number; startChain: number; startShift: number; toGrid: (p: Pt) => [number, number] }
+  | { type: 'frame'; index: number; startChain: number; startKp: number; toGrid: (p: Pt) => [number, number] }
+  | { type: 'rotate'; index: number; centre: [number, number]; startAngle: number; startRot: number; toGrid: (p: Pt) => [number, number] }
   | { type: 'edge'; start: Pt; panelId: string; edges: Edge[]; origin: Record<Edge, number> }
   | { type: 'pan'; startClient: Pt; startView: ViewBox }
   | { type: 'marquee'; start: Pt; cur: Pt; additive: boolean };
@@ -170,7 +172,15 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       const index = Number(frameEl.getAttribute('data-frame'));
       store().beginGesture();
       store().setSheet(index);
-      setDrag({ type: 'frame', index, startChain: nearestChainage(route, ...toGrid(at)), startShift: template.scale.sheetShift?.[index] ?? 0, toGrid });
+      const centre = frameEl.getAttribute('data-centre');
+      if (centre) {
+        // Rotation handle: turn the frame about its centre.
+        const c = centre.split(',').map(Number) as [number, number];
+        const g = toGrid(at);
+        setDrag({ type: 'rotate', index, centre: c, startAngle: Math.atan2(g[1] - c[1], g[0] - c[0]), startRot: sheetRotation(template, index), toGrid });
+        return;
+      }
+      setDrag({ type: 'frame', index, startChain: nearestChainage(route, ...toGrid(at)), startKp: sheetRange(template, index).start * 1000, toGrid });
       return;
     }
 
@@ -271,8 +281,20 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     if (drag.type === 'frame') {
       const route = useSurvey.getState().route;
       if (!route) return;
-      const shift = Math.round(drag.startShift + nearestChainage(route, ...drag.toGrid(at)) - drag.startChain);
-      store().updateGesture((t) => ({ ...t, scale: { ...t.scale, sheetShift: { ...t.scale.sheetShift, [drag.index]: shift } } }));
+      let c = nearestChainage(route, ...drag.toGrid(at));
+      // Past the start of the line, keep sliding on along its first leg so chart 1 can begin before KP 0.
+      if (c <= 0) c = -distanceBeforeStart(route, ...drag.toGrid(at));
+      const start = Math.round(drag.startKp + c - drag.startChain);
+      store().updateGesture((t) => editSheet(t, drag.index, { start }));
+      return;
+    }
+    if (drag.type === 'rotate') {
+      const g = drag.toGrid(at);
+      let deg = drag.startRot + ((Math.atan2(g[1] - drag.centre[1], g[0] - drag.centre[0]) - drag.startAngle) * 180) / Math.PI;
+      deg = ((deg + 540) % 360) - 180;
+      // Shift = free; otherwise half-degree steps, snapping to square.
+      if (!e.shiftKey) deg = Math.abs(deg) < 1 ? 0 : Math.round(deg * 2) / 2;
+      store().updateGesture((t) => editSheet(t, drag.index, { rotation: deg }));
       return;
     }
     if (drag.type === 'imgResize') {
@@ -327,7 +349,7 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
             store().startEdit(hit.kind === 'text' ? { kind: 'text', id: hit.id } : { kind: 'panelTitle', id: hit.id });
           }, SLOW_CLICK_MS);
       }
-    } else if (drag.type === 'edge' || drag.type === 'imgResize' || drag.type === 'frame') {
+    } else if (drag.type === 'edge' || drag.type === 'imgResize' || drag.type === 'frame' || drag.type === 'rotate') {
       store().endGesture();
     } else if (drag.type === 'marquee') {
       const x0 = Math.min(drag.start.x, drag.cur.x);

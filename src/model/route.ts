@@ -1,4 +1,4 @@
-import { planPanel, sheetCount, sheetRange } from './scale';
+import { planPanel, sheetCount, sheetRange, sheetRotation } from './scale';
 import type { ChartTemplate } from './types';
 
 /** A survey line in grid coordinates (metres), with running chainage along it. */
@@ -62,8 +62,15 @@ export function makeRoute(name: string, en: number[]): Route {
 /** Grid position at a chainage, clamped to the ends of the line. */
 export function pointAt(r: Route, m: number): [number, number] {
   const n = r.chain.length;
-  if (m <= 0) return [r.en[0], r.en[1]];
-  if (m >= r.length) return [r.en[2 * n - 2], r.en[2 * n - 1]];
+  // Beyond either end, carry on in a straight line along the end leg.
+  if (m <= 0) {
+    const [ux, uy] = legDirection(r, 0);
+    return [r.en[0] + ux * m, r.en[1] + uy * m];
+  }
+  if (m >= r.length) {
+    const [ux, uy] = legDirection(r, n - 2);
+    return [r.en[2 * n - 2] + ux * (m - r.length), r.en[2 * n - 1] + uy * (m - r.length)];
+  }
   let lo = 0;
   let hi = n - 1;
   while (hi - lo > 1) {
@@ -90,6 +97,25 @@ export function extend(b: Bounds, e: number, n: number) {
   if (e > b.maxE) b.maxE = e;
   if (n < b.minN) b.minN = n;
   if (n > b.maxN) b.maxN = n;
+}
+
+/** Unit direction of the leg starting at vertex i, looking past zero-length legs. */
+function legDirection(r: Route, i: number): [number, number] {
+  const n = r.chain.length;
+  for (let k = 0; k < n - 1; k++) {
+    const a = i === 0 ? k : Math.max(0, i - k);
+    const dx = r.en[2 * a + 2] - r.en[2 * a];
+    const dy = r.en[2 * a + 3] - r.en[2 * a + 1];
+    const d = Math.hypot(dx, dy);
+    if (d > 1e-9) return [dx / d, dy / d];
+  }
+  return [1, 0];
+}
+
+/** How far before the start of the line (e, n) lies, measured back along the first leg. */
+export function distanceBeforeStart(r: Route, e: number, n: number): number {
+  const [ux, uy] = legDirection(r, 0);
+  return Math.max(0, -((e - r.en[0]) * ux + (n - r.en[1]) * uy));
 }
 
 /** Chainage of the point on the line nearest to (e, n). */
@@ -141,10 +167,17 @@ export function chartGeometry(t: ChartTemplate, r: Route, i: number): ChartGeome
   const k0 = (parseFloat(t.fields.START_KP ?? '0') || 0) * 1000;
   const { start, end } = sheetRange(t, i);
   const a = pointAt(r, start * 1000 - k0);
-  const b = pointAt(r, Math.min(end * 1000 - k0, r.length));
-  if (t.kind === 'northUp') return { origin: [(a[0] + b[0]) / 2 - along / 2, (a[1] + b[1]) / 2], u: [1, 0], along, across, northUp: true };
-  const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
-  return { origin: a, u: d > 1e-6 ? [(b[0] - a[0]) / d, (b[1] - a[1]) / d] : [1, 0], along, across, northUp: false };
+  const b = pointAt(r, end * 1000 - k0);
+  const rot = (sheetRotation(t, i) * Math.PI) / 180;
+  let u: [number, number] = [1, 0];
+  let centre: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+  if (t.kind !== 'northUp') {
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (d > 1e-6) u = [(b[0] - a[0]) / d, (b[1] - a[1]) / d];
+    centre = [a[0] + (u[0] * along) / 2, a[1] + (u[1] * along) / 2];
+  }
+  if (rot) u = [u[0] * Math.cos(rot) - u[1] * Math.sin(rot), u[0] * Math.sin(rot) + u[1] * Math.cos(rot)];
+  return { origin: [centre[0] - (u[0] * along) / 2, centre[1] - (u[1] * along) / 2], u, along, across, northUp: t.kind === 'northUp' };
 }
 
 /** Grid metres to paper millimetres inside the plan view for one chart. */

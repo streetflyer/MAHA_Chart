@@ -28,7 +28,7 @@ export async function importSurveyFiles(files: File[], notice: (m: string) => vo
         continue;
       }
       useSurvey.getState().setRoute(r);
-      useEditor.getState().setScale({ routeLength: Math.round(r.length * 1000) / 1000, sheetShift: undefined });
+      useEditor.getState().setScale({ routeLength: Math.round(r.length * 1000) / 1000, sheets: undefined });
       done.push(`${f.name} as the survey line (${(r.length / 1000).toFixed(3)} km)`);
     } else left.push(f);
   }

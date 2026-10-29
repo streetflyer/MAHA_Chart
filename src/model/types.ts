@@ -60,6 +60,36 @@ export interface Panel {
   revisions?: RevisionRow[];
   /** Key plan look (key plan panels). */
   keyplan?: KeyplanStyle;
+  /** Plan view look: route, KP blocks and grid (plan panels). */
+  plan?: PlanStyle;
+}
+
+export interface PlanStyle {
+  routeColor: string;
+  /** Line width in mm. */
+  routeWidth: number;
+  dxfColor: string;
+  showKp: boolean;
+  /** Metres between KP blocks. */
+  kpInterval: number;
+  kpColor: string;
+  kpFill: string;
+  kpTextColor: string;
+  /** Text height in mm. */
+  kpTextSize: number;
+  /** Diamond height in mm. */
+  kpBlockSize: number;
+  /** Stem from the route up to the diamond, in mm. */
+  kpStem: number;
+  showGrid: boolean;
+  /** Metres between grid lines; 0 picks a round value. */
+  gridSpacing: number;
+  gridTextSize: number;
+  gridTextColor: string;
+  crossSize: number;
+  crossColor: string;
+  tickSize: number;
+  tickColor: string;
 }
 
 export interface KeyplanStyle {
@@ -170,8 +200,18 @@ export interface ScaleSettings {
   lateralTrans: number;
   /** Overlap between consecutive sheets, in metres. */
   overlap: number;
-  /** Per-chart nudge along the line in metres, set by dragging a frame in the key plan. */
-  sheetShift?: Record<number, number>;
+  /**
+   * Charts placed by hand (dragged, rotated, added or deleted in the key plan).
+   * Absent while charts are spaced evenly from the start KP.
+   */
+  sheets?: SheetFrame[];
+}
+
+export interface SheetFrame {
+  /** KP at the left edge of the plan view, in metres. May be before KP 0. */
+  start: number;
+  /** Turn added to the frame's direction along the line, in degrees (anticlockwise). */
+  rotation?: number;
 }
 
 export interface PaperSettings {

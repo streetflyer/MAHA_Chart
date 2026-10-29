@@ -4,11 +4,12 @@ import { PAPER_SIZES } from '../model/paper';
 import { formatScale, sheetCount } from '../model/scale';
 import type { ChartTemplate, Panel, PaperSizeName, TextItem } from '../model/types';
 import { LEGEND_GROUPS, LEGEND_PRESETS, LEGEND_SYMBOLS } from '../model/presets';
-import type { ImageItem, KeyplanStyle, LegendGroup, LegendItem, LegendSymbol, TextStyle } from '../model/types';
+import type { ImageItem, KeyplanStyle, PlanStyle, LegendGroup, LegendItem, LegendSymbol, TextStyle } from '../model/types';
 import { PANEL_DEFAULTS } from '../state/panelDefaults';
 import { useEditor } from '../state/store';
 import { useSurvey } from '../state/surveyData';
 import { keyplanStyle } from './Keyplan';
+import { planStyle } from './PlanView';
 
 /** Text/number box that commits on Enter or blur, so typing doesn't create one undo step per key. */
 function Field({
@@ -270,6 +271,7 @@ function PanelProps({ p }: { p: Panel }) {
       {p.body !== undefined && <FontEditor p={p} />}
       {p.type === 'legend' && <LegendEditor p={p} />}
       {p.type === 'keyplan' && <KeyplanEditor p={p} />}
+      {p.type === 'plan' && <PlanStyleEditor p={p} />}
       {p.type === 'titleBlock' && (
         <p className="muted">Double-click any cell on the sheet to edit it. The description column offers the review statuses or your own text.</p>
       )}
@@ -552,6 +554,68 @@ function KeyplanEditor({ p }: { p: Panel }) {
           )}
         </div>
       )}
+    </>
+  );
+}
+
+function PlanStyleEditor({ p }: { p: Panel }) {
+  const s = useEditor.getState();
+  const st = planStyle(p);
+  const set = (patch: Partial<PlanStyle>) => s.updatePanel(p.id, { plan: { ...st, ...patch } });
+  type ColourKey = { [K in keyof PlanStyle]: PlanStyle[K] extends string ? K : never }[keyof PlanStyle];
+  type NumberKey = { [K in keyof PlanStyle]: PlanStyle[K] extends number ? K : never }[keyof PlanStyle];
+  const colour = (label: string, key: ColourKey) => (
+    <label className="field">
+      <span>{label}</span>
+      <input type="color" value={st[key]} onChange={(e) => set({ [key]: e.target.value })} />
+    </label>
+  );
+  const size = (label: string, key: NumberKey, suffix = 'mm', step = 0.1) => (
+    <Field label={label} type="number" step={step} suffix={suffix} value={st[key]} onCommit={(v) => num(v) >= 0 && set({ [key]: num(v) })} />
+  );
+  return (
+    <>
+      <h4>Route</h4>
+      <div className="row2">
+        {colour('Route colour', 'routeColor')}
+        {size('Route width', 'routeWidth')}
+      </div>
+      {colour('Background DXF colour', 'dxfColor')}
+      <h4>KP blocks</h4>
+      <label className="check">
+        <input type="checkbox" checked={st.showKp} onChange={(e) => set({ showKp: e.target.checked })} /> Show KP blocks
+      </label>
+      <div className="row2">
+        {size('Interval', 'kpInterval', 'm', 50)}
+        {size('Block size', 'kpBlockSize')}
+      </div>
+      <div className="row2">
+        {size('Stem length', 'kpStem')}
+        {size('Text height', 'kpTextSize')}
+      </div>
+      <div className="row2">
+        {colour('Block colour', 'kpColor')}
+        {colour('Block fill', 'kpFill')}
+      </div>
+      {colour('Text colour', 'kpTextColor')}
+      <h4>Easting / northing grid</h4>
+      <label className="check">
+        <input type="checkbox" checked={st.showGrid} onChange={(e) => set({ showGrid: e.target.checked })} /> Show grid
+      </label>
+      {size('Grid spacing (0 = auto)', 'gridSpacing', 'm', 100)}
+      <div className="row2">
+        {size('Text height', 'gridTextSize')}
+        {colour('Text colour', 'gridTextColor')}
+      </div>
+      <div className="row2">
+        {size('Cross size', 'crossSize')}
+        {colour('Cross colour', 'crossColor')}
+      </div>
+      <div className="row2">
+        {size('Tick length', 'tickSize')}
+        {colour('Tick colour', 'tickColor')}
+      </div>
+      <p className="hint">Labels that would overlap another label or run off the frame are left out.</p>
     </>
   );
 }

@@ -5,8 +5,8 @@ import { parseDxfLinework } from './dxf';
 import { findFreeSpot } from './freeSpace';
 import { linkedEdges, resizeEdge } from './layout';
 import { paperDimensions, resizePaper } from './paper';
-import { chartFrames, nearestChainage, parseRoute, reverseRoute, robustBounds } from './route';
-import { niceScaleBar, setHorizontalScale, setKpPerSheet, sheetCount, sheetRange, syncScaleToPlan } from './scale';
+import { chartFrames, chartGeometry, nearestChainage, parseRoute, reverseRoute, robustBounds } from './route';
+import { deleteSheet, editSheet, insertSheet, niceScaleBar, setHorizontalScale, setKpPerSheet, sheetCount, sheetRange, syncScaleToPlan } from './scale';
 import { templateTokens } from './tokens';
 
 const byId = (t: ReturnType<typeof alignmentSheetA1>, id: string) => t.panels.find((p) => p.id === id)!;
@@ -169,12 +169,29 @@ describe('fine-tuning charts', () => {
   const line = parseRoute(Array.from({ length: 10001 }, (_, i) => `${500000 + i} 9800000`).join('\n'), 'l')!;
   it('a dragged chart moves on its own and more charts are added if the end is uncovered', () => {
     const t = alignmentSheetA1();
-    const s = { ...t, scale: { ...t.scale, routeLength: 10000, sheetShift: { 3: -500 } } };
+    const base = { ...t, scale: { ...t.scale, routeLength: 10000 } };
+    const s = editSheet(base, 3, { start: 8950 });
     expect(sheetRange(s, 3).start).toBeCloseTo(8.95);
     expect(sheetRange(s, 2).start).toBeCloseTo(6.3);
     expect(sheetCount(s)).toBe(4);
-    const back = { ...t, scale: { ...t.scale, routeLength: 12600, sheetShift: { 3: -500 } } };
+    const back = editSheet({ ...t, scale: { ...t.scale, routeLength: 12600 } }, 3, { start: 8950 });
     expect(sheetCount(back)).toBe(5);
+  });
+
+  it('chart 1 can start before KP 0, and charts can be added, deleted and turned', () => {
+    const t = alignmentSheetA1();
+    const base = { ...t, scale: { ...t.scale, routeLength: 10000 } };
+    const early = editSheet(base, 0, { start: -200 });
+    expect(sheetRange(early, 0).start).toBeCloseTo(-0.2);
+    const g = chartGeometry(early, line, 0)!;
+    expect(g.origin[0]).toBeCloseTo(499800);
+    const more = insertSheet(base, 1);
+    expect(sheetCount(more)).toBe(5);
+    expect(sheetRange(more, 2).start).toBeCloseTo(4.725);
+    expect(sheetCount(deleteSheet(more, 2))).toBe(4);
+    const turned = chartGeometry(editSheet(base, 0, { rotation: 90 }), line, 0)!;
+    expect(turned.u[0]).toBeCloseTo(0);
+    expect(turned.u[1]).toBeCloseTo(1);
   });
 
   it('reversing puts KP 0 at the other end', () => {

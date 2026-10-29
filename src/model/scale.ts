@@ -1,3 +1,4 @@
+import type { SheetFrame } from './types';
 import type { ChartTemplate, Panel } from './types';
 
 /** Horizontal scale and KP per sheet are tied together by the plan view width: kp(m) = width(mm) x scale / 1000. */
@@ -58,22 +59,63 @@ export function setKpPerSheet(t: ChartTemplate, metres: number): ChartTemplate {
  * the previous one ended, less any overlap the user asked for.
  */
 export function sheetCount(t: ChartTemplate): number {
-  const { routeLength, kpPerSheet, overlap } = t.scale;
-  if (!(routeLength > 0) || !(kpPerSheet > 0)) return 1;
-  const step = Math.max(kpPerSheet - overlap, kpPerSheet * 0.05);
-  let n = Math.max(1, Math.ceil((routeLength - overlap - 1e-6) / step));
-  // A chart nudged back may leave the end of the line uncovered; add charts until it is.
-  const end = sheetRange(t, 0).start * 1000 - (t.scale.sheetShift?.[0] ?? 0) + routeLength;
+  const { routeLength, kpPerSheet } = t.scale;
+  const list = t.scale.sheets;
+  if (!(kpPerSheet > 0)) return Math.max(1, list?.length ?? 1);
+  if (!list?.length && !(routeLength > 0)) return 1;
+  // Keep adding charts until the end of the line is covered.
+  const end = startKp(t) * 1000 + Math.max(routeLength, 0);
+  let n = Math.max(1, list?.length ?? 1);
   while (n < 500 && sheetRange(t, n - 1).end * 1000 < end - 1e-6) n++;
   return n;
 }
 
+const startKp = (t: ChartTemplate) => parseFloat(t.fields.START_KP ?? '0') || 0;
+const sheetStep = (t: ChartTemplate) => Math.max(t.scale.kpPerSheet - t.scale.overlap, t.scale.kpPerSheet * 0.05);
+
 /** KP range of one sheet, in kilometres. */
 export function sheetRange(t: ChartTemplate, index: number): { start: number; end: number } {
-  const start0 = (parseFloat(t.fields.START_KP ?? '0') || 0) * 1000;
-  const step = Math.max(t.scale.kpPerSheet - t.scale.overlap, t.scale.kpPerSheet * 0.05);
-  const start = start0 + index * step + (t.scale.sheetShift?.[index] ?? 0);
+  const list = t.scale.sheets;
+  let start: number;
+  if (list?.length) {
+    const last = list.length - 1;
+    start = index <= last ? list[index].start : list[last].start + (index - last) * sheetStep(t);
+  } else start = startKp(t) * 1000 + index * sheetStep(t);
   return { start: start / 1000, end: (start + t.scale.kpPerSheet) / 1000 };
+}
+
+export function sheetRotation(t: ChartTemplate, index: number): number {
+  return t.scale.sheets?.[index]?.rotation ?? 0;
+}
+
+/** Every chart as an explicit frame, ready to be edited by hand. */
+export function materializeSheets(t: ChartTemplate): SheetFrame[] {
+  return Array.from({ length: sheetCount(t) }, (_, i) => ({ start: sheetRange(t, i).start * 1000, rotation: sheetRotation(t, i) }));
+}
+
+/** Change one chart (materializing the even layout first). */
+export function editSheet(t: ChartTemplate, index: number, patch: Partial<SheetFrame>): ChartTemplate {
+  const sheets = materializeSheets(t);
+  if (!sheets[index]) return t;
+  sheets[index] = { ...sheets[index], ...patch };
+  return { ...t, scale: { ...t.scale, sheets } };
+}
+
+/** Add a chart after `index`, halfway along, for a sharp turn that needs an extra frame. */
+export function insertSheet(t: ChartTemplate, index: number): ChartTemplate {
+  const sheets = materializeSheets(t);
+  const a = sheets[index];
+  const b = sheets[index + 1];
+  const start = b ? (a.start + b.start) / 2 : a.start + sheetStep(t);
+  sheets.splice(index + 1, 0, { start, rotation: 0 });
+  return { ...t, scale: { ...t.scale, sheets } };
+}
+
+export function deleteSheet(t: ChartTemplate, index: number): ChartTemplate {
+  const sheets = materializeSheets(t);
+  if (sheets.length <= 1) return t;
+  sheets.splice(index, 1);
+  return { ...t, scale: { ...t.scale, sheets } };
 }
 
 /** Keep typed-in scales tidy without snapping away a deliberate value. */

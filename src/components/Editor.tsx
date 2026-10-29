@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { newId } from '../model/ids';
 import { PAPER_SIZES } from '../model/paper';
 import { BUILTIN_TEMPLATES } from '../model/builtinTemplates';
-import { sheetCount, sheetRange } from '../model/scale';
+import { deleteSheet, editSheet, insertSheet, sheetCount, sheetRange, sheetRotation } from '../model/scale';
 import { exportTemplateFile, importTemplateFile, listUserTemplates, saveUserTemplate } from '../model/storage';
 import type { ChartTemplate, PanelType, PaperSizeName } from '../model/types';
 import { ADDABLE_TYPES, PANEL_DEFAULTS } from '../state/panelDefaults';
@@ -374,20 +374,67 @@ function ChartTabs() {
   const template = useEditor((s) => s.template)!;
   const current = useEditor((s) => s.sheetIndex);
   const n = sheetCount(template);
+  const st = () => useEditor.getState();
   return (
-    <nav className="chart-tabs" aria-label="Charts">
-      {Array.from({ length: n }, (_, i) => {
-        const r = sheetRange(template, i);
-        return (
-          <button key={i} className={i === current ? 'active' : ''} onClick={() => useEditor.getState().setSheet(i)} title={`KP ${r.start.toFixed(3)} to KP ${r.end.toFixed(3)}`}>
-            Chart {i + 1}
-            <span>
-              KP {r.start.toFixed(3)}–{r.end.toFixed(3)}
-            </span>
-          </button>
-        );
-      })}
-    </nav>
+    <div className="chart-bar">
+      <nav className="chart-tabs" aria-label="Charts">
+        {Array.from({ length: n }, (_, i) => {
+          const r = sheetRange(template, i);
+          return (
+            <button key={i} className={i === current ? 'active' : ''} onClick={() => st().setSheet(i)} title={`KP ${r.start.toFixed(3)} to KP ${r.end.toFixed(3)}`}>
+              Chart {i + 1}
+              <span>
+                KP {r.start.toFixed(3)}–{r.end.toFixed(3)}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+      <div className="chart-tools">
+        <ChartNumber
+          label="Start KP"
+          suffix="km"
+          title="KP at the left edge of this chart's plan view. Chart 1 may start before KP 0."
+          value={sheetRange(template, current).start.toFixed(3)}
+          onCommit={(v) => st().commit((t) => editSheet(t, current, { start: Math.round(v * 1000 * 1000) / 1000 }))}
+        />
+        <ChartNumber
+          label="Rotate"
+          suffix="°"
+          title="Turn this chart's frame, e.g. for a sharp bend. You can also drag the round grip in the key plan."
+          value={String(sheetRotation(template, current))}
+          onCommit={(v) => st().commit((t) => editSheet(t, current, { rotation: v }))}
+        />
+        <button onClick={() => st().commit((t) => insertSheet(t, current))} title="Add a chart after this one, halfway along. Use it where the line turns sharply.">
+          + Add chart
+        </button>
+        <button disabled={n <= 1} onClick={() => st().commit((t) => deleteSheet(t, current))} title="Delete this chart">
+          Delete chart
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ChartNumber({ label, suffix, title, value, onCommit }: { label: string; suffix: string; title: string; value: string; onCommit(v: number): void }) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <label title={title}>
+      {label}
+      <input
+        className="scale-input short"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => {
+          const v = parseFloat(draft.replace(',', '.'));
+          if (Number.isFinite(v) && draft !== value) onCommit(v);
+          else setDraft(value);
+        }}
+        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+      />
+      {suffix}
+    </label>
   );
 }
 
@@ -479,7 +526,7 @@ function ScaleQuick() {
   useEffect(() => setOverlap(String(scale.overlap)), [scale.overlap]);
   const hasRoute = useSurvey((s) => !!s.source);
   const reversed = useSurvey((s) => s.reversed);
-  const shifted = Object.values(scale.sheetShift ?? {}).some((v) => v !== 0);
+  const shifted = !!scale.sheets;
   return (
     <>
       <label title="Plan view scale. The panel keeps its size; this sets how much route fits in it.">
@@ -535,14 +582,14 @@ function ScaleQuick() {
             checked={reversed}
             onChange={(e) => {
               useSurvey.getState().setReversed(e.target.checked);
-              useEditor.getState().setScale({ sheetShift: undefined });
+              useEditor.getState().setScale({ sheets: undefined });
             }}
           />
           Reverse route
         </label>
       )}
       {shifted && (
-        <button onClick={() => useEditor.getState().setScale({ sheetShift: undefined })} title="Put every chart frame back to the evenly spaced positions">
+        <button onClick={() => useEditor.getState().setScale({ sheets: undefined })} title="Put every chart frame back to the evenly spaced positions">
           Reset frames
         </button>
       )}
