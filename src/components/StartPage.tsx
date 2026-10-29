@@ -5,6 +5,7 @@ import { paperDimensions, resizePaper } from '../model/paper';
 import { syncScaleToPlan } from '../model/scale';
 import { deleteUserTemplate, importTemplateFile, listUserTemplates } from '../model/storage';
 import type { ChartTemplate, PaperSizeName } from '../model/types';
+import { askConfirm } from './Dialog';
 import { TemplateThumb } from './TemplateThumb';
 
 export function StartPage({ onOpen }: { onOpen(t: ChartTemplate): void }) {
@@ -90,8 +91,8 @@ export function StartPage({ onOpen }: { onOpen(t: ChartTemplate): void }) {
         {!selected.builtIn && (
           <button
             className="danger"
-            onClick={() => {
-              if (!window.confirm(`Delete template "${selected.name}"?`)) return;
+            onClick={async () => {
+              if (!(await askConfirm('Delete template?', `"${selected.name}" will be removed from your template library.`, 'Delete', true))) return;
               deleteUserTemplate(selected.id);
               const next = listUserTemplates();
               setUsers(next);

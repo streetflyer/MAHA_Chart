@@ -6,6 +6,7 @@ import type { PanelType, PaperSizeName } from '../model/types';
 import { ADDABLE_TYPES, PANEL_DEFAULTS } from '../state/panelDefaults';
 import { useEditor } from '../state/store';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { askConfirm, askText } from './Dialog';
 import { PropertiesPanel } from './PropertiesPanel';
 import { SheetView, type ContextTarget } from './SheetView';
 
@@ -45,13 +46,13 @@ export function Editor({ onExit }: { onExit(): void }) {
   };
 
   const save = useCallback(
-    (asNew: boolean) => {
+    async (asNew: boolean) => {
       const t = s().template!;
       let name = t.name;
       if (asNew || t.builtIn) {
-        const answer = window.prompt('Save template as:', t.builtIn ? `${t.name} (copy)` : t.name);
+        const answer = await askText('Save template as', t.builtIn ? `${t.name} (copy)` : t.name, 'Save');
         if (!answer) return;
-        name = answer.trim();
+        name = answer;
       }
       const saved = saveUserTemplate({ ...t, id: asNew || t.builtIn ? newId('tpl') : t.id, name });
       if (!saved) return flash('Could not save: browser storage is full or blocked.');
@@ -196,8 +197,8 @@ export function Editor({ onExit }: { onExit(): void }) {
     s().setPaper(size, template.paper.orientation, [template.paper.width, template.paper.height]);
   }
 
-  function exit() {
-    if (dirty && !window.confirm('You have unsaved changes to this template. Leave anyway?')) return;
+  async function exit() {
+    if (dirty && !(await askConfirm('Leave without saving?', 'Your changes to this template have not been saved.', 'Leave', true))) return;
     onExit();
   }
 

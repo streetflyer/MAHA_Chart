@@ -14,6 +14,9 @@
   --ink: #111111;
   --ink-soft: #9aa3ae;
   --grid: #e7eaee;
+  --field: #ffffff;
+  --desk: #c9ced6;
+  --disabled: #a3aab4;
   font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
   font-size: 13px;
   color: var(--text);
@@ -21,6 +24,39 @@
 
 * {
   box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --bg: #14181e;
+    --chrome: #1b2028;
+    --chrome-2: #20262f;
+    --border: #343c48;
+    --text: #e3e7ed;
+    --muted: #97a1ae;
+    --accent: #4c9be8;
+    --accent-soft: #1f3550;
+    --danger: #f0605a;
+    --field: #12161b;
+    --desk: #2a3038;
+    --disabled: #5d6673;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --bg: #14181e;
+  --chrome: #1b2028;
+  --chrome-2: #20262f;
+  --border: #343c48;
+  --text: #e3e7ed;
+  --muted: #97a1ae;
+  --accent: #4c9be8;
+  --accent-soft: #1f3550;
+  --danger: #f0605a;
+  --field: #12161b;
+  --desk: #2a3038;
+  --disabled: #5d6673;
+  color-scheme: dark;
 }
 
 html,
@@ -81,7 +117,7 @@ textarea {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 4px 6px;
-  background: #fff;
+  background: var(--field);
   min-width: 0;
 }
 
@@ -149,7 +185,8 @@ textarea {
 .thumb {
   width: 100%;
   aspect-ratio: 1.414;
-  background: #f0f2f5;
+  max-width: 100%;
+  background: var(--chrome-2);
   border-radius: 4px;
 }
 .thumb .paper {
@@ -242,7 +279,7 @@ textarea {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: #c9ced6;
+  background: var(--desk);
 }
 .sheet {
   width: 100%;
@@ -463,8 +500,8 @@ textarea {
   position: fixed;
   z-index: 100;
   min-width: 210px;
-  background: #fff;
-  border: 1px solid #c3c8cf;
+  background: var(--chrome);
+  border: 1px solid var(--border);
   border-radius: 6px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
   padding: 4px;
@@ -494,7 +531,7 @@ textarea {
   background: var(--accent-soft);
 }
 .context-menu li.disabled {
-  color: #a3aab4;
+  color: var(--disabled);
 }
 .context-menu li.sep {
   height: 1px;
@@ -512,8 +549,8 @@ textarea {
   bottom: 36px;
   left: 50%;
   transform: translateX(-50%);
-  background: #1c2430;
-  color: #fff;
+  background: var(--text);
+  color: var(--bg);
   padding: 8px 14px;
   border-radius: 6px;
   z-index: 200;
@@ -531,4 +568,43 @@ textarea {
   .hint-text {
     display: none;
   }
+}
+
+/* Dialogs */
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 20, 28, 0.35);
+  padding: 16px;
+}
+.dialog {
+  width: min(420px, 100%);
+  background: var(--chrome);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dialog h3 {
+  margin: 0;
+  font-size: 15px;
+}
+.dialog p {
+  margin: 0;
+  color: var(--muted);
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+button.danger-fill {
+  background: var(--danger);
+  border-color: var(--danger);
 }
