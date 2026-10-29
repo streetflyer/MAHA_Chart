@@ -1,10 +1,11 @@
-import { emptyBounds, extend, type Bounds } from './route';
+import { robustBounds, type Bounds } from './route';
 
 /** Linework read from a DXF for use as a background (key plan, plan view). */
 export interface Linework {
   name: string;
   /** Each polyline as interleaved x, y. */
   lines: Float64Array[];
+  /** Extent of the bulk of the drawing, ignoring stray far-off entities. */
   bounds: Bounds;
 }
 
@@ -15,7 +16,6 @@ export interface Linework {
 export function parseDxfLinework(text: string, name: string): Linework | null {
   const rows = text.split(/\r?\n/);
   const lines: Float64Array[] = [];
-  const bounds = emptyBounds();
   let i = 0;
   // Skip to ENTITIES.
   for (; i < rows.length - 1; i += 2) {
@@ -35,7 +35,6 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
   const push = (p: number[], close: boolean) => {
     if (p.length < 4) return;
     if (close) p.push(p[0], p[1]);
-    for (let k = 0; k < p.length; k += 2) extend(bounds, p[k], p[k + 1]);
     lines.push(new Float64Array(p));
   };
   const finish = () => {
@@ -84,5 +83,5 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
     }
   }
   if (!lines.length) return null;
-  return { name, lines, bounds };
+  return { name, lines, bounds: robustBounds(lines) };
 }

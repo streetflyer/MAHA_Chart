@@ -6,6 +6,8 @@ import type { ChartTemplate, ImageItem, Panel, Selection, TextItem } from '../mo
 import { useEditor } from '../state/store';
 import { fitInto, readImageFile } from './imageImport';
 import { InlineEditor } from './InlineEditor';
+import { nearestChainage } from '../model/route';
+import { useSurvey } from '../state/surveyData';
 import { importSurveyFiles } from './surveyImport';
 import { PanelContent, TITLE_CAP, titleInsideHeight, titleLineHeight, titleLines } from './PanelContent';
 import { approxTextWidth, fontSize } from './svgText';
@@ -34,6 +36,7 @@ interface ViewBox {
 type Drag =
   | { type: 'move'; start: Pt; panelIds: string[]; textIds: string[]; imageIds: string[]; moved: boolean; wasSelected: boolean; hit: Selection }
   | { type: 'imgResize'; start: Pt; id: string; sx: number; sy: number; origin: ImageItem }
+  | { type: 'frame'; index: number; startChain: number; startShift: number; toGrid: (p: Pt) => [number, number] }
   | { type: 'edge'; start: Pt; panelId: string; edges: Edge[]; origin: Record<Edge, number> }
   | { type: 'pan'; startClient: Pt; startView: ViewBox }
   | { type: 'marquee'; start: Pt; cur: Pt; additive: boolean };
@@ -156,7 +159,20 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     const edgeEl = el.closest('[data-edge]');
     const itemEl = el.closest('[data-item]');
     const imgHandle = el.closest('[data-img-handle]');
+    const frameEl = el.closest('[data-frame]');
     svgRef.current!.setPointerCapture(e.pointerId);
+
+    const route = useSurvey.getState().route;
+    if (frameEl && route) {
+      // Slide a chart's frame along the line in the key plan to fine-tune its overlap.
+      const [minE, maxN, k, ax, ay] = frameEl.getAttribute('data-view')!.split(',').map(Number);
+      const toGrid = (q: Pt): [number, number] => [minE + (q.x - ax) / k, maxN - (q.y - ay) / k];
+      const index = Number(frameEl.getAttribute('data-frame'));
+      store().beginGesture();
+      store().setSheet(index);
+      setDrag({ type: 'frame', index, startChain: nearestChainage(route, ...toGrid(at)), startShift: template.scale.sheetShift?.[index] ?? 0, toGrid });
+      return;
+    }
 
     if (imgHandle) {
       const id = imgHandle.getAttribute('data-img-handle')!;
@@ -252,6 +268,13 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       if (!drag.moved) setDrag({ ...drag, moved: true });
       return;
     }
+    if (drag.type === 'frame') {
+      const route = useSurvey.getState().route;
+      if (!route) return;
+      const shift = Math.round(drag.startShift + nearestChainage(route, ...drag.toGrid(at)) - drag.startChain);
+      store().updateGesture((t) => ({ ...t, scale: { ...t.scale, sheetShift: { ...t.scale.sheetShift, [drag.index]: shift } } }));
+      return;
+    }
     if (drag.type === 'imgResize') {
       const o = drag.origin;
       let w = Math.max(3, o.w + drag.sx * (at.x - drag.start.x));
@@ -304,7 +327,7 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
             store().startEdit(hit.kind === 'text' ? { kind: 'text', id: hit.id } : { kind: 'panelTitle', id: hit.id });
           }, SLOW_CLICK_MS);
       }
-    } else if (drag.type === 'edge' || drag.type === 'imgResize') {
+    } else if (drag.type === 'edge' || drag.type === 'imgResize' || drag.type === 'frame') {
       store().endGesture();
     } else if (drag.type === 'marquee') {
       const x0 = Math.min(drag.start.x, drag.cur.x);
@@ -358,8 +381,10 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     const files = [...e.dataTransfer.files];
     if (!files.length) return;
     const at = toMm(e.clientX, e.clientY);
-    const imagesIn = files.filter((f) => f.type.startsWith('image/'));
-    const other = await importSurveyFiles(files.filter((f) => !f.type.startsWith('image/')), onNotice);
+    // Go by extension: some systems label .dxf as image/vnd.dxf.
+    const isPicture = (f: File) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name);
+    const imagesIn = files.filter(isPicture);
+    const other = await importSurveyFiles(files.filter((f) => !isPicture(f)), onNotice);
     if (other.length) onNotice(`Import of ${other.map((f) => f.name).join(', ')} arrives in step 2. Route files (.dig, .xyz), background DXF and logo images can be dropped now.`);
     // Drop onto the innermost panel under the cursor; logos fit inside its box.
     const target = [...template.panels]

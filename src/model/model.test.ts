@@ -5,7 +5,7 @@ import { parseDxfLinework } from './dxf';
 import { findFreeSpot } from './freeSpace';
 import { linkedEdges, resizeEdge } from './layout';
 import { paperDimensions, resizePaper } from './paper';
-import { chartFrames, parseRoute } from './route';
+import { chartFrames, nearestChainage, parseRoute, reverseRoute, robustBounds } from './route';
 import { niceScaleBar, setHorizontalScale, setKpPerSheet, sheetCount, sheetRange, syncScaleToPlan } from './scale';
 import { templateTokens } from './tokens';
 
@@ -162,5 +162,30 @@ describe('route and key plan', () => {
     expect(lw.lines).toHaveLength(2);
     expect(lw.lines[1]).toHaveLength(8);
     expect(lw.bounds).toEqual({ minE: 0, minN: 0, maxE: 5, maxN: 5 });
+  });
+});
+
+describe('fine-tuning charts', () => {
+  const line = parseRoute(Array.from({ length: 10001 }, (_, i) => `${500000 + i} 9800000`).join('\n'), 'l')!;
+  it('a dragged chart moves on its own and more charts are added if the end is uncovered', () => {
+    const t = alignmentSheetA1();
+    const s = { ...t, scale: { ...t.scale, routeLength: 10000, sheetShift: { 3: -500 } } };
+    expect(sheetRange(s, 3).start).toBeCloseTo(8.95);
+    expect(sheetRange(s, 2).start).toBeCloseTo(6.3);
+    expect(sheetCount(s)).toBe(4);
+    const back = { ...t, scale: { ...t.scale, routeLength: 12600, sheetShift: { 3: -500 } } };
+    expect(sheetCount(back)).toBe(5);
+  });
+
+  it('reversing puts KP 0 at the other end', () => {
+    const r = reverseRoute(line);
+    expect(r.en[0]).toBe(510000);
+    expect(nearestChainage(r, 509000, 9800050)).toBeCloseTo(1000);
+  });
+
+  it('ignores stray entities when fitting a background', () => {
+    const lines = [new Float64Array([0, 0, 1, 1]), ...Array.from({ length: 300 }, (_, i) => new Float64Array([570000 + i, 9850000, 570000 + i, 9851000]))];
+    const b = robustBounds(lines);
+    expect(b.minE).toBeGreaterThan(560000);
   });
 });

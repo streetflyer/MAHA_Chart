@@ -7,6 +7,7 @@ import { exportTemplateFile, importTemplateFile, listUserTemplates, saveUserTemp
 import type { ChartTemplate, PanelType, PaperSizeName } from '../model/types';
 import { ADDABLE_TYPES, PANEL_DEFAULTS } from '../state/panelDefaults';
 import { chartInfoLocked, useEditor } from '../state/store';
+import { useSurvey } from '../state/surveyData';
 import { fitInto, readImageFile } from './imageImport';
 import { titleInsideHeight } from './PanelContent';
 import { ContextMenu, type MenuItem } from './ContextMenu';
@@ -474,6 +475,11 @@ function ScaleQuick() {
   const [route, setRoute] = useState((scale.routeLength / 1000).toFixed(3));
   useEffect(() => setDraft(String(scale.horizontal)), [scale.horizontal]);
   useEffect(() => setRoute((scale.routeLength / 1000).toFixed(3)), [scale.routeLength]);
+  const [overlap, setOverlap] = useState(String(scale.overlap));
+  useEffect(() => setOverlap(String(scale.overlap)), [scale.overlap]);
+  const hasRoute = useSurvey((s) => !!s.source);
+  const reversed = useSurvey((s) => s.reversed);
+  const shifted = Object.values(scale.sheetShift ?? {}).some((v) => v !== 0);
   return (
     <>
       <label title="Plan view scale. The panel keeps its size; this sets how much route fits in it.">
@@ -507,6 +513,39 @@ function ScaleQuick() {
         km
         <span className="muted"> = {sheetCount(template)} charts</span>
       </label>
+      <label title="How far each chart overlaps the one before it, in metres">
+        Overlap
+        <input
+          className="scale-input short"
+          value={overlap}
+          onChange={(e) => setOverlap(e.target.value)}
+          onBlur={() => {
+            const v = parseFloat(overlap);
+            if (v >= 0 && v < scale.kpPerSheet && v !== scale.overlap) useEditor.getState().setScale({ overlap: v });
+            else setOverlap(String(scale.overlap));
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        />
+        m
+      </label>
+      {hasRoute && (
+        <label className="check" title="Run KP from the other end of the line. The first chart always starts at KP 0.">
+          <input
+            type="checkbox"
+            checked={reversed}
+            onChange={(e) => {
+              useSurvey.getState().setReversed(e.target.checked);
+              useEditor.getState().setScale({ sheetShift: undefined });
+            }}
+          />
+          Reverse route
+        </label>
+      )}
+      {shifted && (
+        <button onClick={() => useEditor.getState().setScale({ sheetShift: undefined })} title="Put every chart frame back to the evenly spaced positions">
+          Reset frames
+        </button>
+      )}
     </>
   );
 }

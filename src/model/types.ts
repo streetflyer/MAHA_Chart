@@ -170,6 +170,8 @@ export interface ScaleSettings {
   lateralTrans: number;
   /** Overlap between consecutive sheets, in metres. */
   overlap: number;
+  /** Per-chart nudge along the line in metres, set by dragging a frame in the key plan. */
+  sheetShift?: Record<number, number>;
 }
 
 export interface PaperSettings {

@@ -243,6 +243,9 @@ textarea {
 .scale-input {
   width: 70px;
 }
+.scale-input.short {
+  width: 48px;
+}
 .workspace {
   display: grid;
   grid-template-columns: 1fr 300px;
@@ -703,4 +706,12 @@ button.danger-fill {
 }
 .image-item image {
   pointer-events: none;
+}
+.kp-frame-hit {
+  fill: none;
+  stroke: transparent;
+  cursor: grab;
+}
+.kp-frame-hit:hover {
+  stroke: rgba(224, 0, 0, 0.25);
 }

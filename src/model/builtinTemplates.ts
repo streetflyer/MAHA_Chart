@@ -102,7 +102,7 @@ export function alignmentSheetA1(): ChartTemplate {
       body: DISCLAIMER,
       font: { size: 1.25, bold: true, align: 'middle', vcenter: true },
     }),
-    section('s_keyplan', 'keyplan', 'KEY PLAN', 301.7, 406.7),
+    section('s_keyplan', 'keyplan', 'KEY PLAN', 301.7, 406.7, { titlePosition: 'none' }),
     section('s_project', 'text', 'PROJECT', 406.7, 430.2, { body: '{PROJECT}', font: { size: 3, bold: true, align: 'middle', vcenter: true } }),
     section('s_title', 'text', 'TITLE', 430.2, 455.3, { body: '{TITLE}', font: { size: 2.8, align: 'middle', vcenter: true } }),
     section('s_company', 'logo', 'COMPANY', 455.3, 482.5),

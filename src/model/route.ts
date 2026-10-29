@@ -92,42 +92,115 @@ export function extend(b: Bounds, e: number, n: number) {
   if (n > b.maxN) b.maxN = n;
 }
 
+/** Chainage of the point on the line nearest to (e, n). */
+export function nearestChainage(r: Route, e: number, n: number): number {
+  let best = Infinity;
+  let at = 0;
+  for (let i = 0; i + 1 < r.chain.length; i++) {
+    const ax = r.en[2 * i];
+    const ay = r.en[2 * i + 1];
+    const dx = r.en[2 * i + 2] - ax;
+    const dy = r.en[2 * i + 3] - ay;
+    const l2 = dx * dx + dy * dy;
+    const f = l2 > 0 ? Math.min(1, Math.max(0, ((e - ax) * dx + (n - ay) * dy) / l2)) : 0;
+    const d = (ax + f * dx - e) ** 2 + (ay + f * dy - n) ** 2;
+    if (d < best) {
+      best = d;
+      at = r.chain[i] + f * (r.chain[i + 1] - r.chain[i]);
+    }
+  }
+  return at;
+}
+
+export function reverseRoute(r: Route): Route {
+  const en: number[] = [];
+  for (let i = r.en.length - 2; i >= 0; i -= 2) en.push(r.en[i], r.en[i + 1]);
+  return makeRoute(r.name, en);
+}
+
 /**
- * The ground footprint of each chart's plan view, as four corners in grid metres.
- * Alignment sheets turn the frame to run from the chart's start KP to its end KP;
- * North-Up sheets keep it square to the grid, centred on that stretch of line.
+ * Where a chart sits on the ground: its start point, the direction the plan view
+ * runs, and its size in metres. Alignment sheets run from the chart's start KP
+ * towards its end KP; North-Up sheets stay square to the grid, centred on that stretch.
  */
-export function chartFrames(t: ChartTemplate, r: Route): [number, number][][] {
+export interface ChartGeometry {
+  /** Centre of the plan view's left edge (alignment) or its centre (North-Up). */
+  origin: [number, number];
+  /** Unit vector along the plan view (left to right on paper). */
+  u: [number, number];
+  along: number;
+  across: number;
+  northUp: boolean;
+}
+
+export function chartGeometry(t: ChartTemplate, r: Route, i: number): ChartGeometry | null {
   const plan = planPanel(t);
-  if (!plan) return [];
+  if (!plan) return null;
   const along = (plan.w * t.scale.horizontal) / 1000;
   const across = (plan.h * t.scale.horizontal) / 1000;
-  const k0 = sheetRange(t, 0).start;
+  const k0 = (parseFloat(t.fields.START_KP ?? '0') || 0) * 1000;
+  const { start, end } = sheetRange(t, i);
+  const a = pointAt(r, start * 1000 - k0);
+  const b = pointAt(r, Math.min(end * 1000 - k0, r.length));
+  if (t.kind === 'northUp') return { origin: [(a[0] + b[0]) / 2 - along / 2, (a[1] + b[1]) / 2], u: [1, 0], along, across, northUp: true };
+  const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  return { origin: a, u: d > 1e-6 ? [(b[0] - a[0]) / d, (b[1] - a[1]) / d] : [1, 0], along, across, northUp: false };
+}
+
+/** Grid metres to paper millimetres inside the plan view for one chart. */
+export function gridToPlan(g: ChartGeometry, plan: { x: number; y: number; w: number; h: number }) {
+  const s = plan.w / g.along;
+  const [ux, uy] = g.u;
+  const [ox, oy] = g.origin;
+  const cy = plan.y + plan.h / 2;
+  return (e: number, n: number): [number, number] => {
+    const de = e - ox;
+    const dn = n - oy;
+    return [plan.x + s * (de * ux + dn * uy), cy - s * (-de * uy + dn * ux)];
+  };
+}
+
+/** The ground footprint of each chart's plan view, as four corners in grid metres. */
+export function chartFrames(t: ChartTemplate, r: Route): [number, number][][] {
   const frames: [number, number][][] = [];
   for (let i = 0; i < sheetCount(t); i++) {
-    const { start, end } = sheetRange(t, i);
-    const a = pointAt(r, (start - k0) * 1000);
-    const b = pointAt(r, Math.min((end - k0) * 1000, r.length));
-    let ux = 1;
-    let uy = 0;
-    const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    if (t.kind !== 'northUp' && d > 1e-6) {
-      ux = (b[0] - a[0]) / d;
-      uy = (b[1] - a[1]) / d;
-    }
-    // Centre on the chart's start, then step half a sheet along the line direction.
-    const cx = t.kind === 'northUp' ? (a[0] + b[0]) / 2 : a[0] + (ux * along) / 2;
-    const cy = t.kind === 'northUp' ? (a[1] + b[1]) / 2 : a[1] + (uy * along) / 2;
-    const vx = -uy;
-    const vy = ux;
-    const hx = along / 2;
-    const hy = across / 2;
+    const g = chartGeometry(t, r, i);
+    if (!g) break;
+    const [ux, uy] = g.u;
+    const [vx, vy] = [-uy, ux];
+    const [ox, oy] = g.origin;
+    const h = g.across / 2;
+    const L = g.along;
     frames.push([
-      [cx - ux * hx - vx * hy, cy - uy * hx - vy * hy],
-      [cx + ux * hx - vx * hy, cy + uy * hx - vy * hy],
-      [cx + ux * hx + vx * hy, cy + uy * hx + vy * hy],
-      [cx - ux * hx + vx * hy, cy - uy * hx + vy * hy],
+      [ox - vx * h, oy - vy * h],
+      [ox + ux * L - vx * h, oy + uy * L - vy * h],
+      [ox + ux * L + vx * h, oy + uy * L + vy * h],
+      [ox + vx * h, oy + vy * h],
     ]);
   }
   return frames;
+}
+
+/**
+ * Extent of a background, ignoring stray far-off entities (a DXF often has a few
+ * objects near 0,0 that would otherwise shrink the real drawing to a dot).
+ */
+export function robustBounds(lines: Float64Array[]): Bounds {
+  const es: number[] = [];
+  const ns: number[] = [];
+  let count = 0;
+  for (const l of lines) count += l.length / 2;
+  const stride = Math.max(1, Math.floor(count / 20000));
+  let k = 0;
+  for (const l of lines)
+    for (let i = 0; i < l.length; i += 2, k++)
+      if (k % stride === 0) {
+        es.push(l[i]);
+        ns.push(l[i + 1]);
+      }
+  if (!es.length) return emptyBounds();
+  es.sort((a, b) => a - b);
+  ns.sort((a, b) => a - b);
+  const q = (v: number[], f: number) => v[Math.min(v.length - 1, Math.max(0, Math.round(f * (v.length - 1))))];
+  return { minE: q(es, 0.01), maxE: q(es, 0.99), minN: q(ns, 0.01), maxN: q(ns, 0.99) };
 }

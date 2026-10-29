@@ -61,14 +61,18 @@ export function sheetCount(t: ChartTemplate): number {
   const { routeLength, kpPerSheet, overlap } = t.scale;
   if (!(routeLength > 0) || !(kpPerSheet > 0)) return 1;
   const step = Math.max(kpPerSheet - overlap, kpPerSheet * 0.05);
-  return Math.max(1, Math.ceil((routeLength - overlap - 1e-6) / step));
+  let n = Math.max(1, Math.ceil((routeLength - overlap - 1e-6) / step));
+  // A chart nudged back may leave the end of the line uncovered; add charts until it is.
+  const end = sheetRange(t, 0).start * 1000 - (t.scale.sheetShift?.[0] ?? 0) + routeLength;
+  while (n < 500 && sheetRange(t, n - 1).end * 1000 < end - 1e-6) n++;
+  return n;
 }
 
 /** KP range of one sheet, in kilometres. */
 export function sheetRange(t: ChartTemplate, index: number): { start: number; end: number } {
   const start0 = (parseFloat(t.fields.START_KP ?? '0') || 0) * 1000;
   const step = Math.max(t.scale.kpPerSheet - t.scale.overlap, t.scale.kpPerSheet * 0.05);
-  const start = start0 + index * step;
+  const start = start0 + index * step + (t.scale.sheetShift?.[index] ?? 0);
   return { start: start / 1000, end: (start + t.scale.kpPerSheet) / 1000 };
 }
 

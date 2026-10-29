@@ -2,6 +2,8 @@ import { LEGEND_GROUPS } from '../model/presets';
 import { formatScale, niceScaleBar, resolveTokens } from '../model/scale';
 import type { ChartTemplate, LegendGroup, LegendItem, Panel, RevisionColumn, RevisionRow, TextStyle } from '../model/types';
 import { Keyplan } from './Keyplan';
+import { PlanView } from './PlanView';
+import { useSurvey } from '../state/surveyData';
 import { approxTextWidth, fontSize, wrapLines } from './svgText';
 
 interface Props {
@@ -37,7 +39,9 @@ export function PanelContent({ panel: p, template, tokens, hasImage, onRowDouble
   const top = p.y + titleInsideHeight(p);
   switch (p.type) {
     case 'plan':
-      return <PlanPlaceholder p={p} northUp={template.kind === 'northUp'} tokens={tokens} />;
+      return (
+        <PlanSection p={p} northUp={template.kind === 'northUp'} tokens={tokens} template={template} />
+      );
     case 'longProfile':
     case 'transProfile':
     case 'cp':
@@ -80,6 +84,12 @@ function Hint({ p, top, text }: { p: Panel; top: number; text: string }) {
       {text}
     </text>
   );
+}
+
+function PlanSection({ p, northUp, tokens, template }: { p: Panel; northUp: boolean; tokens: Record<string, string>; template: ChartTemplate }) {
+  const loaded = useSurvey((s) => !!s.route || !!s.background);
+  if (loaded) return <PlanView p={p} template={template} tokens={tokens} sheetIndex={Math.max(0, (parseInt(tokens.SHEET ?? '1', 10) || 1) - 1)} />;
+  return <PlanPlaceholder p={p} northUp={northUp} tokens={tokens} />;
 }
 
 function PlanPlaceholder({ p, northUp, tokens }: { p: Panel; northUp: boolean; tokens: Record<string, string> }) {

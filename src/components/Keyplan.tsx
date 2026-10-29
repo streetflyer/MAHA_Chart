@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
-import type { Linework } from '../model/dxf';
-import { chartFrames, emptyBounds, extend, routeBounds, type Bounds, type Route } from '../model/route';
+import { planPanel } from '../model/scale';
+import { chartFrames, emptyBounds, extend, routeBounds, type Bounds } from '../model/route';
 import type { ChartTemplate, KeyplanStyle, Panel } from '../model/types';
 import { useSurvey } from '../state/surveyData';
+import { linesPath, routePath } from './linework';
 import { fontSize } from './svgText';
 
 export const DEFAULT_KEYPLAN: KeyplanStyle = {
@@ -39,13 +40,18 @@ export function Keyplan({ p, top, template, sheetIndex }: { p: Panel; top: numbe
   const area = { x: p.x + 0.6, y: top + 0.3, w: p.w - 1.2, h: p.y + p.h - top - 0.9 };
   const frames = useMemo(() => (route ? chartFrames(template, route) : []), [route, template]);
 
+  const half = ((planPanel(template)?.h ?? 0) * template.scale.horizontal) / 2000;
   const view = useMemo(() => {
     const b = emptyBounds();
     if (route) {
       const rb = routeBounds(route);
       extend(b, rb.minE, rb.minN);
       extend(b, rb.maxE, rb.maxN);
-      if (st.showBoundaries) for (const f of frames) for (const [e, n] of f) extend(b, e, n);
+      // Leave room for the chart frames either side of the line, without refitting while one is dragged.
+      if (st.showBoundaries) {
+        extend(b, rb.minE - half, rb.minN - half);
+        extend(b, rb.maxE + half, rb.maxN + half);
+      }
     } else if (background) {
       extend(b, background.bounds.minE, background.bounds.minN);
       extend(b, background.bounds.maxE, background.bounds.maxN);
@@ -62,7 +68,13 @@ export function Keyplan({ p, top, template, sheetIndex }: { p: Panel; top: numbe
     const cE = (b.minE + b.maxE) / 2;
     const cN = (b.minN + b.maxN) / 2;
     return { minE: cE - w / 2, maxE: cE + w / 2, minN: cN - h / 2, maxN: cN + h / 2 } as Bounds;
-  }, [route, background, frames, st.showBoundaries, area.w, area.h]);
+  }, [route, background, half, st.showBoundaries, area.w, area.h]);
+
+  const bgPath = useMemo(() => {
+    if (!view || !background) return '';
+    const k = area.w / (view.maxE - view.minE);
+    return linesPath(background.lines, view, (e, n) => [area.x + (e - view.minE) * k, area.y + (view.maxN - n) * k], 0.08);
+  }, [background, view, area.x, area.y, area.w]);
 
   if (!view) {
     return (
@@ -78,6 +90,7 @@ export function Keyplan({ p, top, template, sheetIndex }: { p: Panel; top: numbe
   const k = area.w / (view.maxE - view.minE);
   const sx = (e: number) => area.x + (e - view.minE) * k;
   const sy = (n: number) => area.y + (view.maxN - n) * k;
+  const project = (e: number, n: number): [number, number] => [sx(e), sy(n)];
   const clipId = `kp-clip-${p.id}`;
   const lw = Math.max(0.12, Math.min(area.w, area.h) / 300);
 
@@ -90,65 +103,32 @@ export function Keyplan({ p, top, template, sheetIndex }: { p: Panel; top: numbe
       </defs>
       <rect x={area.x} y={area.y} width={area.w} height={area.h} fill={st.background} />
       <g clipPath={`url(#${clipId})`}>
-        {background && <BackgroundLines lw={background} view={view} sx={sx} sy={sy} k={k} color={st.dxfColor} width={lw * 0.6} />}
-        {route && <path d={routePath(route, sx, sy, k)} fill="none" stroke={st.routeColor} strokeWidth={lw * 2} strokeLinejoin="round" />}
+        {background && <path d={bgPath} fill="none" stroke={st.dxfColor} strokeWidth={lw * 0.6} />}
+        {route && <path d={routePath(route, project, 0.05)} fill="none" stroke={st.routeColor} strokeWidth={lw * 2} strokeLinejoin="round" />}
         {st.showBoundaries &&
-          frames.map((f, i) => (
-            <polygon
-              key={i}
-              points={f.map(([e, n]) => `${sx(e).toFixed(2)},${sy(n).toFixed(2)}`).join(' ')}
-              fill="none"
-              stroke={i === sheetIndex ? st.currentColor : st.boundaryColor}
-              strokeWidth={i === sheetIndex ? lw * 2.4 : lw * 1.6}
-            />
-          ))}
+          frames.map((f, i) => {
+            const pts = f.map(([e, n]) => `${sx(e).toFixed(2)},${sy(n).toFixed(2)}`).join(' ');
+            return (
+              <g key={i}>
+                <polygon points={pts} fill="none" stroke={i === sheetIndex ? st.currentColor : st.boundaryColor} strokeWidth={i === sheetIndex ? lw * 2.4 : lw * 1.6} />
+                <polygon
+                  className="kp-frame-hit"
+                  points={pts}
+                  data-frame={i}
+                  data-view={[view.minE, view.maxN, k, area.x, area.y].join(',')}
+                  pointerEvents="stroke"
+                  strokeWidth={Math.max(lw * 6, 0.8)}
+                >
+                  <title>{`Chart ${i + 1}: drag along the line to fine-tune`}</title>
+                </polygon>
+              </g>
+            );
+          })}
       </g>
       {st.showGrid && <Grid area={area} view={view} sx={sx} sy={sy} spacing={st.gridSpacing || niceGrid(Math.max(view.maxE - view.minE, view.maxN - view.minN))} color={st.gridColor} lw={lw} />}
       {st.showNorthArrow && <NorthArrow x={area.x + area.w - Math.min(area.w, area.h) * 0.08} y={area.y + Math.min(area.w, area.h) * 0.12} size={Math.min(area.w, area.h) * 0.13} />}
     </g>
   );
-}
-
-function routePath(r: Route, sx: (e: number) => number, sy: (n: number) => number, k: number): string {
-  // Drop vertices closer than ~0.05 mm on paper; a long route has one per metre.
-  const tol = 0.05 / k;
-  let d = `M${sx(r.en[0]).toFixed(2)} ${sy(r.en[1]).toFixed(2)}`;
-  let le = r.en[0];
-  let ln = r.en[1];
-  const last = r.en.length - 2;
-  for (let i = 2; i <= last; i += 2) {
-    const e = r.en[i];
-    const n = r.en[i + 1];
-    if (i !== last && Math.abs(e - le) < tol && Math.abs(n - ln) < tol) continue;
-    d += `L${sx(e).toFixed(2)} ${sy(n).toFixed(2)}`;
-    le = e;
-    ln = n;
-  }
-  return d;
-}
-
-function BackgroundLines({ lw, view, sx, sy, k, color, width }: { lw: Linework; view: Bounds; sx: (e: number) => number; sy: (n: number) => number; k: number; color: string; width: number }) {
-  const d = useMemo(() => {
-    const tol = 0.08 / k;
-    const parts: string[] = [];
-    for (const l of lw.lines) {
-      let inView = false;
-      for (let i = 0; i < l.length && !inView; i += 2) inView = l[i] >= view.minE && l[i] <= view.maxE && l[i + 1] >= view.minN && l[i + 1] <= view.maxN;
-      if (!inView) continue;
-      let s = `M${sx(l[0]).toFixed(2)} ${sy(l[1]).toFixed(2)}`;
-      let le = l[0];
-      let ln = l[1];
-      for (let i = 2; i < l.length; i += 2) {
-        if (i < l.length - 2 && Math.abs(l[i] - le) < tol && Math.abs(l[i + 1] - ln) < tol) continue;
-        s += `L${sx(l[i]).toFixed(2)} ${sy(l[i + 1]).toFixed(2)}`;
-        le = l[i];
-        ln = l[i + 1];
-      }
-      parts.push(s);
-    }
-    return parts.join('');
-  }, [lw, view, sx, sy, k]);
-  return <path d={d} fill="none" stroke={color} strokeWidth={width} />;
 }
 
 function Grid({ area, view, sx, sy, spacing, color, lw }: { area: { x: number; y: number; w: number; h: number }; view: Bounds; sx: (e: number) => number; sy: (n: number) => number; spacing: number; color: string; lw: number }) {
