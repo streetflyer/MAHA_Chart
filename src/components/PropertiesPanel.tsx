@@ -586,9 +586,10 @@ function PlanStyleEditor({ p }: { p: Panel }) {
         <input type="checkbox" checked={st.showKp} onChange={(e) => set({ showKp: e.target.checked })} /> Show KP blocks
       </label>
       <div className="row2">
-        {size('Interval', 'kpInterval', 'm', 50)}
+        {size('Interval (0 = scale ÷ 10)', 'kpInterval', 'm', 50)}
         {size('Block size', 'kpBlockSize')}
       </div>
+      <Field label="Block rotation" type="number" step={5} suffix="°" value={st.kpRotation} onCommit={(v) => Number.isFinite(num(v)) && set({ kpRotation: num(v) })} />
       <div className="row2">
         {size('Stem length', 'kpStem')}
         {size('Text height', 'kpTextSize')}
@@ -616,6 +617,14 @@ function PlanStyleEditor({ p }: { p: Panel }) {
         {colour('Tick colour', 'tickColor')}
       </div>
       <p className="hint">Labels that would overlap another label or run off the frame are left out.</p>
+      <h4>North arrow</h4>
+      <label className="check">
+        <input type="checkbox" checked={st.showNorth} onChange={(e) => set({ showNorth: e.target.checked })} /> Show north arrow (drag it on the sheet to move it)
+      </label>
+      <div className="row2">
+        {size('Size', 'northSize')}
+        {colour('Colour', 'northColor')}
+      </div>
     </>
   );
 }

@@ -70,8 +70,10 @@ export interface PlanStyle {
   routeWidth: number;
   dxfColor: string;
   showKp: boolean;
-  /** Metres between KP blocks. */
+  /** Metres between KP blocks; 0 = a tenth of the scale (1:5,000 gives 500 m). */
   kpInterval: number;
+  /** Turn of the KP block from upright, in degrees (clockwise). */
+  kpRotation: number;
   kpColor: string;
   kpFill: string;
   kpTextColor: string;
@@ -90,6 +92,13 @@ export interface PlanStyle {
   crossColor: string;
   tickSize: number;
   tickColor: string;
+  showNorth: boolean;
+  /** North arrow position as a fraction of the plan view's width and height. */
+  northX: number;
+  northY: number;
+  /** North arrow height in mm. */
+  northSize: number;
+  northColor: string;
 }
 
 export interface KeyplanStyle {
@@ -205,6 +214,8 @@ export interface ScaleSettings {
    * Absent while charts are spaced evenly from the start KP.
    */
   sheets?: SheetFrame[];
+  /** Charts fitted automatically to the loaded route (bends get shorter charts). Recomputed, never edited. */
+  autoSheets?: SheetFrame[];
 }
 
 export interface SheetFrame {
@@ -212,6 +223,11 @@ export interface SheetFrame {
   start: number;
   /** Turn added to the frame's direction along the line, in degrees (anticlockwise). */
   rotation?: number;
+  /** KP where this chart hands over to the next, in metres, when it covers less than a full sheet (a bend). */
+  end?: number;
+  /** Map nudged inside the plan view by the user, in metres along and across the frame. */
+  panU?: number;
+  panV?: number;
 }
 
 export interface PaperSettings {

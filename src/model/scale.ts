@@ -60,7 +60,7 @@ export function setKpPerSheet(t: ChartTemplate, metres: number): ChartTemplate {
  */
 export function sheetCount(t: ChartTemplate): number {
   const { routeLength, kpPerSheet } = t.scale;
-  const list = t.scale.sheets;
+  const list = sheetList(t);
   if (!(kpPerSheet > 0)) return Math.max(1, list?.length ?? 1);
   if (!list?.length && !(routeLength > 0)) return 1;
   // Keep adding charts until the end of the line is covered.
@@ -75,22 +75,35 @@ const sheetStep = (t: ChartTemplate) => Math.max(t.scale.kpPerSheet - t.scale.ov
 
 /** KP range of one sheet, in kilometres. */
 export function sheetRange(t: ChartTemplate, index: number): { start: number; end: number } {
-  const list = t.scale.sheets;
+  const list = sheetList(t);
   let start: number;
+  let end: number | undefined;
   if (list?.length) {
     const last = list.length - 1;
-    start = index <= last ? list[index].start : list[last].start + (index - last) * sheetStep(t);
+    if (index <= last) {
+      start = list[index].start;
+      end = list[index].end;
+    } else start = (list[last].end ?? list[last].start + t.scale.kpPerSheet) - t.scale.overlap + (index - last - 1) * sheetStep(t);
   } else start = startKp(t) * 1000 + index * sheetStep(t);
-  return { start: start / 1000, end: (start + t.scale.kpPerSheet) / 1000 };
+  return { start: start / 1000, end: (end ?? start + t.scale.kpPerSheet) / 1000 };
+}
+
+/** Hand-placed charts win; otherwise the automatic fit to the route; otherwise even spacing. */
+export function sheetList(t: ChartTemplate): SheetFrame[] | undefined {
+  return t.scale.sheets ?? t.scale.autoSheets;
+}
+
+export function sheetFrame(t: ChartTemplate, index: number): SheetFrame | undefined {
+  return sheetList(t)?.[index];
 }
 
 export function sheetRotation(t: ChartTemplate, index: number): number {
-  return t.scale.sheets?.[index]?.rotation ?? 0;
+  return sheetFrame(t, index)?.rotation ?? 0;
 }
 
 /** Every chart as an explicit frame, ready to be edited by hand. */
 export function materializeSheets(t: ChartTemplate): SheetFrame[] {
-  return Array.from({ length: sheetCount(t) }, (_, i) => ({ start: sheetRange(t, i).start * 1000, rotation: sheetRotation(t, i) }));
+  return Array.from({ length: sheetCount(t) }, (_, i) => ({ rotation: 0, ...sheetFrame(t, i), start: sheetRange(t, i).start * 1000 }));
 }
 
 /** Change one chart (materializing the even layout first). */
@@ -98,6 +111,11 @@ export function editSheet(t: ChartTemplate, index: number, patch: Partial<SheetF
   const sheets = materializeSheets(t);
   if (!sheets[index]) return t;
   sheets[index] = { ...sheets[index], ...patch };
+  // Moving a chart's start by hand keeps its length; a shortened bend chart moves as a whole.
+  if (patch.start !== undefined && sheets[index].end !== undefined && patch.end === undefined) {
+    const old = sheetRange(t, index);
+    sheets[index].end = patch.start + (old.end - old.start) * 1000;
+  }
   return { ...t, scale: { ...t.scale, sheets } };
 }
 
@@ -108,6 +126,7 @@ export function insertSheet(t: ChartTemplate, index: number): ChartTemplate {
   const b = sheets[index + 1];
   const start = b ? (a.start + b.start) / 2 : a.start + sheetStep(t);
   sheets.splice(index + 1, 0, { start, rotation: 0 });
+  if (a.end !== undefined && a.end > start) a.end = undefined;
   return { ...t, scale: { ...t.scale, sheets } };
 }
 

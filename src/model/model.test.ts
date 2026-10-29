@@ -5,7 +5,7 @@ import { parseDxfLinework } from './dxf';
 import { findFreeSpot } from './freeSpace';
 import { linkedEdges, resizeEdge } from './layout';
 import { paperDimensions, resizePaper } from './paper';
-import { chartFrames, chartGeometry, nearestChainage, parseRoute, reverseRoute, robustBounds } from './route';
+import { autoSheets, chartFrames, chartGeometry, nearestChainage, pointAt, parseRoute, reverseRoute, robustBounds } from './route';
 import { deleteSheet, editSheet, insertSheet, niceScaleBar, setHorizontalScale, setKpPerSheet, sheetCount, sheetRange, syncScaleToPlan } from './scale';
 import { templateTokens } from './tokens';
 
@@ -204,5 +204,35 @@ describe('fine-tuning charts', () => {
     const lines = [new Float64Array([0, 0, 1, 1]), ...Array.from({ length: 300 }, (_, i) => new Float64Array([570000 + i, 9850000, 570000 + i, 9851000]))];
     const b = robustBounds(lines);
     expect(b.minE).toBeGreaterThan(560000);
+  });
+});
+
+describe('automatic frames at bends', () => {
+  it('cuts a chart short at a sharp bend so the line stays inside every frame', () => {
+    const pts: string[] = [];
+    for (let i = 0; i <= 2000; i++) pts.push(`${500000 + i} 9800000`);
+    for (let i = 1; i <= 3000; i++) pts.push(`${502000} ${9800000 + i}`);
+    const r = parseRoute(pts.join('\n'), 'L')!;
+    const t0 = alignmentSheetA1();
+    const t = { ...t0, scale: { ...t0.scale, routeLength: r.length } };
+    const auto = autoSheets(t, r)!;
+    const s = { ...t, scale: { ...t.scale, autoSheets: auto } };
+    expect(auto[0].end).toBeDefined();
+    expect(auto[0].end!).toBeLessThan(3150);
+    for (let i = 0; i < sheetCount(s); i++) {
+      const g = chartGeometry(s, r, i)!;
+      const { start, end } = sheetRange(s, i);
+      for (let m = Math.max(0, start * 1000); m <= Math.min(r.length, end * 1000); m += 25) {
+        const [e, n] = pointAt(r, m);
+        const de = e - g.origin[0];
+        const dn = n - g.origin[1];
+        const pu = de * g.u[0] + dn * g.u[1];
+        const pv = -de * g.u[1] + dn * g.u[0];
+        expect(pu).toBeGreaterThanOrEqual(-1);
+        expect(pu).toBeLessThanOrEqual(g.along + 1);
+        expect(Math.abs(pv)).toBeLessThanOrEqual(g.across / 2);
+      }
+    }
+    expect(sheetRange(s, sheetCount(s) - 1).end * 1000).toBeGreaterThanOrEqual(r.length - 1);
   });
 });

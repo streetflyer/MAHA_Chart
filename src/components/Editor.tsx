@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { newId } from '../model/ids';
 import { PAPER_SIZES } from '../model/paper';
 import { BUILTIN_TEMPLATES } from '../model/builtinTemplates';
-import { deleteSheet, editSheet, insertSheet, sheetCount, sheetRange, sheetRotation } from '../model/scale';
+import { autoSheets } from '../model/route';
+import { deleteSheet, editSheet, insertSheet, planPanel, sheetCount, sheetRange, sheetRotation } from '../model/scale';
 import { exportTemplateFile, importTemplateFile, listUserTemplates, saveUserTemplate } from '../model/storage';
 import type { ChartTemplate, PanelType, PaperSizeName } from '../model/types';
 import { ADDABLE_TYPES, PANEL_DEFAULTS } from '../state/panelDefaults';
@@ -34,6 +35,13 @@ export function Editor({ onExit }: { onExit(): void }) {
   const [menu, setMenu] = useState<Menu | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [fitSignal, setFitSignal] = useState(0);
+  const route = useSurvey((s) => s.route);
+  const plan = planPanel(template);
+  // Refit the charts to the line whenever the line, the scale or the plan view changes.
+  useEffect(() => {
+    const t = useEditor.getState().template;
+    if (t) useEditor.getState().setAutoSheets(route ? autoSheets(t, route) : undefined);
+  }, [route, template.scale.horizontal, template.scale.overlap, template.kind, plan?.w, plan?.h, template.fields.START_KP]);
   const [dark, setDark] = useState(() => {
     try {
       return localStorage.getItem('mahachart.darkSheet') === '1';
@@ -373,6 +381,7 @@ export function Editor({ onExit }: { onExit(): void }) {
 function ChartTabs() {
   const template = useEditor((s) => s.template)!;
   const current = useEditor((s) => s.sheetIndex);
+  const panMap = useEditor((s) => s.panMap);
   const n = sheetCount(template);
   const st = () => useEditor.getState();
   return (
@@ -405,6 +414,14 @@ function ChartTabs() {
           value={String(sheetRotation(template, current))}
           onCommit={(v) => st().commit((t) => editSheet(t, current, { rotation: v }))}
         />
+        <button
+          className={panMap ? 'active' : ''}
+          aria-pressed={panMap}
+          onClick={() => st().setPanMap(!panMap)}
+          title="Drag inside the plan view to move the map for this chart. Click again to go back to moving panels."
+        >
+          Pan map
+        </button>
         <button onClick={() => st().commit((t) => insertSheet(t, current))} title="Add a chart after this one, halfway along. Use it where the line turns sharply.">
           + Add chart
         </button>
@@ -588,11 +605,9 @@ function ScaleQuick() {
           Reverse route
         </label>
       )}
-      {shifted && (
-        <button onClick={() => useEditor.getState().setScale({ sheets: undefined })} title="Put every chart frame back to the evenly spaced positions">
-          Reset frames
-        </button>
-      )}
+      <button disabled={!shifted} onClick={() => useEditor.getState().setScale({ sheets: undefined })} title="Undo hand-made frame changes and fit the charts to the line again">
+        Reset frames
+      </button>
     </>
   );
 }

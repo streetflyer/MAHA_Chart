@@ -1,4 +1,5 @@
-import type { ChartTemplate, PaperSizeName } from './types';
+import { planStyle } from './planStyle';
+import type { ChartTemplate, PaperSizeName, PlanStyle } from './types';
 
 /** ISO 216 sizes in millimetres, landscape (width >= height). */
 export const PAPER_SIZES: Record<Exclude<PaperSizeName, 'Custom'>, [number, number]> = {
@@ -35,6 +36,7 @@ export function resizePaper(t: ChartTemplate, width: number, height: number): Ch
       h: p.h * sy,
       labelWidth: p.labelWidth !== undefined ? p.labelWidth * sx : undefined,
       font: p.font ? { ...p.font, size: p.font.size * st } : undefined,
+      plan: p.type === 'plan' ? scalePlanStyle(planStyle(p), st) : p.plan,
     })),
     images: (t.images ?? []).map((im) => ({ ...im, x: im.x * sx, y: im.y * sy, w: im.w * st, h: im.h * st })),
     texts: t.texts.map((tx) => ({
@@ -43,5 +45,20 @@ export function resizePaper(t: ChartTemplate, width: number, height: number): Ch
       y: tx.y * sy,
       size: tx.size * st,
     })),
+  };
+}
+
+/** Plan view sizes are paper millimetres, so they follow the paper like other text. */
+function scalePlanStyle(p: PlanStyle, k: number): PlanStyle {
+  return {
+    ...p,
+    routeWidth: p.routeWidth * k,
+    kpTextSize: p.kpTextSize * k,
+    kpBlockSize: p.kpBlockSize * k,
+    kpStem: p.kpStem * k,
+    gridTextSize: p.gridTextSize * k,
+    crossSize: p.crossSize * k,
+    tickSize: p.tickSize * k,
+    northSize: p.northSize * k,
   };
 }

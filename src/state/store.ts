@@ -4,7 +4,7 @@ import { descendants, movePanels, splitPanel } from '../model/layout';
 import { paperDimensions, resizePaper } from '../model/paper';
 import { planPanel, setHorizontalScale, setKpPerSheet, sheetCount, syncScaleToPlan } from '../model/scale';
 import { findFreeSpot } from '../model/freeSpace';
-import type { ChartTemplate, ImageItem, Panel, PanelType, PaperSizeName, ScaleSettings, Selection, TextItem } from '../model/types';
+import type { ChartTemplate, ImageItem, Panel, PanelType, PaperSizeName, ScaleSettings, Selection, SheetFrame, TextItem } from '../model/types';
 import { PANEL_DEFAULTS } from './panelDefaults';
 
 const HISTORY_LIMIT = 200;
@@ -40,6 +40,11 @@ interface EditorState {
   open(t: ChartTemplate): void;
   resetToOrigin(): void;
   setSheet(i: number): void;
+  /** While on, dragging inside the plan view moves the map instead of the panel. */
+  panMap: boolean;
+  setPanMap(on: boolean): void;
+  /** Replace the automatic chart fit (derived from the route, so not an undo step). */
+  setAutoSheets(list: SheetFrame[] | undefined): void;
   close(): void;
   markSaved(t: ChartTemplate): void;
 
@@ -100,7 +105,12 @@ export function normalize(prev: ChartTemplate, next: ChartTemplate): ChartTempla
     });
     if (lead) t = { ...t, panels: t.panels.map((p) => (p.id === plan.id ? { ...p, x: lead.x, w: lead.w } : p)) };
   }
-  return syncScaleToPlan(t);
+  t = syncScaleToPlan(t);
+  // Hand-placed frames were made for one chart length; a new scale, plan size or overlap starts from a fresh fit.
+  if (t.scale.sheets && (t.scale.kpPerSheet !== prev.scale.kpPerSheet || t.scale.overlap !== prev.scale.overlap || plan.h !== prevPlan.h)) {
+    t = { ...t, scale: { ...t.scale, sheets: undefined } };
+  }
+  return t;
 }
 
 function selectedIds(sel: Selection[], kind: Selection['kind']): string[] {
@@ -128,6 +138,17 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!o) return;
     get().commit(() => structuredClone(o));
     set({ selection: [], editing: null, sheetIndex: 0 });
+  },
+  panMap: false,
+  setPanMap(panMap) {
+    set({ panMap });
+  },
+  setAutoSheets(list) {
+    const t = get().template;
+    if (!t || get().gestureBase) return;
+    if (JSON.stringify(t.scale.autoSheets) === JSON.stringify(list)) return;
+    const next = { ...t, scale: { ...t.scale, autoSheets: list } };
+    set({ template: next, sheetIndex: Math.max(0, Math.min(get().sheetIndex, sheetCount(next) - 1)) });
   },
   setSheet(i) {
     const t = get().template;

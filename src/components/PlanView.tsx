@@ -1,34 +1,14 @@
 import { useMemo, type ReactElement } from 'react';
 import { chartGeometry, gridToPlan, pointAt, type Bounds, type ChartGeometry } from '../model/route';
 import type { ChartTemplate, Panel, PlanStyle } from '../model/types';
+import { DEFAULT_PLAN, kpInterval, planStyle } from '../model/planStyle';
 import { useSurvey } from '../state/surveyData';
+
+export { DEFAULT_PLAN, planStyle };
 import { niceGrid } from './Keyplan';
 import { linesPath, routePath } from './linework';
 import { fontSize, measureText } from './svgText';
 
-export const DEFAULT_PLAN: PlanStyle = {
-  routeColor: '#e00000',
-  routeWidth: 0.5,
-  dxfColor: '#8a8a8a',
-  showKp: true,
-  kpInterval: 500,
-  kpColor: '#e00000',
-  kpFill: '#ffffff',
-  kpTextColor: '#e00000',
-  kpTextSize: 1.5,
-  kpBlockSize: 8,
-  kpStem: 10,
-  showGrid: true,
-  gridSpacing: 0,
-  gridTextSize: 2,
-  gridTextColor: '#3d6170',
-  crossSize: 6,
-  crossColor: '#3d6170',
-  tickSize: 3,
-  tickColor: '#3d6170',
-};
-
-export const planStyle = (p: Panel): PlanStyle => ({ ...DEFAULT_PLAN, ...p.plan });
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Pt = [number, number];
@@ -79,6 +59,7 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
         {paths.route && <path d={paths.route} fill="none" stroke={st.routeColor} strokeWidth={st.routeWidth} strokeLinejoin="round" />}
         {route && st.showKp && <KpBlocks template={template} project={project} rect={rect} st={st} />}
       </g>
+      {st.showNorth && <PlanNorth p={p} project={project} st={st} />}
       {!route && (
         <>
           <text className="hint" x={p.x + 3} y={p.y + p.h - 3} fontSize={fontSize(2)}>
@@ -96,27 +77,71 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
 function KpBlocks({ template, project, rect, st }: { template: ChartTemplate; project: (e: number, n: number) => Pt; rect: Rect; st: PlanStyle }) {
   const route = useSurvey((s) => s.route)!;
   const k0 = (parseFloat(template.fields.START_KP ?? '0') || 0) * 1000;
-  const interval = Math.max(1, st.kpInterval);
+  const interval = kpInterval(st, template.scale.horizontal);
   const out = [];
-  const half = st.kpBlockSize / 2;
-  // Every block along the line is tested, so a rotated or extra chart still gets the right ones.
+  const size = st.kpBlockSize;
+  const half = size / 2;
+  const reach = st.kpStem + size;
+  const rot = (st.kpRotation * Math.PI) / 180;
+  // Every block along the line is tested, so a turned or extra chart still gets the right ones.
   for (let kp = Math.ceil(k0 / interval) * interval; kp <= k0 + route.length + 1e-6; kp += interval) {
     const [x, y] = project(...pointAt(route, kp - k0));
-    if (x < rect.x - half || x > rect.x + rect.w + half || y < rect.y - half || y > rect.y + rect.h + half) continue;
-    const top = y - st.kpStem;
-    const cy = top - half;
+    if (x < rect.x || x > rect.x + rect.w || y < rect.y || y > rect.y + rect.h) continue;
+    // Stand the block up from the line; hang it below instead if it would leave the frame.
+    let dx = Math.sin(rot);
+    let dy = -Math.cos(rot);
+    const tipY = y + dy * reach;
+    const tipX = x + dx * reach;
+    if (tipY < rect.y || tipY > rect.y + rect.h || tipX < rect.x || tipX > rect.x + rect.w) {
+      dx = -dx;
+      dy = -dy;
+    }
+    const sx = x + dx * st.kpStem;
+    const sy = y + dy * st.kpStem;
+    const cx = sx + dx * half;
+    const cy = sy + dy * half;
+    const label = (kp / 1000).toFixed(3);
+    // Shrink the text if it would spill out of the diamond.
+    const cap = Math.min(st.kpTextSize, (st.kpTextSize * size * 0.58) / Math.max(measureText(label, st.kpTextSize, true), 1e-6));
     out.push(
       <g key={kp}>
-        <line x1={x} y1={y} x2={x} y2={top} stroke={st.kpColor} strokeWidth={0.2} />
-        <path d={`M${x} ${cy - half}L${x + half} ${cy}L${x} ${cy + half}L${x - half} ${cy}Z`} fill={st.kpFill} stroke={st.kpColor} strokeWidth={0.2} />
-        <text x={x} y={cy + st.kpTextSize / 2} fontSize={fontSize(st.kpTextSize)} fontWeight="bold" textAnchor="middle" fill={st.kpTextColor}>
-          {(kp / 1000).toFixed(3)}
-        </text>
+        <line x1={x} y1={y} x2={sx} y2={sy} stroke={st.kpColor} strokeWidth={0.2} />
+        <g transform={`rotate(${st.kpRotation} ${cx} ${cy})`}>
+          <path d={`M${cx} ${cy - half}L${cx + half} ${cy}L${cx} ${cy + half}L${cx - half} ${cy}Z`} fill={st.kpFill} stroke={st.kpColor} strokeWidth={0.25} />
+          <text x={cx} y={cy + cap / 2} fontSize={fontSize(cap)} fontWeight="bold" textAnchor="middle" fill={st.kpTextColor}>
+            {label}
+          </text>
+        </g>
       </g>,
     );
     if (out.length > 400) break;
   }
   return <g>{out}</g>;
+}
+
+/** Grid north arrow; drag it to place it anywhere in the plan view. */
+function PlanNorth({ p, project, st }: { p: Panel; project: (e: number, n: number) => Pt; st: PlanStyle }) {
+  const [x0, y0] = project(0, 0);
+  const [x1, y1] = project(0, 1000);
+  const angle = (Math.atan2(x1 - x0, -(y1 - y0)) * 180) / Math.PI;
+  const s = st.northSize;
+  const x = p.x + st.northX * p.w;
+  const y = p.y + st.northY * p.h;
+  const w = s * 0.28;
+  return (
+    <g data-north={p.id} pointerEvents="all" style={{ cursor: 'move' }} transform={`translate(${x} ${y}) rotate(${angle})`}>
+      <rect x={-s * 0.4} y={-s * 0.55} width={s * 0.8} height={s * 1.15} fill="transparent" />
+      <g stroke={st.northColor} strokeWidth={s * 0.035} fill={st.northColor}>
+        <path d={`M0 ${-s / 2} L${w} ${s * 0.25} L0 ${s * 0.1} Z`} />
+        <path d={`M0 ${-s / 2} L${-w} ${s * 0.25} L0 ${s * 0.1} Z`} fill="none" />
+        <line x1={0} y1={s * 0.1} x2={0} y2={s * 0.55} />
+      </g>
+      <text x={0} y={s * 0.45} fontSize={s * 0.36} fontWeight="bold" textAnchor="middle" fill={st.northColor} transform={`rotate(${-angle} 0 ${s * 0.32})`}>
+        N
+      </text>
+      <title>Drag to move the north arrow</title>
+    </g>
+  );
 }
 
 /** Easting/northing ticks at the frame edge and crosses inside, with labels that never collide. */

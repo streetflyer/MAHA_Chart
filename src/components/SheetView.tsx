@@ -7,11 +7,14 @@ import { useEditor } from '../state/store';
 import { fitInto, readImageFile } from './imageImport';
 import { InlineEditor } from './InlineEditor';
 import { distanceBeforeStart, nearestChainage } from '../model/route';
-import { editSheet, sheetRange, sheetRotation } from '../model/scale';
+import { editSheet, planPanel, sheetFrame, sheetRange, sheetRotation } from '../model/scale';
+import { planStyle } from './PlanView';
 import { useSurvey } from '../state/surveyData';
 import { importSurveyFiles } from './surveyImport';
 import { PanelContent, TITLE_CAP, titleInsideHeight, titleLineHeight, titleLines } from './PanelContent';
 import { approxTextWidth, fontSize } from './svgText';
+
+const clamp01 = (v: number) => Math.min(0.98, Math.max(0.02, v));
 
 export interface ContextTarget {
   kind: 'panel' | 'text' | 'image' | 'row' | 'sheet';
@@ -37,6 +40,8 @@ interface ViewBox {
 type Drag =
   | { type: 'move'; start: Pt; panelIds: string[]; textIds: string[]; imageIds: string[]; moved: boolean; wasSelected: boolean; hit: Selection }
   | { type: 'imgResize'; start: Pt; id: string; sx: number; sy: number; origin: ImageItem }
+  | { type: 'mapPan'; start: Pt; index: number; panU: number; panV: number; k: number }
+  | { type: 'north'; panelId: string }
   | { type: 'frame'; index: number; startChain: number; startKp: number; toGrid: (p: Pt) => [number, number] }
   | { type: 'rotate'; index: number; centre: [number, number]; startAngle: number; startRot: number; toGrid: (p: Pt) => [number, number] }
   | { type: 'edge'; start: Pt; panelId: string; edges: Edge[]; origin: Record<Edge, number> }
@@ -164,6 +169,20 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     const frameEl = el.closest('[data-frame]');
     svgRef.current!.setPointerCapture(e.pointerId);
 
+    const northEl = el.closest('[data-north]');
+    if (northEl) {
+      store().beginGesture();
+      setDrag({ type: 'north', panelId: northEl.getAttribute('data-north')! });
+      return;
+    }
+    const plan = planPanel(template);
+    if (store().panMap && plan && at.x >= plan.x && at.x <= plan.x + plan.w && at.y >= plan.y && at.y <= plan.y + plan.h) {
+      // Pan mode: slide the map inside the plan view for this chart only.
+      const f = sheetFrame(template, store().sheetIndex);
+      store().beginGesture();
+      setDrag({ type: 'mapPan', start: at, index: store().sheetIndex, panU: f?.panU ?? 0, panV: f?.panV ?? 0, k: template.scale.horizontal / 1000 });
+      return;
+    }
     const route = useSurvey.getState().route;
     if (frameEl && route) {
       // Slide a chart's frame along the line in the key plan to fine-tune its overlap.
@@ -288,6 +307,21 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       store().updateGesture((t) => editSheet(t, drag.index, { start }));
       return;
     }
+    if (drag.type === 'mapPan') {
+      const panU = Math.round((drag.panU - (at.x - drag.start.x) * drag.k) * 10) / 10;
+      const panV = Math.round((drag.panV + (at.y - drag.start.y) * drag.k) * 10) / 10;
+      store().updateGesture((t) => editSheet(t, drag.index, { panU, panV }));
+      return;
+    }
+    if (drag.type === 'north') {
+      store().updateGesture((t) => ({
+        ...t,
+        panels: t.panels.map((p) =>
+          p.id === drag.panelId ? { ...p, plan: { ...planStyle(p), northX: clamp01((at.x - p.x) / p.w), northY: clamp01((at.y - p.y) / p.h) } } : p,
+        ),
+      }));
+      return;
+    }
     if (drag.type === 'rotate') {
       const g = drag.toGrid(at);
       let deg = drag.startRot + ((Math.atan2(g[1] - drag.centre[1], g[0] - drag.centre[0]) - drag.startAngle) * 180) / Math.PI;
@@ -349,7 +383,7 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
             store().startEdit(hit.kind === 'text' ? { kind: 'text', id: hit.id } : { kind: 'panelTitle', id: hit.id });
           }, SLOW_CLICK_MS);
       }
-    } else if (drag.type === 'edge' || drag.type === 'imgResize' || drag.type === 'frame' || drag.type === 'rotate') {
+    } else if (drag.type === 'edge' || drag.type === 'imgResize' || drag.type === 'frame' || drag.type === 'rotate' || drag.type === 'mapPan' || drag.type === 'north') {
       store().endGesture();
     } else if (drag.type === 'marquee') {
       const x0 = Math.min(drag.start.x, drag.cur.x);
@@ -467,7 +501,8 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     return [...out, ...template.panels.filter((p) => !seen.has(p.id))];
   }, [template.panels]);
 
-  const cursor = drag?.type === 'pan' ? 'grabbing' : spaceDown.current ? 'grab' : undefined;
+  const panMap = useEditor((s) => s.panMap);
+  const cursor = drag?.type === 'pan' || drag?.type === 'mapPan' ? 'grabbing' : spaceDown.current || panMap ? 'grab' : undefined;
 
   return (
     <div className={`sheet-wrap${dark ? ' dark' : ''}`} ref={wrapRef} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>

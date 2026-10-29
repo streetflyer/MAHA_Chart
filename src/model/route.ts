@@ -1,5 +1,5 @@
-import { planPanel, sheetCount, sheetRange, sheetRotation } from './scale';
-import type { ChartTemplate } from './types';
+import { planPanel, sheetCount, sheetFrame, sheetRange, sheetRotation } from './scale';
+import type { ChartTemplate, SheetFrame } from './types';
 
 /** A survey line in grid coordinates (metres), with running chainage along it. */
 export interface Route {
@@ -166,19 +166,107 @@ export function chartGeometry(t: ChartTemplate, r: Route, i: number): ChartGeome
   const across = (plan.h * t.scale.horizontal) / 1000;
   const k0 = (parseFloat(t.fields.START_KP ?? '0') || 0) * 1000;
   const { start, end } = sheetRange(t, i);
-  const a = pointAt(r, start * 1000 - k0);
-  const b = pointAt(r, end * 1000 - k0);
-  const rot = (sheetRotation(t, i) * Math.PI) / 180;
+  const s0 = start * 1000 - k0;
+  const s1 = end * 1000 - k0;
+  const a = pointAt(r, s0);
+  const b = pointAt(r, s1);
   let u: [number, number] = [1, 0];
-  let centre: [number, number] = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
   if (t.kind !== 'northUp') {
     const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (d > 1e-6) u = [(b[0] - a[0]) / d, (b[1] - a[1]) / d];
-    centre = [a[0] + (u[0] * along) / 2, a[1] + (u[1] * along) / 2];
   }
+  const rot = (sheetRotation(t, i) * Math.PI) / 180;
   if (rot) u = [u[0] * Math.cos(rot) - u[1] * Math.sin(rot), u[0] * Math.sin(rot) + u[1] * Math.cos(rot)];
-  return { origin: [centre[0] - (u[0] * along) / 2, centre[1] - (u[1] * along) / 2], u, along, across, northUp: t.kind === 'northUp' };
+  // Centre the chart's stretch of line in the frame, both along and across, then apply any pan.
+  const ext = extents(r, s0, s1, a, u);
+  const f = sheetFrame(t, i);
+  const uc = (ext.uMin + ext.uMax) / 2 + (f?.panU ?? 0);
+  const vc = (ext.vMin + ext.vMax) / 2 + (f?.panV ?? 0);
+  const v: [number, number] = [-u[1], u[0]];
+  const origin: [number, number] = [a[0] + u[0] * (uc - along / 2) + v[0] * vc, a[1] + u[1] * (uc - along / 2) + v[1] * vc];
+  return { origin, u, along, across, northUp: t.kind === 'northUp' };
 }
+
+/** Extent of the line between two chainages, measured along u and across it from point a. */
+function extents(r: Route, s0: number, s1: number, a: [number, number], u: [number, number]) {
+  const out = { uMin: Infinity, uMax: -Infinity, vMin: Infinity, vMax: -Infinity };
+  const add = (e: number, n: number) => {
+    const de = e - a[0];
+    const dn = n - a[1];
+    const pu = de * u[0] + dn * u[1];
+    const pv = -de * u[1] + dn * u[0];
+    if (pu < out.uMin) out.uMin = pu;
+    if (pu > out.uMax) out.uMax = pu;
+    if (pv < out.vMin) out.vMin = pv;
+    if (pv > out.vMax) out.vMax = pv;
+  };
+  add(...pointAt(r, s0));
+  add(...pointAt(r, s1));
+  const i0 = indexAt(r, Math.max(0, s0));
+  const i1 = indexAt(r, Math.min(r.length, s1));
+  const stride = Math.max(1, Math.floor((i1 - i0) / 1500));
+  for (let i = i0; i <= i1; i += stride) if (r.chain[i] > s0 && r.chain[i] < s1) add(r.en[2 * i], r.en[2 * i + 1]);
+  return out;
+}
+
+/** Index of the last vertex at or before a chainage. */
+function indexAt(r: Route, m: number): number {
+  let lo = 0;
+  let hi = r.chain.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (r.chain[mid] <= m) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * Lay charts along the line so it always stays inside the frame. Where the line
+ * bends too much for a full-length chart, that chart is cut short at the bend and
+ * the next one starts there, turned to follow the new direction.
+ */
+export function autoSheets(t: ChartTemplate, r: Route): SheetFrame[] | undefined {
+  const plan = planPanel(t);
+  if (!plan || !(t.scale.kpPerSheet > 0)) return undefined;
+  const L = t.scale.kpPerSheet;
+  const W = (plan.h * t.scale.horizontal) / 1000;
+  const ov = Math.min(t.scale.overlap, L * 0.5);
+  const k0 = (parseFloat(t.fields.START_KP ?? '0') || 0) * 1000;
+  const fits = (s0: number, s1: number) => {
+    const a = pointAt(r, s0);
+    const b = pointAt(r, s1);
+    let u: [number, number] = [1, 0];
+    if (t.kind !== 'northUp') {
+      const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      if (d > 1e-6) u = [(b[0] - a[0]) / d, (b[1] - a[1]) / d];
+    }
+    const x = extents(r, s0, s1, a, u);
+    // Leave a margin so the line and its KP blocks sit comfortably inside.
+    return x.uMax - x.uMin <= L * 0.98 && x.vMax - x.vMin <= W * 0.7;
+  };
+  const out: SheetFrame[] = [];
+  let s = 0;
+  while (out.length < 500) {
+    let e = s + L;
+    if (!fits(s, e)) {
+      // Shorten until the stretch fits; never below a fifth of a sheet.
+      let lo = s + L * 0.2;
+      let hi = e;
+      for (let k = 0; k < 14; k++) {
+        const mid = (lo + hi) / 2;
+        if (fits(s, mid)) lo = mid;
+        else hi = mid;
+      }
+      e = lo;
+    }
+    out.push(e < s + L - 1e-6 ? { start: k0 + s, end: k0 + e } : { start: k0 + s });
+    if (e >= r.length) break;
+    s = Math.max(s + L * 0.1, e - ov);
+  }
+  return out;
+}
+
 
 /** Grid metres to paper millimetres inside the plan view for one chart. */
 export function gridToPlan(g: ChartGeometry, plan: { x: number; y: number; w: number; h: number }) {

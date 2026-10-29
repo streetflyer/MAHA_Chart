@@ -740,3 +740,8 @@ button.danger-fill {
 .kp-rotate {
   cursor: alias;
 }
+.chart-tools button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
