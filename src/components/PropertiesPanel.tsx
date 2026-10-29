@@ -4,9 +4,11 @@ import { PAPER_SIZES } from '../model/paper';
 import { formatScale, sheetCount } from '../model/scale';
 import type { ChartTemplate, Panel, PaperSizeName, TextItem } from '../model/types';
 import { LEGEND_GROUPS, LEGEND_PRESETS, LEGEND_SYMBOLS } from '../model/presets';
-import type { ImageItem, LegendGroup, LegendItem, LegendSymbol, TextStyle } from '../model/types';
+import type { ImageItem, KeyplanStyle, LegendGroup, LegendItem, LegendSymbol, TextStyle } from '../model/types';
 import { PANEL_DEFAULTS } from '../state/panelDefaults';
 import { useEditor } from '../state/store';
+import { useSurvey } from '../state/surveyData';
+import { keyplanStyle } from './Keyplan';
 
 /** Text/number box that commits on Enter or blur, so typing doesn't create one undo step per key. */
 function Field({
@@ -267,6 +269,7 @@ function PanelProps({ p }: { p: Panel }) {
       {p.body !== undefined && <p className="muted">Use a Tab between a label and its value to line values up, e.g. "Ellipsoid⇥: WGS84".</p>}
       {p.body !== undefined && <FontEditor p={p} />}
       {p.type === 'legend' && <LegendEditor p={p} />}
+      {p.type === 'keyplan' && <KeyplanEditor p={p} />}
       {p.type === 'titleBlock' && (
         <p className="muted">Double-click any cell on the sheet to edit it. The description column offers the review statuses or your own text.</p>
       )}
@@ -480,7 +483,7 @@ function ImageProps({ im }: { im: ImageItem }) {
     <aside className="props">
       <h3>Image</h3>
       {im.name && <p className="muted">{im.name}</p>}
-      <p className="muted">Drag to move. Drag a corner to resize (Shift to stretch).</p>
+      <p className="muted">Drag to move. Drag a corner to resize in proportion (Shift to stretch), or a side handle to stretch one way.</p>
       <div className="row2">
         <Field label="Width" type="number" suffix="mm" value={r2(im.w)} onCommit={(v) => num(v) > 1 && set({ w: num(v), h: num(v) * ratio })} />
         <Field label="Height" type="number" suffix="mm" value={r2(im.h)} onCommit={(v) => num(v) > 1 && set({ h: num(v), w: num(v) / ratio })} />
@@ -490,5 +493,65 @@ function ImageProps({ im }: { im: ImageItem }) {
         <Field label="Y" type="number" suffix="mm" value={r2(im.y)} onCommit={(v) => set({ y: num(v) })} />
       </div>
     </aside>
+  );
+}
+
+function KeyplanEditor({ p }: { p: Panel }) {
+  const s = useEditor.getState();
+  const st = keyplanStyle(p);
+  const route = useSurvey((x) => x.route);
+  const background = useSurvey((x) => x.background);
+  const set = (patch: Partial<KeyplanStyle>) => s.updatePanel(p.id, { keyplan: { ...st, ...patch } });
+  const colour = (label: string, key: 'background' | 'dxfColor' | 'routeColor' | 'boundaryColor' | 'currentColor' | 'gridColor') => (
+    <label className="field">
+      <span>{label}</span>
+      <input type="color" value={st[key]} onChange={(e) => set({ [key]: e.target.value })} />
+    </label>
+  );
+  return (
+    <>
+      <h4>Key plan</h4>
+      <p className="hint">
+        Drop the route (.dig, .xyz) and a background DXF onto the sheet.
+        <br />
+        Route: {route ? `${route.name} (${(route.length / 1000).toFixed(3)} km)` : 'none'}
+        <br />
+        Background: {background ? `${background.name} (${background.lines.length} lines)` : 'none'}
+      </p>
+      <div className="row2">
+        {colour('Background', 'background')}
+        {colour('DXF lines', 'dxfColor')}
+      </div>
+      <div className="row2">
+        {colour('Survey line', 'routeColor')}
+        {colour('Chart boundaries', 'boundaryColor')}
+      </div>
+      <div className="row2">
+        {colour('This chart', 'currentColor')}
+        {colour('Grid', 'gridColor')}
+      </div>
+      <Field label="Grid spacing (0 = auto)" type="number" step={100} suffix="m" value={st.gridSpacing} onCommit={(v) => num(v) >= 0 && set({ gridSpacing: num(v) })} />
+      <div className="checks">
+        <label className="check">
+          <input type="checkbox" checked={st.showGrid} onChange={(e) => set({ showGrid: e.target.checked })} /> Easting / northing grid
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={st.showNorthArrow} onChange={(e) => set({ showNorthArrow: e.target.checked })} /> North arrow
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={st.showBoundaries} onChange={(e) => set({ showBoundaries: e.target.checked })} /> Chart boundaries
+        </label>
+      </div>
+      {(route || background) && (
+        <div className="row2">
+          {route && (
+            <button onClick={() => useSurvey.getState().setRoute(null)}>Remove route</button>
+          )}
+          {background && (
+            <button onClick={() => useSurvey.getState().setBackground(null)}>Remove background</button>
+          )}
+        </div>
+      )}
+    </>
   );
 }

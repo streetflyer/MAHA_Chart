@@ -6,7 +6,8 @@ import type { ChartTemplate, ImageItem, Panel, Selection, TextItem } from '../mo
 import { useEditor } from '../state/store';
 import { fitInto, readImageFile } from './imageImport';
 import { InlineEditor } from './InlineEditor';
-import { PanelContent, TITLE_INSIDE_H } from './PanelContent';
+import { importSurveyFiles } from './surveyImport';
+import { PanelContent, TITLE_CAP, titleInsideHeight, titleLineHeight, titleLines } from './PanelContent';
 import { approxTextWidth, fontSize } from './svgText';
 
 export interface ContextTarget {
@@ -18,7 +19,6 @@ export interface ContextTarget {
 interface Props {
   onContextMenu(clientX: number, clientY: number, at: { x: number; y: number }, target: ContextTarget): void;
   onCursor(at: { x: number; y: number } | null): void;
-  onOpenProperties(): void;
   onNotice(msg: string): void;
   fitSignal: number;
   dark: boolean;
@@ -47,7 +47,7 @@ const SNAP_PX = 6;
 const EDGE_HIT_PX = 6;
 const SLOW_CLICK_MS = 550;
 
-export function SheetView({ onContextMenu, onCursor, onOpenProperties, onNotice, fitSignal, dark }: Props) {
+export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }: Props) {
   const template = useEditor((s) => s.template)!;
   const selection = useEditor((s) => s.selection);
   const editing = useEditor((s) => s.editing);
@@ -66,10 +66,10 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, onNotice,
   const images = template.images ?? [];
   const selectedImageIds = useMemo(() => new Set(selection.filter((s) => s.kind === 'image').map((s) => s.id)), [selection]);
   const isSelected = (s: Selection) => (s.kind === 'panel' ? selectedPanelIds : s.kind === 'text' ? selectedTextIds : selectedImageIds).has(s.id);
-  const lockedPanel = (id?: string) => !!id && !!template.panels.find((p) => p.id === id)?.locked;
   const selectedPanelIds = useMemo(() => new Set(selection.filter((s) => s.kind === 'panel').map((s) => s.id)), [selection]);
   const selectedTextIds = useMemo(() => new Set(selection.filter((s) => s.kind === 'text').map((s) => s.id)), [selection]);
 
+  const lastMiddle = useRef(0);
   const fit = useCallback(() => {
     const m = Math.max(template.paper.width, template.paper.height) * 0.02;
     setView({ x: -m, y: -m, w: template.paper.width + 2 * m, h: template.paper.height + 2 * m });
@@ -141,6 +141,12 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, onNotice,
     const at = toMm(e.clientX, e.clientY);
     if (e.button === 1 || (e.button === 0 && spaceDown.current)) {
       e.preventDefault();
+      // Double-click the wheel to zoom extents, as in AutoCAD.
+      if (e.button === 1 && e.timeStamp - lastMiddle.current < 400) {
+        lastMiddle.current = 0;
+        return fit();
+      }
+      if (e.button === 1) lastMiddle.current = e.timeStamp;
       setDrag({ type: 'pan', startClient: { x: e.clientX, y: e.clientY }, startView: view });
       (e.target as Element).setPointerCapture?.(e.pointerId);
       return;
@@ -185,7 +191,7 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, onNotice,
       const sel = wasSelected ? store().selection : [hit];
       const panelIds = sel.filter((s) => s.kind === 'panel').map((s) => s.id).filter((pid) => !template.panels.find((p) => p.id === pid)?.locked);
       const textIds = sel.filter((s) => s.kind === 'text').map((s) => s.id);
-      const imageIds = sel.filter((s) => s.kind === 'image').map((s) => s.id).filter((iid) => !lockedPanel(images.find((x) => x.id === iid)?.panelId));
+      const imageIds = sel.filter((s) => s.kind === 'image').map((s) => s.id);
       store().beginGesture();
       setDrag({ type: 'move', start: at, panelIds, textIds, imageIds, moved: false, wasSelected, hit });
       return;
@@ -247,11 +253,11 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, onNotice,
       return;
     }
     if (drag.type === 'imgResize') {
-      // Corner drag keeps the logo's proportions; hold Shift to stretch freely.
       const o = drag.origin;
       let w = Math.max(3, o.w + drag.sx * (at.x - drag.start.x));
       let h = Math.max(3, o.h + drag.sy * (at.y - drag.start.y));
-      if (!e.shiftKey) {
+      // Side handles stretch one way; corners keep proportions unless Shift is held.
+      if (drag.sx && drag.sy && !e.shiftKey) {
         const k = Math.max(w / o.w, h / o.h);
         w = o.w * k;
         h = o.h * k;
@@ -331,12 +337,12 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, onNotice,
     // Resize grips drawn on the selection sit over cells at the panel edge, so look beneath them.
     const el = document.elementsFromPoint(e.clientX, e.clientY).find((x) => !x.closest('[data-edge],[data-img-handle]')) ?? (e.target as Element);
     const itemEl = el.closest('[data-item]');
-    // Double-click on empty paper zooms to fit, like a CAD viewport.
+    // Double-click anywhere without text to edit zooms to fit, like a CAD viewport.
     if (!itemEl) return fit();
     const kind = itemEl.getAttribute('data-kind');
     const id = itemEl.getAttribute('data-item')!;
     if (kind === 'text') return store().startEdit({ kind: 'text', id });
-    if (kind === 'image') return onOpenProperties();
+    if (kind === 'image') return fit();
     const rev = el.closest('[data-rev]');
     if (rev) return store().startEdit({ kind: 'revision', id, rowId: rev.getAttribute('data-rev')!, col: rev.getAttribute('data-col')! });
     const field = el.closest('[data-field]');
@@ -344,7 +350,7 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, onNotice,
     if (el.closest('[data-body2]')) return store().startEdit({ kind: 'panelBody2', id });
     const p = template.panels.find((x) => x.id === id);
     if (p && p.body !== undefined) return store().startEdit({ kind: 'panelBody', id });
-    onOpenProperties();
+    fit();
   }
 
   async function onDrop(e: React.DragEvent) {
@@ -353,8 +359,8 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, onNotice,
     if (!files.length) return;
     const at = toMm(e.clientX, e.clientY);
     const imagesIn = files.filter((f) => f.type.startsWith('image/'));
-    const other = files.filter((f) => !f.type.startsWith('image/'));
-    if (other.length) onNotice(`Survey data import (${other.map((f) => f.name).join(', ')}) arrives in step 2. Images can be dropped now.`);
+    const other = await importSurveyFiles(files.filter((f) => !f.type.startsWith('image/')), onNotice);
+    if (other.length) onNotice(`Import of ${other.map((f) => f.name).join(', ')} arrives in step 2. Route files (.dig, .xyz), background DXF and logo images can be dropped now.`);
     // Drop onto the innermost panel under the cursor; logos fit inside its box.
     const target = [...template.panels]
       .reverse()
@@ -363,7 +369,7 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, onNotice,
       try {
         const img = await readImageFile(f);
         if (target) {
-          const top = target.titlePosition === 'inside' ? TITLE_INSIDE_H : 1;
+          const top = target.titlePosition === 'inside' ? titleInsideHeight(target) : 1;
           const box = { x: 1.5, y: top, w: target.w - 3, h: target.h - top - 1.5 };
           const r = fitInto(img.width, img.height, box);
           store().addImage({ panelId: target.id, ...r, x: r.x + i * 4, src: img.src, name: f.name });
@@ -454,7 +460,7 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, onNotice,
           />
         ))}
         {images.map((im) => (
-          <ImageView key={im.id} im={im} template={template} selected={selectedImageIds.has(im.id)} locked={lockedPanel(im.panelId)} handle={handle} />
+          <ImageView key={im.id} im={im} template={template} selected={selectedImageIds.has(im.id)} handle={handle} />
         ))}
         {template.texts.map((tx) => (
           <TextView key={tx.id} tx={tx} template={template} tokens={tokens} selected={selectedTextIds.has(tx.id)} editing={editing?.kind === 'text' && editing.id === tx.id} px={px} />
@@ -481,23 +487,32 @@ export function imageRect(im: ImageItem, t: ChartTemplate) {
   return { x: (p?.x ?? 0) + im.x, y: (p?.y ?? 0) + im.y, w: im.w, h: im.h };
 }
 
-function ImageView({ im, template, selected, locked, handle }: { im: ImageItem; template: ChartTemplate; selected: boolean; locked: boolean; handle: number }) {
+const IMAGE_HANDLE_CURSORS: Record<string, string> = {
+  '-1,-1': 'nwse-resize',
+  '1,1': 'nwse-resize',
+  '1,-1': 'nesw-resize',
+  '-1,1': 'nesw-resize',
+  '0,-1': 'ns-resize',
+  '0,1': 'ns-resize',
+  '-1,0': 'ew-resize',
+  '1,0': 'ew-resize',
+};
+
+/** Logos stay movable and resizable even when their panel is locked: the lock is for the layout. */
+function ImageView({ im, template, selected, handle }: { im: ImageItem; template: ChartTemplate; selected: boolean; handle: number }) {
   const r = imageRect(im, template);
-  const corners = [
-    [-1, -1, r.x, r.y, 'nwse-resize'],
-    [1, -1, r.x + r.w, r.y, 'nesw-resize'],
-    [-1, 1, r.x, r.y + r.h, 'nesw-resize'],
-    [1, 1, r.x + r.w, r.y + r.h, 'nwse-resize'],
-  ] as const;
+  const corners = Object.entries(IMAGE_HANDLE_CURSORS).map(([dir, cur]) => {
+    const [sx, sy] = dir.split(',').map(Number);
+    return [sx, sy, r.x + ((sx + 1) / 2) * r.w, r.y + ((sy + 1) / 2) * r.h, cur] as const;
+  });
   return (
     <g className="image-item">
-      <g data-item={im.id} data-kind="image">
+      <g data-item={im.id} data-kind="image" style={{ cursor: 'move' }}>
         <image href={im.src} x={r.x} y={r.y} width={r.w} height={r.h} preserveAspectRatio="xMidYMid meet" />
         <rect className="text-hit" x={r.x} y={r.y} width={r.w} height={r.h} />
       </g>
       {selected && <rect className="sel-outline" x={r.x} y={r.y} width={r.w} height={r.h} />}
       {selected &&
-        !locked &&
         corners.map(([sx, sy, x, y, cur]) => (
           <rect key={`${sx}${sy}`} className="handle" data-img-handle={im.id} data-dir={`${sx},${sy}`} x={x - handle / 2} y={y - handle / 2} width={handle} height={handle} style={{ cursor: cur }} />
         ))}
@@ -510,11 +525,10 @@ export function textPos(tx: TextItem, t: ChartTemplate): Pt {
   return { x: (p?.x ?? 0) + tx.x, y: (p?.y ?? 0) + tx.y };
 }
 
-const TITLE_CAP = 2.2;
 
 export function titleRect(p: Panel): { x: number; y: number; w: number; h: number } {
   if (p.titlePosition === 'above') return { x: p.x, y: p.y - 6, w: p.w, h: 5 };
-  return { x: p.x + 1, y: p.y + 0.5, w: p.w - 2, h: 4.5 };
+  return { x: p.x + 1, y: p.y + 0.5, w: p.w - 2, h: titleInsideHeight(p) - 0.5 };
 }
 
 interface PanelViewProps {
@@ -554,14 +568,20 @@ function PanelView({ p, template, tokens, selected, hitW, handle, hoverEdge, edi
             className={p.titlePosition === 'above' ? 'panel-title above' : 'panel-title'}
             x={p.titlePosition === 'above' ? p.x + p.w / 2 : p.x + 2}
             y={p.titlePosition === 'above' ? p.y - 2 : p.y + 3.4}
-            fontSize={fontSize(p.titlePosition === 'above' ? 2.5 : TITLE_CAP * 0.8)}
+            fontSize={fontSize(p.titlePosition === 'above' ? 2.5 : TITLE_CAP)}
             textAnchor={p.titlePosition === 'above' ? 'middle' : 'start'}
             onDoubleClick={(e) => {
               e.stopPropagation();
               startEdit({ kind: 'panelTitle', id: p.id });
             }}
           >
-            {title}
+            {p.titlePosition === 'above'
+              ? title
+              : titleLines(p, title).map((l, i) => (
+                  <tspan key={i} x={p.x + 2} dy={i === 0 ? 0 : titleLineHeight()}>
+                    {l}
+                  </tspan>
+                ))}
           </text>
         )}
         <PanelContent

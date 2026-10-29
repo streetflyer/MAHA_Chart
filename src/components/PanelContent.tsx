@@ -1,6 +1,7 @@
 import { LEGEND_GROUPS } from '../model/presets';
 import { formatScale, niceScaleBar, resolveTokens } from '../model/scale';
 import type { ChartTemplate, LegendGroup, LegendItem, Panel, RevisionColumn, RevisionRow, TextStyle } from '../model/types';
+import { Keyplan } from './Keyplan';
 import { approxTextWidth, fontSize, wrapLines } from './svgText';
 
 interface Props {
@@ -12,11 +13,28 @@ interface Props {
 }
 
 export const TITLE_INSIDE_H = 5;
+export const TITLE_CAP = 1.76;
+const TITLE_LINE = TITLE_CAP * 1.6;
+
+/** Lines of an inside title, wrapped to the panel width. */
+export function titleLines(p: Panel, title = p.title): string[] {
+  return wrapLines(title, Math.max(p.w - 4, 5), TITLE_CAP, true);
+}
+
+/** Space taken by an inside title; grows when a long title wraps. */
+export function titleInsideHeight(p: Panel): number {
+  if (p.titlePosition !== 'inside') return 0;
+  return TITLE_INSIDE_H + (titleLines(p).length - 1) * TITLE_LINE;
+}
+
+export function titleLineHeight() {
+  return TITLE_LINE;
+}
 const DEFAULT_BODY: TextStyle = { size: 1.8 };
 
 /** Everything drawn inside a panel's frame. Data drawing arrives in plan step 3; for now each panel shows its layout. */
 export function PanelContent({ panel: p, template, tokens, hasImage, onRowDoubleClick }: Props) {
-  const top = p.titlePosition === 'inside' ? p.y + TITLE_INSIDE_H : p.y;
+  const top = p.y + titleInsideHeight(p);
   switch (p.type) {
     case 'plan':
       return <PlanPlaceholder p={p} northUp={template.kind === 'northUp'} tokens={tokens} />;
@@ -33,7 +51,7 @@ export function PanelContent({ panel: p, template, tokens, hasImage, onRowDouble
     case 'legend':
       return <Legend p={p} tokens={tokens} />;
     case 'keyplan':
-      return <Hint p={p} top={top} text="Key plan: route + background DXF" />;
+      return <Keyplan p={p} top={top} template={template} sheetIndex={Math.max(0, (parseInt(tokens.SHEET ?? '1', 10) || 1) - 1)} />;
     case 'logo':
       return hasImage ? null : <Hint p={p} top={top} text="Drop a logo image here" />;
     case 'chartInfo':
@@ -173,7 +191,7 @@ function TextColumn({
     if (l.includes('\t')) {
       const [a, ...rest] = l.split('\t');
       lines.push({ a, b: rest.join(' ') });
-    } else for (const wl of wrapLines(l, w, cap)) lines.push({ a: wl });
+    } else for (const wl of wrapLines(l, w, cap, !!style.bold)) lines.push({ a: wl });
   }
   const shown = lines.slice(0, Math.max(1, Math.floor(h / lh)));
   const blockH = shown.length * lh;

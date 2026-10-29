@@ -58,6 +58,25 @@ export interface Panel {
   eventCodes?: string;
   /** Revision history rows, newest first (title block). */
   revisions?: RevisionRow[];
+  /** Key plan look (key plan panels). */
+  keyplan?: KeyplanStyle;
+}
+
+export interface KeyplanStyle {
+  /** Sea / background fill. */
+  background: string;
+  /** Colour of background DXF linework. */
+  dxfColor: string;
+  routeColor: string;
+  boundaryColor: string;
+  /** Highlight for the chart being viewed. */
+  currentColor: string;
+  /** Grid spacing in metres; 0 picks a round value. */
+  gridSpacing: number;
+  gridColor: string;
+  showGrid: boolean;
+  showNorthArrow: boolean;
+  showBoundaries: boolean;
 }
 
 export interface TextStyle {

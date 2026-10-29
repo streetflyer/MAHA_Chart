@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { REVIEW_OPTIONS } from '../model/presets';
 import type { ChartTemplate, RevisionColumn, RevisionRow } from '../model/types';
 import { useEditor, type InlineEdit } from '../state/store';
-import { REV_COLUMNS, TITLE_INSIDE_H, isBlank, titleBlockLayout } from './PanelContent';
+import { REV_COLUMNS, isBlank, titleInsideHeight, titleBlockLayout } from './PanelContent';
 import { textPos, titleRect } from './SheetView';
 import { approxTextWidth, fontSize } from './svgText';
 
@@ -71,7 +71,7 @@ function targetFor(e: InlineEdit, t: ChartTemplate): Target | null {
         : { x: p.x, y: p.y, w: p.w, h: 6 };
     return { rect, value: t.fields[key] ?? (key === 'PLOT_SIZE' ? `ISO ${t.paper.size}` : ''), multiline: false, cap: 1.8 };
   }
-  const top = p.titlePosition === 'inside' ? p.y + TITLE_INSIDE_H : p.y;
+  const top = p.y + titleInsideHeight(p);
   const h = Math.max(p.y + p.h - top, 20);
   if (e.kind === 'panelBody2') return { rect: { x: p.x + p.w / 2, y: top, w: Math.max(p.w / 2, 80), h }, value: p.body2 ?? '', multiline: true, cap: 1.8 };
   return { rect: { x: p.x, y: top, w: p.w, h }, value: p.body ?? '', multiline: true, cap: 1.8 };

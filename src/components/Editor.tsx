@@ -8,7 +8,7 @@ import type { ChartTemplate, PanelType, PaperSizeName } from '../model/types';
 import { ADDABLE_TYPES, PANEL_DEFAULTS } from '../state/panelDefaults';
 import { chartInfoLocked, useEditor } from '../state/store';
 import { fitInto, readImageFile } from './imageImport';
-import { TITLE_INSIDE_H } from './PanelContent';
+import { titleInsideHeight } from './PanelContent';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { askConfirm, askText } from './Dialog';
 import { PropertiesPanel } from './PropertiesPanel';
@@ -236,7 +236,7 @@ export function Editor({ onExit }: { onExit(): void }) {
       try {
         const img = await readImageFile(f);
         if (target) {
-          const top = target.titlePosition === 'inside' ? TITLE_INSIDE_H : 1;
+          const top = target.titlePosition === 'inside' ? titleInsideHeight(target) : 1;
           const r = fitInto(img.width, img.height, { x: 1.5, y: top, w: target.w - 3, h: target.h - top - 1.5 });
           s().addImage({ panelId: target.id, ...r, src: img.src, name: f.name });
         } else {
@@ -336,7 +336,7 @@ export function Editor({ onExit }: { onExit(): void }) {
       </header>
       <div className="workspace">
         <div className="sheet-col">
-          <SheetView onContextMenu={openMenu} onCursor={setCursor} onOpenProperties={focusProps} onNotice={flash} fitSignal={fitSignal} dark={dark} />
+          <SheetView onContextMenu={openMenu} onCursor={setCursor} onNotice={flash} fitSignal={fitSignal} dark={dark} />
           <ChartTabs />
         </div>
         <div ref={propsRef} className="props-wrap">
@@ -348,7 +348,7 @@ export function Editor({ onExit }: { onExit(): void }) {
         <span>
           {template.paper.size} {template.paper.width.toFixed(0)}×{template.paper.height.toFixed(0)} mm
         </span>
-        <span className="hint-text">Drag an edge to resize (Alt = ignore shared dividers) · Drop a logo on a panel · Wheel to zoom · Double-click paper to fit · F2 rename</span>
+        <span className="hint-text">Drag an edge to resize (Alt = ignore shared dividers) · Drop a logo on a panel · Wheel to zoom · Double-click (or wheel double-click) to fit · F2 rename</span>
       </footer>
       <input
         ref={imageInput}

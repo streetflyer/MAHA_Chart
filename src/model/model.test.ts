@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { normalize } from '../state/store';
 import { alignmentSheetA1, alignmentSheetA1NoCp } from './builtinTemplates';
+import { parseDxfLinework } from './dxf';
 import { findFreeSpot } from './freeSpace';
 import { linkedEdges, resizeEdge } from './layout';
 import { paperDimensions, resizePaper } from './paper';
+import { chartFrames, parseRoute } from './route';
 import { niceScaleBar, setHorizontalScale, setKpPerSheet, sheetCount, sheetRange, syncScaleToPlan } from './scale';
 import { templateTokens } from './tokens';
 
@@ -136,5 +138,29 @@ describe('tokens', () => {
     const tk = templateTokens(alignmentSheetA1());
     expect(tk.REV).toBe('1');
     expect(tk.PLOT_SIZE).toBe('ISO A1');
+  });
+});
+
+describe('route and key plan', () => {
+  it('reads a .dig and frames each chart from its start KP along the line', () => {
+    const dig = '#unit=m\n#Type=Pipe\n' + Array.from({ length: 10001 }, (_, i) => `${500000 + i} 9800000 -40`).join('\n');
+    const r = parseRoute(dig, 'line.dig')!;
+    expect(r.length).toBeCloseTo(10000);
+    const t = alignmentSheetA1();
+    const s = { ...t, scale: { ...t.scale, routeLength: r.length } };
+    const frames = chartFrames(s, r);
+    expect(frames).toHaveLength(4);
+    // Chart 2 starts at KP 3.150: 3150 m along an eastward line.
+    expect(frames[1][0][0]).toBeCloseTo(503150);
+    expect(frames[1][1][0]).toBeCloseTo(506300);
+    expect(frames[1][2][1] - frames[1][1][1]).toBeCloseTo((132 * 5000) / 1000);
+  });
+
+  it('reads lines and polylines from a DXF', () => {
+    const dxf = ['0', 'SECTION', '2', 'ENTITIES', '0', 'LINE', '10', '1', '20', '2', '11', '3', '21', '4', '0', 'LWPOLYLINE', '90', '3', '70', '1', '10', '0', '20', '0', '10', '5', '20', '0', '10', '5', '20', '5', '0', 'ENDSEC', '0', 'EOF'].join('\n');
+    const lw = parseDxfLinework(dxf, 'bg.dxf')!;
+    expect(lw.lines).toHaveLength(2);
+    expect(lw.lines[1]).toHaveLength(8);
+    expect(lw.bounds).toEqual({ minE: 0, minN: 0, maxE: 5, maxN: 5 });
   });
 });
