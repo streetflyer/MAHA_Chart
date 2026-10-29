@@ -34,7 +34,9 @@ export function resizePaper(t: ChartTemplate, width: number, height: number): Ch
       w: p.w * sx,
       h: p.h * sy,
       labelWidth: p.labelWidth !== undefined ? p.labelWidth * sx : undefined,
+      font: p.font ? { ...p.font, size: p.font.size * st } : undefined,
     })),
+    images: (t.images ?? []).map((im) => ({ ...im, x: im.x * sx, y: im.y * sy, w: im.w * st, h: im.h * st })),
     texts: t.texts.map((tx) => ({
       ...tx,
       x: tx.x * sx,

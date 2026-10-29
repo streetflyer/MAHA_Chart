@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { newId } from '../model/ids';
 import { PAPER_SIZES } from '../model/paper';
-import { formatScale } from '../model/scale';
+import { formatScale, sheetCount } from '../model/scale';
 import type { ChartTemplate, Panel, PaperSizeName, TextItem } from '../model/types';
+import { LEGEND_GROUPS, LEGEND_PRESETS, LEGEND_SYMBOLS } from '../model/presets';
+import type { ImageItem, LegendGroup, LegendItem, LegendSymbol, TextStyle } from '../model/types';
 import { PANEL_DEFAULTS } from '../state/panelDefaults';
 import { useEditor } from '../state/store';
 
@@ -77,6 +79,10 @@ export function PropertiesPanel() {
     const t = template.texts.find((x) => x.id === sel.id);
     if (t) return <TextProps t={t} />;
   }
+  if (sel?.kind === 'image') {
+    const im = (template.images ?? []).find((x) => x.id === sel.id);
+    if (im) return <ImageProps im={im} />;
+  }
   return <TemplateProps t={template} />;
 }
 
@@ -92,6 +98,15 @@ function TemplateProps({ t }: { t: ChartTemplate }) {
         <select value={t.kind} onChange={(e) => s.commit((tt) => ({ ...tt, kind: e.target.value as ChartTemplate['kind'] }))}>
           <option value="alignment">Alignment sheet</option>
           <option value="northUp">North-Up</option>
+        </select>
+      </label>
+
+      <label className="field">
+        <span>Font for all sheet text</span>
+        <select value={t.fontFamily ?? 'Arial'} onChange={(e) => s.commit((tt) => ({ ...tt, fontFamily: e.target.value }))}>
+          {FONTS.map((f) => (
+            <option key={f}>{f}</option>
+          ))}
         </select>
       </label>
 
@@ -175,13 +190,14 @@ export function ScaleFields({ t }: { t: ChartTemplate }) {
         <Field label="Horizontal 1:" type="number" value={t.scale.horizontal} onCommit={(v) => s.setHorizontalScale(num(v))} />
         <Field label="KP per sheet" type="number" step={0.001} suffix="km" value={(t.scale.kpPerSheet / 1000).toFixed(3)} onCommit={(v) => s.setKpPerSheet(num(v) * 1000)} />
       </div>
-      <label className="field">
-        <span>When the plan view is resized</span>
-        <select value={t.scale.lock} onChange={(e) => s.setScale({ lock: e.target.value as 'kp' | 'scale' })}>
-          <option value="kp">Keep KP per sheet, change scale</option>
-          <option value="scale">Keep scale, change KP per sheet</option>
-        </select>
-      </label>
+      <p className="muted">The plan view keeps its size on paper; the scale sets how much route fits in it.</p>
+      <div className="row2">
+        <Field label="Route length" type="number" step={0.001} suffix="km" value={(t.scale.routeLength / 1000).toFixed(3)} onCommit={(v) => num(v) > 0 && s.setScale({ routeLength: num(v) * 1000 })} />
+        <label className="field">
+          <span>Charts needed</span>
+          <span className="readout">{sheetCount(t)}</span>
+        </label>
+      </div>
       <div className="row2">
         <Field label="Long. vertical 1:" type="number" value={t.scale.verticalLong} onCommit={(v) => num(v) > 0 && s.setScale({ verticalLong: num(v) })} />
         <Field label="Trans. vertical 1:" type="number" value={t.scale.verticalTrans} onCommit={(v) => num(v) > 0 && s.setScale({ verticalTrans: num(v) })} />
@@ -241,7 +257,19 @@ function PanelProps({ p }: { p: Panel }) {
           )}
         </span>
       </label>
-      {p.body !== undefined && <Field label="Text" multiline value={p.body} onCommit={(v) => set({ body: v })} />}
+      {p.body !== undefined && (
+        <Field label={p.body2 !== undefined ? 'Left column' : 'Text'} multiline value={p.body} onCommit={(v) => set({ body: v })} />
+      )}
+      {p.body2 !== undefined && <Field label="Right column" multiline value={p.body2} onCommit={(v) => set({ body2: v })} />}
+      {p.body !== undefined && p.body2 === undefined && p.type !== 'text' && (
+        <button onClick={() => set({ body2: '' })}>Add a second text column</button>
+      )}
+      {p.body !== undefined && <p className="muted">Use a Tab between a label and its value to line values up, e.g. "Ellipsoid⇥: WGS84".</p>}
+      {p.body !== undefined && <FontEditor p={p} />}
+      {p.type === 'legend' && <LegendEditor p={p} />}
+      {p.type === 'titleBlock' && (
+        <p className="muted">Double-click any cell on the sheet to edit it. The description column offers the review statuses or your own text.</p>
+      )}
       {p.rows && <RowsEditor p={p} />}
     </aside>
   );
@@ -318,6 +346,149 @@ function TextProps({ t }: { t: TextItem }) {
       <label className="check">
         <input type="checkbox" checked={!!t.bold} onChange={(e) => set({ bold: e.target.checked })} /> Bold
       </label>
+    </aside>
+  );
+}
+
+const FONTS = ['Arial', 'Arial Narrow', 'Helvetica', 'Calibri', 'Segoe UI', 'Tahoma', 'Verdana', 'Times New Roman', 'Courier New'];
+
+function FontEditor({ p }: { p: Panel }) {
+  const s = useEditor.getState();
+  const f: TextStyle = p.font ?? { size: 1.8 };
+  const set = (patch: Partial<TextStyle>) => s.updatePanel(p.id, { font: { ...f, ...patch } });
+  return (
+    <>
+      <h4>Text style</h4>
+      <div className="row2">
+        <Field label="Text height" type="number" step={0.1} suffix="mm" value={r2(f.size)} onCommit={(v) => num(v) > 0 && set({ size: num(v) })} />
+        <label className="field">
+          <span>Alignment</span>
+          <select value={f.align ?? 'start'} onChange={(e) => set({ align: e.target.value as TextStyle['align'] })}>
+            <option value="start">Left</option>
+            <option value="middle">Centre</option>
+            <option value="end">Right</option>
+          </select>
+        </label>
+      </div>
+      <div className="checks">
+        <label className="check">
+          <input type="checkbox" checked={!!f.bold} onChange={(e) => set({ bold: e.target.checked })} /> Bold
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={!!f.italic} onChange={(e) => set({ italic: e.target.checked })} /> Italic
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={!!f.vcenter} onChange={(e) => set({ vcenter: e.target.checked })} /> Centre vertically
+        </label>
+      </div>
+      <label className="field">
+        <span>Text colour</span>
+        <span className="input-wrap">
+          <input type="color" value={p.textColor ?? '#111111'} onChange={(e) => s.updatePanel(p.id, { textColor: e.target.value })} />
+          {p.textColor && (
+            <button className="link" onClick={() => s.updatePanel(p.id, { textColor: undefined })}>
+              Default
+            </button>
+          )}
+        </span>
+      </label>
+      <button
+        title="Copy this text height and style to every text section"
+        onClick={() =>
+          s.commit((t) => ({
+            ...t,
+            panels: t.panels.map((x) => (x.body !== undefined && x.id !== p.id ? { ...x, font: { ...(x.font ?? { size: 1.8 }), size: f.size, bold: f.bold, italic: f.italic } } : x)),
+          }))
+        }
+      >
+        Apply height and style to all text sections
+      </button>
+    </>
+  );
+}
+
+function LegendEditor({ p }: { p: Panel }) {
+  const s = useEditor.getState();
+  const items = p.legend ?? [];
+  const setItems = (legend: LegendItem[]) => s.updatePanel(p.id, { legend });
+  const update = (id: string, patch: Partial<LegendItem>) => setItems(items.map((i) => (i.id === id ? { ...i, ...patch } : i)));
+  const [preset, setPreset] = useState('0');
+  return (
+    <>
+      <h4>Legend items</h4>
+      <p className="muted">Items marked "plan view" will also be filled in automatically from the plan view layers once data is loaded.</p>
+      <ul className="legend-list">
+        {items.map((it, i) => (
+          <li key={it.id}>
+            <div className="legend-row">
+              <input type="color" value={it.color} title="Colour" onChange={(e) => update(it.id, { color: e.target.value })} />
+              <input
+                defaultValue={it.label}
+                key={it.label}
+                onBlur={(e) => e.target.value !== it.label && update(it.id, { label: e.target.value })}
+                onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+              />
+              <button className="icon" title="Move up" disabled={i === 0} onClick={() => setItems(swap(items, i, i - 1))}>
+                ↑
+              </button>
+              <button className="icon" title="Remove" onClick={() => setItems(items.filter((x) => x.id !== it.id))}>
+                ×
+              </button>
+            </div>
+            <div className="legend-row sub">
+              <select value={it.group} onChange={(e) => update(it.id, { group: e.target.value as LegendGroup })}>
+                {Object.entries(LEGEND_GROUPS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v.toLowerCase()}
+                  </option>
+                ))}
+              </select>
+              <select value={it.symbol} onChange={(e) => update(it.id, { symbol: e.target.value as LegendSymbol })}>
+                {Object.entries(LEGEND_SYMBOLS).map(([k, v]) => (
+                  <option key={k} value={k}>
+                    {v}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <div className="add-field">
+        <select value={preset} onChange={(e) => setPreset(e.target.value)}>
+          {LEGEND_PRESETS.map((pr, i) => (
+            <option key={i} value={i}>
+              {LEGEND_GROUPS[pr.group].toLowerCase()}: {pr.label}
+            </option>
+          ))}
+        </select>
+        <button onClick={() => setItems([...items, { ...LEGEND_PRESETS[Number(preset)], id: newId('lg') }])}>Add preset</button>
+      </div>
+      <button onClick={() => setItems([...items, { id: newId('lg'), group: 'plan', symbol: 'line', label: 'New legend item', color: '#111111' }])}>
+        Add your own item
+      </button>
+      <Field label="Event code definitions (code, Tab, description)" multiline value={p.eventCodes ?? ''} onCommit={(v) => s.updatePanel(p.id, { eventCodes: v })} />
+    </>
+  );
+}
+
+function ImageProps({ im }: { im: ImageItem }) {
+  const s = useEditor.getState();
+  const set = (patch: Partial<ImageItem>) => s.updateImage(im.id, patch);
+  const ratio = im.h / im.w;
+  return (
+    <aside className="props">
+      <h3>Image</h3>
+      {im.name && <p className="muted">{im.name}</p>}
+      <p className="muted">Drag to move. Drag a corner to resize (Shift to stretch).</p>
+      <div className="row2">
+        <Field label="Width" type="number" suffix="mm" value={r2(im.w)} onCommit={(v) => num(v) > 1 && set({ w: num(v), h: num(v) * ratio })} />
+        <Field label="Height" type="number" suffix="mm" value={r2(im.h)} onCommit={(v) => num(v) > 1 && set({ h: num(v), w: num(v) / ratio })} />
+      </div>
+      <div className="row2">
+        <Field label="X" type="number" suffix="mm" value={r2(im.x)} onCommit={(v) => set({ x: num(v) })} />
+        <Field label="Y" type="number" suffix="mm" value={r2(im.y)} onCommit={(v) => set({ y: num(v) })} />
+      </div>
     </aside>
   );
 }

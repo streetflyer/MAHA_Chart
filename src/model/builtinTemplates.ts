@@ -1,3 +1,4 @@
+import { DEFAULT_EVENT_CODES, DISCLAIMER, defaultLegend, defaultRevisions } from './presets';
 import type { ChartTemplate, EventRow, Panel, TextItem } from './types';
 
 /*
@@ -75,28 +76,39 @@ export function alignmentSheetA1(): ChartTemplate {
     },
     { id: 'p_cp', type: 'cp', title: 'CATHODIC PROTECTION', titlePosition: 'above', x: LEFT_X, y: 499.5, w: LEFT_W, h: 80, kpAligned: true },
     { id: 'p_info', type: 'chartInfo', title: 'CHART INFORMATION', titlePosition: 'none', x: INFO_X, y: 15.2, w: INFO_W, h: 564.5 },
-    section('s_header', 'text', 'CHART INFORMATION', 15.2, 27.5, { titlePosition: 'none', fill: '#1d4f5c', body: 'CHART INFORMATION' }),
-    section('s_legend', 'legend', 'PLAN VIEW / PROFILE LEGEND', 27.5, 148.5, {
-      body: 'Proposed Route (Designed Route)\nAs-Built Route\nKP Marker - Grid\nAdjoining Chart Matchline with Chart Number\nOther Existing Field Assets',
+    section('s_header', 'text', 'CHART INFORMATION', 15.2, 27.5, {
+      titlePosition: 'none',
+      fill: '#0f3d4c',
+      textColor: '#ffd84d',
+      body: 'CHART INFORMATION',
+      font: { size: 4.2, align: 'middle', vcenter: true },
     }),
+    section('s_legend', 'legend', 'LEGEND', 27.5, 148.5, { titlePosition: 'none', legend: defaultLegend(), eventCodes: DEFAULT_EVENT_CODES }),
     section('s_notes', 'notes', 'NOTES', 148.5, 185.9, {
       body: '1. Design route taken from Alignment Sheet, CONTRACTOR provided file.\n2. Field assets taken from as-installed database.\n3. All KPs are referenced to the as-built route.',
     }),
     section('s_geodetic', 'geodetic', 'GEODETIC PARAMETERS', 185.9, 222.8, {
-      body: 'Geodetic Datum : WGS84\nEllipsoid : WGS84\nProjection : {PROJECTION}\nSemi-major Axis : 6 378 137.0 m\nInverse Flattening : 1/298.257 223 563',
+      body: 'Geodetic Datum\t: WGS84\nEllipsoid\t: WGS84\nProjection\t: {PROJECTION}\nSemi-major Axis\t: 6 378 137.0m\nInverse Flattening\t: 1/ 298.257 223 563\nCentral Meridian\t: 117°00\' E\nX Origin\t: 500 000 m at CM\nY Origin\t: 0 m at 00°00\' N',
+      body2: 'dX\t: 0.0 m\ndY\t: 0.0 m\ndZ\t: 0.0 m\nRx\t: 0.0 sec\nRy\t: 0.0 sec\nRz\t: 0.0 sec\nScale Factor at CM\t: 0.0999600 ppm',
     }),
     section('s_equipment', 'equipment', 'EQUIPMENT USED', 222.8, 265.7, {
-      body: 'Primary DGPS Positioning System : {PRIMARY_DGPS}\nSecondary DGPS Positioning System : {SECONDARY_DGPS}\nMultibeam Echosounder : {MBES}',
+      body: 'Primary DGPS Positioning System\t: {PRIMARY_DGPS}\nSecondary DGPS Positioning System\t: {SECONDARY_DGPS}\nMultibeam Echosounder\t: {MBES}',
     }),
     section('s_scale', 'scale', 'SCALE', 265.7, 292.7),
-    section('s_status', 'text', 'STATUS', 292.7, 301.7, { titlePosition: 'none', fill: '#c62828', body: '{STATUS}' }),
+    section('s_disclaimer', 'text', 'DISCLAIMER', 292.7, 301.7, {
+      titlePosition: 'none',
+      fill: '#ffffff',
+      textColor: '#e00000',
+      body: DISCLAIMER,
+      font: { size: 1.25, bold: true, align: 'middle', vcenter: true },
+    }),
     section('s_keyplan', 'keyplan', 'KEY PLAN', 301.7, 406.7),
-    section('s_project', 'text', 'PROJECT', 406.7, 430.2, { body: '{PROJECT}' }),
-    section('s_title', 'text', 'TITLE', 430.2, 455.3, { body: '{TITLE}' }),
+    section('s_project', 'text', 'PROJECT', 406.7, 430.2, { body: '{PROJECT}', font: { size: 3, bold: true, align: 'middle', vcenter: true } }),
+    section('s_title', 'text', 'TITLE', 430.2, 455.3, { body: '{TITLE}', font: { size: 2.8, align: 'middle', vcenter: true } }),
     section('s_company', 'logo', 'COMPANY', 455.3, 482.5),
     section('s_contractor', 'logo', 'CONTRACTOR/SUBCONTRACTOR', 482.5, 512.3, { w: 777.7 - INFO_X }),
     section('s_acquired', 'logo', 'DATA ACQUIRED AND PROCESSED BY :', 482.5, 512.3, { x: 777.7, w: INFO_X + INFO_W - 777.7 }),
-    section('s_titleblock', 'titleBlock', 'TITLE BLOCK', 512.3, 579.7, { titlePosition: 'none' }),
+    section('s_titleblock', 'titleBlock', 'TITLE BLOCK', 512.3, 579.7, { titlePosition: 'none', revisions: defaultRevisions() }),
   ];
 
   const texts: TextItem[] = [
@@ -114,7 +126,7 @@ export function alignmentSheetA1(): ChartTemplate {
     scale: {
       horizontal: 5000,
       kpPerSheet: (LEFT_W * 5000) / 1000,
-      lock: 'kp',
+      routeLength: 15000,
       verticalLong: 200,
       verticalTrans: 100,
       lateralTrans: 100,
@@ -122,19 +134,15 @@ export function alignmentSheetA1(): ChartTemplate {
     },
     panels,
     texts,
+    images: [],
+    fontFamily: 'Arial',
     fields: {
       PROJECT: 'PROVISION AND INSTALLATION OF SUBSEA UMBILICAL, RISER, AND FLOWLINES (SURF) AND PRE-COMMISSIONING ACTIVITIES FOR MAHA',
       TITLE: 'AS-BUILT SURVEY\nUMBILICAL 1 UMB1 UTA-B to UMB1 UTA-A',
-      STATUS: 'ISSUED FOR TEMPLATE REVIEW',
-      CHART_NO: '33DJ100160-T1201-UMB1-CH-001',
-      SHEET: '1',
-      NUM_CHARTS: '05',
+      CHART_NO: '33DJ100160-T1201-UMB1-CH-01',
       START_KP: '0.000',
-      REV: 'A1',
-      DATE: '',
-      DRN_BY: '',
-      CHKD_BY: '',
-      APPR_BY: '',
+      SURVEY_DATE: '14/03/2025, 18/03/2025, And 19/03/2025',
+      SURVEY_VESSEL: 'TIMAS 1201',
       PROJECTION: 'UTM Zone 50 South',
       PRIMARY_DGPS: 'Veripos LD900 c/w APEX Correction',
       SECONDARY_DGPS: 'Veripos LD900 c/w APEX Correction',
@@ -170,7 +178,6 @@ export function northUpA1(): ChartTemplate {
     kind: 'northUp',
     panels: [plan, ...t.panels.filter((p) => keep.has(p.id))],
     texts: [],
-    scale: { ...t.scale, lock: 'scale', kpPerSheet: (LEFT_W * 5000) / 1000 },
   };
 }
 

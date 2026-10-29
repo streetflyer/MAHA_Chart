@@ -2,21 +2,25 @@ import { create } from 'zustand';
 import { newId } from '../model/ids';
 import { descendants, movePanels, splitPanel } from '../model/layout';
 import { paperDimensions, resizePaper } from '../model/paper';
-import { alignKpPanels, planPanel, setHorizontalScale, setKpPerSheet, syncScaleToPlan } from '../model/scale';
-import type { ChartTemplate, Panel, PanelType, PaperSizeName, ScaleSettings, Selection, TextItem } from '../model/types';
+import { planPanel, setHorizontalScale, setKpPerSheet, sheetCount, syncScaleToPlan } from '../model/scale';
+import { findFreeSpot } from '../model/freeSpace';
+import type { ChartTemplate, ImageItem, Panel, PanelType, PaperSizeName, ScaleSettings, Selection, TextItem } from '../model/types';
 import { PANEL_DEFAULTS } from './panelDefaults';
 
 const HISTORY_LIMIT = 200;
 
 export interface InlineEdit {
-  kind: 'panelTitle' | 'panelBody' | 'text' | 'row';
+  kind: 'panelTitle' | 'panelBody' | 'panelBody2' | 'text' | 'row' | 'revision' | 'field';
   id: string;
   rowId?: string;
+  /** Revision table column, or the template field key for kind 'field'. */
+  col?: string;
 }
 
 interface Clip {
   panels: Panel[];
   texts: TextItem[];
+  images: ImageItem[];
 }
 
 interface EditorState {
@@ -28,8 +32,14 @@ interface EditorState {
   editing: InlineEdit | null;
   clipboard: Clip | null;
   gestureBase: ChartTemplate | null;
+  /** The template as it was opened, for "Reset to template". */
+  origin: ChartTemplate | null;
+  /** Which chart (sheet) of the route is shown, 0-based. */
+  sheetIndex: number;
 
   open(t: ChartTemplate): void;
+  resetToOrigin(): void;
+  setSheet(i: number): void;
   close(): void;
   markSaved(t: ChartTemplate): void;
 
@@ -48,6 +58,8 @@ interface EditorState {
 
   updatePanel(id: string, patch: Partial<Panel>): void;
   updateText(id: string, patch: Partial<TextItem>): void;
+  updateImage(id: string, patch: Partial<ImageItem>): void;
+  addImage(img: Omit<ImageItem, 'id'>): void;
   addPanel(type: PanelType, at?: { x: number; y: number }, parentId?: string): void;
   addText(at: { x: number; y: number }, panelId?: string): void;
   deleteSelection(): void;
@@ -59,6 +71,7 @@ interface EditorState {
   reorderSelection(where: 'front' | 'back'): void;
   splitSelected(direction: 'horizontal' | 'vertical'): void;
   toggleLockSelection(): void;
+  setChartInfoLocked(locked: boolean): void;
 
   setPaper(size: PaperSizeName, orientation: 'landscape' | 'portrait', custom?: [number, number]): void;
   setHorizontalScale(v: number): void;
@@ -74,7 +87,7 @@ interface EditorState {
  */
 export function normalize(prev: ChartTemplate, next: ChartTemplate): ChartTemplate {
   const prevPlan = planPanel(prev);
-  let plan = planPanel(next);
+  const plan = planPanel(next);
   if (!plan || !prevPlan) return next;
   let t = next;
   const planChanged = plan.x !== prevPlan.x || plan.w !== prevPlan.w;
@@ -85,13 +98,9 @@ export function normalize(prev: ChartTemplate, next: ChartTemplate): ChartTempla
       const before = prev.panels.find((q) => q.id === p.id);
       return before && (before.x !== p.x || before.w !== p.w);
     });
-    if (lead) {
-      t = { ...t, panels: t.panels.map((p) => (p.id === plan!.id ? { ...p, x: lead.x, w: lead.w } : p)) };
-      plan = planPanel(t)!;
-    }
+    if (lead) t = { ...t, panels: t.panels.map((p) => (p.id === plan.id ? { ...p, x: lead.x, w: lead.w } : p)) };
   }
-  if (plan.w !== prevPlan.w) return syncScaleToPlan(t);
-  return alignKpPanels(t);
+  return syncScaleToPlan(t);
 }
 
 function selectedIds(sel: Selection[], kind: Selection['kind']): string[] {
@@ -107,12 +116,26 @@ export const useEditor = create<EditorState>((set, get) => ({
   editing: null,
   clipboard: null,
   gestureBase: null,
+  origin: null,
+  sheetIndex: 0,
 
   open(t) {
-    set({ template: structuredClone(t), selection: [], past: [], future: [], dirty: false, editing: null });
+    const fresh = syncScaleToPlan(upgrade(structuredClone(t)));
+    set({ template: fresh, origin: structuredClone(fresh), selection: [], past: [], future: [], dirty: false, editing: null, sheetIndex: 0 });
+  },
+  resetToOrigin() {
+    const o = get().origin;
+    if (!o) return;
+    get().commit(() => structuredClone(o));
+    set({ selection: [], editing: null, sheetIndex: 0 });
+  },
+  setSheet(i) {
+    const t = get().template;
+    if (!t) return;
+    set({ sheetIndex: Math.max(0, Math.min(i, sheetCount(t) - 1)) });
   },
   close() {
-    set({ template: null, selection: [], past: [], future: [], dirty: false, editing: null });
+    set({ template: null, origin: null, selection: [], past: [], future: [], dirty: false, editing: null, sheetIndex: 0 });
   },
   markSaved(t) {
     set({ template: t, dirty: false });
@@ -123,7 +146,8 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!cur) return;
     const next = normalize(cur, fn(cur));
     if (next === cur) return;
-    set({ template: next, past: [...get().past, cur].slice(-HISTORY_LIMIT), future: [], dirty: true });
+    const sheetIndex = Math.min(get().sheetIndex, sheetCount(next) - 1);
+    set({ template: next, past: [...get().past, cur].slice(-HISTORY_LIMIT), future: [], dirty: true, sheetIndex });
   },
   beginGesture() {
     set({ gestureBase: get().template });
@@ -174,22 +198,27 @@ export const useEditor = create<EditorState>((set, get) => ({
   updateText(id, patch) {
     get().commit((t) => ({ ...t, texts: t.texts.map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
   },
+  updateImage(id, patch) {
+    get().commit((t) => ({ ...t, images: (t.images ?? []).map((x) => (x.id === id ? { ...x, ...patch } : x)) }));
+  },
+  addImage(img) {
+    const id = newId('img');
+    get().commit((t) => ({ ...t, images: [...(t.images ?? []), { ...img, id }] }));
+    set({ selection: [{ kind: 'image', id }] });
+  },
   addPanel(type, at, parentId) {
     const d = PANEL_DEFAULTS[type];
     const id = newId('p');
     const t = get().template;
     if (!t) return;
-    const w = Math.min(d.w, t.paper.width / 3);
-    const h = Math.min(d.h, t.paper.height / 3);
+    // New panels go into empty space on the sheet (near the click when there is room there).
+    const spot = findFreeSpot(t, Math.min(d.w, t.paper.width / 3), Math.min(d.h, t.paper.height / 3), at, d.titlePosition === 'above' ? 7 : 0);
     const panel: Panel = {
       id,
       type,
       title: d.title,
       titlePosition: d.titlePosition,
-      x: at?.x ?? (t.paper.width - w) / 2,
-      y: at?.y ?? (t.paper.height - h) / 2,
-      w,
-      h,
+      ...spot,
       parentId,
       ...(d.extra?.() ?? {}),
     };
@@ -208,10 +237,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     const pids = selectedIds(selection, 'panel').filter((id) => !template.panels.find((p) => p.id === id)?.locked);
     const all = new Set(pids.flatMap((id) => [id, ...descendants(template.panels, id)]));
     const tids = new Set(selectedIds(selection, 'text'));
+    const iids = new Set(selectedIds(selection, 'image'));
     get().commit((t) => ({
       ...t,
       panels: t.panels.filter((p) => !all.has(p.id)),
       texts: t.texts.filter((x) => !tids.has(x.id) && !(x.panelId && all.has(x.panelId))),
+      images: (t.images ?? []).filter((x) => !iids.has(x.id) && !(x.panelId && all.has(x.panelId))),
     }));
     set({ selection: [] });
   },
@@ -222,10 +253,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     const pids = selectedIds(selection, 'panel').filter((id) => template.panels.find((p) => p.id === id)?.type !== 'plan');
     const all = new Set(pids.flatMap((id) => [id, ...descendants(template.panels, id)]));
     const tids = new Set(selectedIds(selection, 'text'));
+    const iids = new Set(selectedIds(selection, 'image'));
     set({
       clipboard: {
         panels: structuredClone(template.panels.filter((p) => all.has(p.id))),
         texts: structuredClone(template.texts.filter((x) => tids.has(x.id) || (x.panelId && all.has(x.panelId)))),
+        images: structuredClone((template.images ?? []).filter((x) => iids.has(x.id) || (x.panelId && all.has(x.panelId)))),
       },
     });
   },
@@ -235,10 +268,11 @@ export const useEditor = create<EditorState>((set, get) => ({
   },
   paste(at) {
     const clip = get().clipboard;
-    if (!clip || (!clip.panels.length && !clip.texts.length)) return;
+    if (!clip || (!clip.panels.length && !clip.texts.length && !clip.images.length)) return;
     const idMap = new Map<string, string>();
     for (const p of clip.panels) idMap.set(p.id, newId('p'));
     for (const x of clip.texts) idMap.set(x.id, newId('t'));
+    for (const x of clip.images) idMap.set(x.id, newId('img'));
     const tops = clip.panels.filter((p) => !p.parentId || !idMap.has(p.parentId));
     const sheetTexts = clip.texts.filter((x) => !x.panelId || !idMap.has(x.panelId));
     const minX = Math.min(...tops.map((p) => p.x), ...sheetTexts.filter((x) => !x.panelId).map((x) => x.x));
@@ -261,11 +295,17 @@ export const useEditor = create<EditorState>((set, get) => ({
       const [ox, oy] = inPasted ? [0, 0] : x.panelId ? [5, 5] : [dx, dy];
       return { ...x, id: idMap.get(x.id)!, panelId: inPasted ? idMap.get(x.panelId!) : x.panelId, x: x.x + ox, y: x.y + oy };
     });
-    get().commit((t) => ({ ...t, panels: [...t.panels, ...panels], texts: [...t.texts, ...texts] }));
+    const images = clip.images.map((x) => {
+      const inPasted = !!x.panelId && idMap.has(x.panelId);
+      const [ox, oy] = inPasted ? [0, 0] : x.panelId ? [5, 5] : [dx, dy];
+      return { ...x, id: idMap.get(x.id)!, panelId: inPasted ? idMap.get(x.panelId!) : x.panelId, x: x.x + ox, y: x.y + oy };
+    });
+    get().commit((t) => ({ ...t, panels: [...t.panels, ...panels], texts: [...t.texts, ...texts], images: [...(t.images ?? []), ...images] }));
     set({
       selection: [
         ...panels.filter((p) => !p.parentId).map((p) => ({ kind: 'panel' as const, id: p.id })),
         ...texts.filter((x) => !x.panelId || !panels.some((p) => p.id === x.panelId)).map((x) => ({ kind: 'text' as const, id: x.id })),
+        ...images.filter((x) => !x.panelId || !panels.some((p) => p.id === x.panelId)).map((x) => ({ kind: 'image' as const, id: x.id })),
       ],
     });
   },
@@ -277,10 +317,12 @@ export const useEditor = create<EditorState>((set, get) => ({
     const { selection } = get();
     const pids = selectedIds(selection, 'panel');
     const tids = new Set(selectedIds(selection, 'text'));
+    const iids = new Set(selectedIds(selection, 'image'));
     get().commit((t) => ({
       ...t,
       panels: movePanels(t.panels, pids, dx, dy),
       texts: t.texts.map((x) => (tids.has(x.id) ? { ...x, x: x.x + dx, y: x.y + dy } : x)),
+      images: (t.images ?? []).map((x) => (iids.has(x.id) ? { ...x, x: x.x + dx, y: x.y + dy } : x)),
     }));
   },
   reorderSelection(where) {
@@ -303,6 +345,15 @@ export const useEditor = create<EditorState>((set, get) => ({
     if (!t) return;
     const lock = !t.panels.filter((p) => pids.has(p.id)).every((p) => p.locked);
     get().commit((tt) => ({ ...tt, panels: tt.panels.map((p) => (pids.has(p.id) ? { ...p, locked: lock } : p)) }));
+  },
+  setChartInfoLocked(locked) {
+    get().commit((t) => {
+      const ids = new Set(t.panels.filter((p) => p.type === 'chartInfo').flatMap((p) => [p.id, ...descendants(t.panels, p.id)]));
+      return { ...t, panels: t.panels.map((p) => (ids.has(p.id) ? { ...p, locked } : p)) };
+    });
+    const t = get().template!;
+    // Locked panels can't be edited, so drop them from the selection.
+    set({ selection: get().selection.filter((s) => s.kind !== 'panel' || !t.panels.find((p) => p.id === s.id)?.locked) });
   },
 
   setPaper(size, orientation, custom) {
@@ -328,3 +379,17 @@ export const useEditor = create<EditorState>((set, get) => ({
     get().commit((t) => ({ ...t, name }));
   },
 }));
+
+/** Bring templates saved by earlier versions up to the current shape. */
+export function upgrade(t: ChartTemplate): ChartTemplate {
+  const scale = { ...t.scale } as ScaleSettings & { lock?: unknown };
+  delete scale.lock;
+  if (!(scale.routeLength > 0)) scale.routeLength = scale.kpPerSheet * (parseInt(t.fields.NUM_CHARTS ?? '1', 10) || 1);
+  return { ...t, scale, images: t.images ?? [], texts: t.texts ?? [], fields: t.fields ?? {} };
+}
+
+/** True when every Chart Information panel and section is locked. */
+export function chartInfoLocked(t: ChartTemplate): boolean {
+  const info = t.panels.filter((p) => p.type === 'chartInfo');
+  return info.length > 0 && info.every((c) => c.locked && descendants(t.panels, c.id).every((id) => t.panels.find((p) => p.id === id)?.locked));
+}

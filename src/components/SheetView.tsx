@@ -2,14 +2,15 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { movePanels, resizeEdge, snap, type Edge } from '../model/layout';
 import { resolveTokens } from '../model/scale';
 import { templateTokens } from '../model/tokens';
-import type { ChartTemplate, Panel, Selection, TextItem } from '../model/types';
+import type { ChartTemplate, ImageItem, Panel, Selection, TextItem } from '../model/types';
 import { useEditor } from '../state/store';
+import { fitInto, readImageFile } from './imageImport';
 import { InlineEditor } from './InlineEditor';
-import { PanelContent } from './PanelContent';
+import { PanelContent, TITLE_INSIDE_H } from './PanelContent';
 import { approxTextWidth, fontSize } from './svgText';
 
 export interface ContextTarget {
-  kind: 'panel' | 'text' | 'row' | 'sheet';
+  kind: 'panel' | 'text' | 'image' | 'row' | 'sheet';
   id?: string;
   rowId?: string;
 }
@@ -18,6 +19,7 @@ interface Props {
   onContextMenu(clientX: number, clientY: number, at: { x: number; y: number }, target: ContextTarget): void;
   onCursor(at: { x: number; y: number } | null): void;
   onOpenProperties(): void;
+  onNotice(msg: string): void;
   fitSignal: number;
   dark: boolean;
 }
@@ -30,7 +32,8 @@ interface ViewBox {
 }
 
 type Drag =
-  | { type: 'move'; start: Pt; panelIds: string[]; textIds: string[]; moved: boolean; wasSelected: boolean; hit: Selection }
+  | { type: 'move'; start: Pt; panelIds: string[]; textIds: string[]; imageIds: string[]; moved: boolean; wasSelected: boolean; hit: Selection }
+  | { type: 'imgResize'; start: Pt; id: string; sx: number; sy: number; origin: ImageItem }
   | { type: 'edge'; start: Pt; panelId: string; edges: Edge[]; origin: Record<Edge, number> }
   | { type: 'pan'; startClient: Pt; startView: ViewBox }
   | { type: 'marquee'; start: Pt; cur: Pt; additive: boolean };
@@ -44,10 +47,11 @@ const SNAP_PX = 6;
 const EDGE_HIT_PX = 6;
 const SLOW_CLICK_MS = 550;
 
-export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal, dark }: Props) {
+export function SheetView({ onContextMenu, onCursor, onOpenProperties, onNotice, fitSignal, dark }: Props) {
   const template = useEditor((s) => s.template)!;
   const selection = useEditor((s) => s.selection);
   const editing = useEditor((s) => s.editing);
+  const sheetIndex = useEditor((s) => s.sheetIndex);
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ViewBox>({ x: -10, y: -10, w: template.paper.width + 20, h: template.paper.height + 20 });
@@ -58,7 +62,11 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
   const spaceDown = useRef(false);
   const renameTimer = useRef<number | null>(null);
 
-  const tokens = useMemo(() => templateTokens(template), [template]);
+  const tokens = useMemo(() => templateTokens(template, sheetIndex), [template, sheetIndex]);
+  const images = template.images ?? [];
+  const selectedImageIds = useMemo(() => new Set(selection.filter((s) => s.kind === 'image').map((s) => s.id)), [selection]);
+  const isSelected = (s: Selection) => (s.kind === 'panel' ? selectedPanelIds : s.kind === 'text' ? selectedTextIds : selectedImageIds).has(s.id);
+  const lockedPanel = (id?: string) => !!id && !!template.panels.find((p) => p.id === id)?.locked;
   const selectedPanelIds = useMemo(() => new Set(selection.filter((s) => s.kind === 'panel').map((s) => s.id)), [selection]);
   const selectedTextIds = useMemo(() => new Set(selection.filter((s) => s.kind === 'text').map((s) => s.id)), [selection]);
 
@@ -141,7 +149,17 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
     const el = e.target as Element;
     const edgeEl = el.closest('[data-edge]');
     const itemEl = el.closest('[data-item]');
+    const imgHandle = el.closest('[data-img-handle]');
     svgRef.current!.setPointerCapture(e.pointerId);
+
+    if (imgHandle) {
+      const id = imgHandle.getAttribute('data-img-handle')!;
+      const [sx, sy] = imgHandle.getAttribute('data-dir')!.split(',').map(Number);
+      const img = images.find((x) => x.id === id)!;
+      store().beginGesture();
+      setDrag({ type: 'imgResize', start: at, id, sx, sy, origin: img });
+      return;
+    }
 
     if (edgeEl) {
       const panelId = edgeEl.getAttribute('data-panel')!;
@@ -155,10 +173,10 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
       return;
     }
     if (itemEl) {
-      const kind = itemEl.getAttribute('data-kind') as 'panel' | 'text';
+      const kind = itemEl.getAttribute('data-kind') as Selection['kind'];
       const id = itemEl.getAttribute('data-item')!;
       const hit: Selection = { kind, id };
-      const wasSelected = kind === 'panel' ? selectedPanelIds.has(id) : selectedTextIds.has(id);
+      const wasSelected = isSelected(hit);
       if (e.shiftKey || e.ctrlKey || e.metaKey) {
         store().select(hit, true);
         return;
@@ -167,8 +185,9 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
       const sel = wasSelected ? store().selection : [hit];
       const panelIds = sel.filter((s) => s.kind === 'panel').map((s) => s.id).filter((pid) => !template.panels.find((p) => p.id === pid)?.locked);
       const textIds = sel.filter((s) => s.kind === 'text').map((s) => s.id);
+      const imageIds = sel.filter((s) => s.kind === 'image').map((s) => s.id).filter((iid) => !lockedPanel(images.find((x) => x.id === iid)?.panelId));
       store().beginGesture();
-      setDrag({ type: 'move', start: at, panelIds, textIds, moved: false, wasSelected, hit });
+      setDrag({ type: 'move', start: at, panelIds, textIds, imageIds, moved: false, wasSelected, hit });
       return;
     }
     setDrag({ type: 'marquee', start: at, cur: at, additive: e.shiftKey });
@@ -217,12 +236,29 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
       }
       setGuides(g);
       const textIds = new Set(drag.textIds);
+      const imageIds = new Set(drag.imageIds);
       store().updateGesture((t) => ({
         ...t,
         panels: movePanels(t.panels, drag.panelIds, dx, dy),
         texts: t.texts.map((x) => (textIds.has(x.id) ? { ...x, x: x.x + dx, y: x.y + dy } : x)),
+        images: (t.images ?? []).map((x) => (imageIds.has(x.id) ? { ...x, x: x.x + dx, y: x.y + dy } : x)),
       }));
       if (!drag.moved) setDrag({ ...drag, moved: true });
+      return;
+    }
+    if (drag.type === 'imgResize') {
+      // Corner drag keeps the logo's proportions; hold Shift to stretch freely.
+      const o = drag.origin;
+      let w = Math.max(3, o.w + drag.sx * (at.x - drag.start.x));
+      let h = Math.max(3, o.h + drag.sy * (at.y - drag.start.y));
+      if (!e.shiftKey) {
+        const k = Math.max(w / o.w, h / o.h);
+        w = o.w * k;
+        h = o.h * k;
+      }
+      const x = drag.sx < 0 ? o.x + o.w - w : o.x;
+      const y = drag.sy < 0 ? o.y + o.h - h : o.y;
+      store().updateGesture((t) => ({ ...t, images: (t.images ?? []).map((im) => (im.id === drag.id ? { ...im, x, y, w, h } : im)) }));
       return;
     }
     if (drag.type === 'edge') {
@@ -256,12 +292,13 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
       if (!drag.moved && drag.wasSelected && store().selection.length === 1) {
         clearRenameTimer();
         const hit = drag.hit;
-        renameTimer.current = window.setTimeout(() => {
-          renameTimer.current = null;
-          store().startEdit(hit.kind === 'text' ? { kind: 'text', id: hit.id } : { kind: 'panelTitle', id: hit.id });
-        }, SLOW_CLICK_MS);
+        if (hit.kind !== 'image')
+          renameTimer.current = window.setTimeout(() => {
+            renameTimer.current = null;
+            store().startEdit(hit.kind === 'text' ? { kind: 'text', id: hit.id } : { kind: 'panelTitle', id: hit.id });
+          }, SLOW_CLICK_MS);
       }
-    } else if (drag.type === 'edge') {
+    } else if (drag.type === 'edge' || drag.type === 'imgResize') {
       store().endGesture();
     } else if (drag.type === 'marquee') {
       const x0 = Math.min(drag.start.x, drag.cur.x);
@@ -277,6 +314,10 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
           const pos = textPos(tx, template);
           if (pos.x >= x0 && pos.x <= x1 && pos.y >= y0 && pos.y <= y1) hits.push({ kind: 'text', id: tx.id });
         }
+        for (const im of images) {
+          const r = imageRect(im, template);
+          if (r.x >= x0 && r.y >= y0 && r.x + r.w <= x1 && r.y + r.h <= y1) hits.push({ kind: 'image', id: im.id });
+        }
         store().select(hits, drag.additive);
       }
     }
@@ -286,14 +327,54 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
 
   function onDoubleClick(e: React.MouseEvent) {
     clearRenameTimer();
-    const itemEl = (e.target as Element).closest('[data-item]');
-    if (!itemEl) return;
+    // The svg holds pointer capture from the first click, so e.target is the svg itself.
+    // Resize grips drawn on the selection sit over cells at the panel edge, so look beneath them.
+    const el = document.elementsFromPoint(e.clientX, e.clientY).find((x) => !x.closest('[data-edge],[data-img-handle]')) ?? (e.target as Element);
+    const itemEl = el.closest('[data-item]');
+    // Double-click on empty paper zooms to fit, like a CAD viewport.
+    if (!itemEl) return fit();
     const kind = itemEl.getAttribute('data-kind');
     const id = itemEl.getAttribute('data-item')!;
     if (kind === 'text') return store().startEdit({ kind: 'text', id });
+    if (kind === 'image') return onOpenProperties();
+    const rev = el.closest('[data-rev]');
+    if (rev) return store().startEdit({ kind: 'revision', id, rowId: rev.getAttribute('data-rev')!, col: rev.getAttribute('data-col')! });
+    const field = el.closest('[data-field]');
+    if (field) return store().startEdit({ kind: 'field', id, col: field.getAttribute('data-field')! });
+    if (el.closest('[data-body2]')) return store().startEdit({ kind: 'panelBody2', id });
     const p = template.panels.find((x) => x.id === id);
     if (p && p.body !== undefined) return store().startEdit({ kind: 'panelBody', id });
     onOpenProperties();
+  }
+
+  async function onDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const files = [...e.dataTransfer.files];
+    if (!files.length) return;
+    const at = toMm(e.clientX, e.clientY);
+    const imagesIn = files.filter((f) => f.type.startsWith('image/'));
+    const other = files.filter((f) => !f.type.startsWith('image/'));
+    if (other.length) onNotice(`Survey data import (${other.map((f) => f.name).join(', ')}) arrives in step 2. Images can be dropped now.`);
+    // Drop onto the innermost panel under the cursor; logos fit inside its box.
+    const target = [...template.panels]
+      .reverse()
+      .find((p) => at.x >= p.x && at.x <= p.x + p.w && at.y >= p.y && at.y <= p.y + p.h && p.type !== 'chartInfo');
+    for (const [i, f] of imagesIn.entries()) {
+      try {
+        const img = await readImageFile(f);
+        if (target) {
+          const top = target.titlePosition === 'inside' ? TITLE_INSIDE_H : 1;
+          const box = { x: 1.5, y: top, w: target.w - 3, h: target.h - top - 1.5 };
+          const r = fitInto(img.width, img.height, box);
+          store().addImage({ panelId: target.id, ...r, x: r.x + i * 4, src: img.src, name: f.name });
+        } else {
+          const w = 40;
+          store().addImage({ x: at.x + i * 4, y: at.y + i * 4, w, h: (w * img.height) / img.width, src: img.src, name: f.name });
+        }
+      } catch (err) {
+        onNotice((err as Error).message);
+      }
+    }
   }
 
   function handleContextMenu(e: React.MouseEvent) {
@@ -308,10 +389,9 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
       return onContextMenu(e.clientX, e.clientY, at, { kind: 'row', id, rowId: rowEl.getAttribute('data-row')! });
     }
     if (itemEl) {
-      const kind = itemEl.getAttribute('data-kind') as 'panel' | 'text';
+      const kind = itemEl.getAttribute('data-kind') as Selection['kind'];
       const id = itemEl.getAttribute('data-item')!;
-      const already = kind === 'panel' ? selectedPanelIds.has(id) : selectedTextIds.has(id);
-      if (!already) store().select({ kind, id });
+      if (!isSelected({ kind, id })) store().select({ kind, id });
       return onContextMenu(e.clientX, e.clientY, at, { kind, id });
     }
     onContextMenu(e.clientX, e.clientY, at, { kind: 'sheet' });
@@ -337,7 +417,7 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
   const cursor = drag?.type === 'pan' ? 'grabbing' : spaceDown.current ? 'grab' : undefined;
 
   return (
-    <div className={`sheet-wrap${dark ? ' dark' : ''}`} ref={wrapRef}>
+    <div className={`sheet-wrap${dark ? ' dark' : ''}`} ref={wrapRef} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
       <svg
         ref={svgRef}
         className="sheet"
@@ -349,7 +429,7 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
         onPointerLeave={() => onCursor(null)}
         onDoubleClick={onDoubleClick}
         onContextMenu={handleContextMenu}
-        style={{ cursor }}
+        style={{ cursor, fontFamily: `${template.fontFamily ?? 'Arial'}, Arial, Helvetica, sans-serif` }}
       >
         <rect className="paper" x={0} y={0} width={template.paper.width} height={template.paper.height} />
         <rect
@@ -370,7 +450,11 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
             handle={handle}
             hoverEdge={hoverEdge}
             editingTitle={editing?.kind === 'panelTitle' && editing.id === p.id}
+            hasImage={images.some((im) => im.panelId === p.id)}
           />
+        ))}
+        {images.map((im) => (
+          <ImageView key={im.id} im={im} template={template} selected={selectedImageIds.has(im.id)} locked={lockedPanel(im.panelId)} handle={handle} />
         ))}
         {template.texts.map((tx) => (
           <TextView key={tx.id} tx={tx} template={template} tokens={tokens} selected={selectedTextIds.has(tx.id)} editing={editing?.kind === 'text' && editing.id === tx.id} px={px} />
@@ -389,6 +473,35 @@ export function SheetView({ onContextMenu, onCursor, onOpenProperties, fitSignal
       </svg>
       {editing && svgRef.current && <InlineEditor svg={svgRef.current} wrap={wrapRef.current!} />}
     </div>
+  );
+}
+
+export function imageRect(im: ImageItem, t: ChartTemplate) {
+  const p = im.panelId ? t.panels.find((x) => x.id === im.panelId) : undefined;
+  return { x: (p?.x ?? 0) + im.x, y: (p?.y ?? 0) + im.y, w: im.w, h: im.h };
+}
+
+function ImageView({ im, template, selected, locked, handle }: { im: ImageItem; template: ChartTemplate; selected: boolean; locked: boolean; handle: number }) {
+  const r = imageRect(im, template);
+  const corners = [
+    [-1, -1, r.x, r.y, 'nwse-resize'],
+    [1, -1, r.x + r.w, r.y, 'nesw-resize'],
+    [-1, 1, r.x, r.y + r.h, 'nesw-resize'],
+    [1, 1, r.x + r.w, r.y + r.h, 'nwse-resize'],
+  ] as const;
+  return (
+    <g className="image-item">
+      <g data-item={im.id} data-kind="image">
+        <image href={im.src} x={r.x} y={r.y} width={r.w} height={r.h} preserveAspectRatio="xMidYMid meet" />
+        <rect className="text-hit" x={r.x} y={r.y} width={r.w} height={r.h} />
+      </g>
+      {selected && <rect className="sel-outline" x={r.x} y={r.y} width={r.w} height={r.h} />}
+      {selected &&
+        !locked &&
+        corners.map(([sx, sy, x, y, cur]) => (
+          <rect key={`${sx}${sy}`} className="handle" data-img-handle={im.id} data-dir={`${sx},${sy}`} x={x - handle / 2} y={y - handle / 2} width={handle} height={handle} style={{ cursor: cur }} />
+        ))}
+    </g>
   );
 }
 
@@ -413,9 +526,10 @@ interface PanelViewProps {
   handle: number;
   hoverEdge: string | null;
   editingTitle: boolean;
+  hasImage: boolean;
 }
 
-function PanelView({ p, template, tokens, selected, hitW, handle, hoverEdge, editingTitle }: PanelViewProps) {
+function PanelView({ p, template, tokens, selected, hitW, handle, hoverEdge, editingTitle, hasImage }: PanelViewProps) {
   const startEdit = useEditor((s) => s.startEdit);
   const title = resolveTokens(p.title, tokens);
   const edges: Array<{ e: Edge; x1: number; y1: number; x2: number; y2: number }> = [
@@ -454,6 +568,7 @@ function PanelView({ p, template, tokens, selected, hitW, handle, hoverEdge, edi
           panel={p}
           template={template}
           tokens={tokens}
+          hasImage={hasImage}
           onRowDoubleClick={(panelId, rowId) => startEdit({ kind: 'row', id: panelId, rowId })}
         />
       </g>

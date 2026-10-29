@@ -28,48 +28,48 @@ export function alignKpPanels(t: ChartTemplate): ChartTemplate {
 }
 
 /**
- * Called after the plan view width changed. Depending on the lock, either the
- * scale or the KP range per sheet absorbs the change.
+ * The plan view works like an AutoCAD paper-space viewport: its size on paper is
+ * fixed by the layout, and the scale only decides how much route fits inside it.
+ * So KP per sheet is always derived from width and scale; nothing here resizes a panel.
  */
 export function syncScaleToPlan(t: ChartTemplate): ChartTemplate {
   const plan = planPanel(t);
   if (!plan) return t;
-  const scale = { ...t.scale };
-  if (scale.lock === 'kp') {
-    scale.horizontal = roundScale(scaleForWidth(plan.w, scale.kpPerSheet));
-  } else {
-    scale.kpPerSheet = round(kpForWidth(plan.w, scale.horizontal), 3);
-  }
-  return alignKpPanels({ ...t, scale });
+  const kp = round(kpForWidth(plan.w, t.scale.horizontal), 3);
+  const aligned = alignKpPanels(t);
+  return kp === t.scale.kpPerSheet ? aligned : { ...aligned, scale: { ...t.scale, kpPerSheet: kp } };
 }
 
-/**
- * Called after the user typed a new horizontal scale. With the KP range locked the
- * plan view (and every KP-aligned panel) is resized; otherwise the KP range follows.
- */
 export function setHorizontalScale(t: ChartTemplate, value: number): ChartTemplate {
   if (!(value > 0)) return t;
-  const plan = planPanel(t);
-  const scale = { ...t.scale, horizontal: value };
-  if (!plan) return { ...t, scale };
-  if (scale.lock === 'kp') {
-    const maxW = t.paper.width - plan.x - t.paper.frameInset;
-    const w = Math.min(widthForScale(scale.kpPerSheet, value), maxW);
-    // If the paper can't fit the requested width, keep the scale and shorten the KP range instead.
-    if (w < widthForScale(scale.kpPerSheet, value)) scale.kpPerSheet = round(kpForWidth(w, value), 3);
-    const panels = t.panels.map((p) => (p.id === plan.id ? { ...p, w } : p));
-    return alignKpPanels({ ...t, scale, panels });
-  }
-  scale.kpPerSheet = round(kpForWidth(plan.w, value), 3);
-  return { ...t, scale };
+  return syncScaleToPlan({ ...t, scale: { ...t.scale, horizontal: value } });
 }
 
+/** Typing a KP length per sheet picks the scale that fits it into the plan view. */
 export function setKpPerSheet(t: ChartTemplate, metres: number): ChartTemplate {
   if (!(metres > 0)) return t;
   const plan = planPanel(t);
-  const scale = { ...t.scale, kpPerSheet: metres };
-  if (plan) scale.horizontal = roundScale(scaleForWidth(plan.w, metres));
-  return { ...t, scale };
+  if (!plan) return { ...t, scale: { ...t.scale, kpPerSheet: metres } };
+  return syncScaleToPlan({ ...t, scale: { ...t.scale, horizontal: roundScale(scaleForWidth(plan.w, metres)) } });
+}
+
+/**
+ * Number of sheets needed to cover the whole survey line. Each sheet starts where
+ * the previous one ended, less any overlap the user asked for.
+ */
+export function sheetCount(t: ChartTemplate): number {
+  const { routeLength, kpPerSheet, overlap } = t.scale;
+  if (!(routeLength > 0) || !(kpPerSheet > 0)) return 1;
+  const step = Math.max(kpPerSheet - overlap, kpPerSheet * 0.05);
+  return Math.max(1, Math.ceil((routeLength - overlap - 1e-6) / step));
+}
+
+/** KP range of one sheet, in kilometres. */
+export function sheetRange(t: ChartTemplate, index: number): { start: number; end: number } {
+  const start0 = (parseFloat(t.fields.START_KP ?? '0') || 0) * 1000;
+  const step = Math.max(t.scale.kpPerSheet - t.scale.overlap, t.scale.kpPerSheet * 0.05);
+  const start = start0 + index * step;
+  return { start: start / 1000, end: (start + t.scale.kpPerSheet) / 1000 };
 }
 
 /** Keep typed-in scales tidy without snapping away a deliberate value. */

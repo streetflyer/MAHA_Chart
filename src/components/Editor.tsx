@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { newId } from '../model/ids';
 import { PAPER_SIZES } from '../model/paper';
-import { exportTemplateFile, saveUserTemplate } from '../model/storage';
-import type { PanelType, PaperSizeName } from '../model/types';
+import { BUILTIN_TEMPLATES } from '../model/builtinTemplates';
+import { sheetCount, sheetRange } from '../model/scale';
+import { exportTemplateFile, importTemplateFile, listUserTemplates, saveUserTemplate } from '../model/storage';
+import type { ChartTemplate, PanelType, PaperSizeName } from '../model/types';
 import { ADDABLE_TYPES, PANEL_DEFAULTS } from '../state/panelDefaults';
-import { useEditor } from '../state/store';
+import { chartInfoLocked, useEditor } from '../state/store';
+import { fitInto, readImageFile } from './imageImport';
+import { TITLE_INSIDE_H } from './PanelContent';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { askConfirm, askText } from './Dialog';
 import { PropertiesPanel } from './PropertiesPanel';
@@ -40,9 +44,14 @@ export function Editor({ onExit }: { onExit(): void }) {
   const propsRef = useRef<HTMLDivElement>(null);
   const s = useEditor.getState;
 
+  const [showLoad, setShowLoad] = useState(false);
+  const imageInput = useRef<HTMLInputElement>(null);
+  const imageTarget = useRef<string | undefined>(undefined);
+  const toastTimer = useRef<number | null>(null);
   const flash = (msg: string) => {
     setToast(msg);
-    window.setTimeout(() => setToast(null), 2500);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), Math.max(2500, msg.length * 45));
   };
 
   const save = useCallback(
@@ -136,6 +145,8 @@ export function Editor({ onExit }: { onExit(): void }) {
         { label: 'Zoom to fit', shortcut: 'Ctrl+0', action: () => setFitSignal((n) => n + 1) },
         { label: 'Template properties', action: () => st.select(null) },
       ];
+    } else if (target.kind === 'image') {
+      items = [...common, 'separator', { label: 'Properties', action: focusProps }];
     } else if (target.kind === 'text') {
       items = [
         { label: 'Edit text', shortcut: 'F2', action: () => st.startEdit({ kind: 'text', id: target.id! }) },
@@ -168,6 +179,13 @@ export function Editor({ onExit }: { onExit(): void }) {
         ...(p.type === 'chartInfo' || p.parentId ? [{ label: 'Add section', submenu: addPanelMenu(at, p.parentId ?? p.id) } as MenuItem] : []),
         ...(p.rows ? [{ label: 'Add row', action: () => st.updatePanel(p.id, { rows: [...p.rows!, { id: newId('r'), label: 'NEW ROW' }] }) } as MenuItem] : []),
         { label: 'Add text here', action: () => st.addText({ x: at.x - p.x, y: at.y - p.y }, p.id) },
+        {
+          label: p.type === 'logo' ? 'Insert logo image…' : 'Insert image…',
+          action: () => {
+            imageTarget.current = p.id;
+            imageInput.current?.click();
+          },
+        },
         'separator',
         { label: 'Bring to front', action: () => st.reorderSelection('front') },
         { label: 'Send to back', action: () => st.reorderSelection('back') },
@@ -197,10 +215,47 @@ export function Editor({ onExit }: { onExit(): void }) {
     s().setPaper(size, template.paper.orientation, [template.paper.width, template.paper.height]);
   }
 
+  async function reset() {
+    if (!(await askConfirm('Reset to template?', 'This puts the layout back the way it was when you opened it. You can undo this with Ctrl+Z.', 'Reset'))) return;
+    s().resetToOrigin();
+    setFitSignal((n) => n + 1);
+    flash('Reset to the opened template');
+  }
+
+  async function loadTemplate(t: ChartTemplate) {
+    setShowLoad(false);
+    if (s().dirty && !(await askConfirm('Load another template?', 'Your changes to this template have not been saved.', 'Load anyway', true))) return;
+    s().open(t);
+    setFitSignal((n) => n + 1);
+    flash(`Loaded "${t.name}"`);
+  }
+
+  async function insertImages(files: FileList | null) {
+    const target = imageTarget.current ? s().template!.panels.find((p) => p.id === imageTarget.current) : undefined;
+    for (const f of [...(files ?? [])]) {
+      try {
+        const img = await readImageFile(f);
+        if (target) {
+          const top = target.titlePosition === 'inside' ? TITLE_INSIDE_H : 1;
+          const r = fitInto(img.width, img.height, { x: 1.5, y: top, w: target.w - 3, h: target.h - top - 1.5 });
+          s().addImage({ panelId: target.id, ...r, src: img.src, name: f.name });
+        } else {
+          const t = s().template!;
+          s().addImage({ x: t.paper.width / 2 - 20, y: t.paper.height / 2 - 10, w: 40, h: (40 * img.height) / img.width, src: img.src, name: f.name });
+        }
+      } catch (err) {
+        flash((err as Error).message);
+      }
+    }
+  }
+
   async function exit() {
     if (dirty && !(await askConfirm('Leave without saving?', 'Your changes to this template have not been saved.', 'Leave', true))) return;
     onExit();
   }
+
+  const infoLocked = chartInfoLocked(template);
+  const hasInfo = template.panels.some((p) => p.type === 'chartInfo');
 
   return (
     <div className="editor">
@@ -218,6 +273,12 @@ export function Editor({ onExit }: { onExit(): void }) {
           </button>
           <button onClick={() => save(true)} title="Save as a new template (Ctrl+Shift+S)">
             Save as…
+          </button>
+          <button onClick={() => setShowLoad(true)} title="Open a saved or built-in template">
+            Load…
+          </button>
+          <button onClick={reset} title="Put the layout back the way it was when you opened it">
+            Reset
           </button>
           <button onClick={() => exportTemplateFile(template)} title="Download the template as a file to share">
             Export file
@@ -246,9 +307,14 @@ export function Editor({ onExit }: { onExit(): void }) {
         <div className="group">
           <button onClick={(e) => setMenu({ x: e.clientX, y: e.clientY + 12, items: addPanelMenu() })}>+ Panel</button>
           <button onClick={() => s().addText({ x: template.paper.width / 2, y: template.paper.height / 2 })}>+ Text</button>
+          {hasInfo && (
+            <label title="Lock the Chart Information panel and every section inside it">
+              <input type="checkbox" checked={infoLocked} onChange={(e) => s().setChartInfoLocked(e.target.checked)} /> Lock Chart Information
+            </label>
+          )}
         </div>
         <div className="group right">
-          <button onClick={() => setFitSignal((n) => n + 1)} title="Zoom to fit (Ctrl+0)">
+          <button onClick={() => setFitSignal((n) => n + 1)} title="Zoom to fit (Ctrl+0 or double-click empty paper)">
             Fit
           </button>
           <label title="Show the sheet like a CAD model space">
@@ -269,7 +335,10 @@ export function Editor({ onExit }: { onExit(): void }) {
         </div>
       </header>
       <div className="workspace">
-        <SheetView onContextMenu={openMenu} onCursor={setCursor} onOpenProperties={focusProps} fitSignal={fitSignal} dark={dark} />
+        <div className="sheet-col">
+          <SheetView onContextMenu={openMenu} onCursor={setCursor} onOpenProperties={focusProps} onNotice={flash} fitSignal={fitSignal} dark={dark} />
+          <ChartTabs />
+        </div>
         <div ref={propsRef} className="props-wrap">
           <PropertiesPanel />
         </div>
@@ -279,33 +348,165 @@ export function Editor({ onExit }: { onExit(): void }) {
         <span>
           {template.paper.size} {template.paper.width.toFixed(0)}×{template.paper.height.toFixed(0)} mm
         </span>
-        <span className="hint-text">Drag edges to move dividers (Alt = this panel only) · Wheel to zoom · Space/middle-drag to pan · F2 rename · Right-click for more</span>
+        <span className="hint-text">Drag an edge to resize (Alt = ignore shared dividers) · Drop a logo on a panel · Wheel to zoom · Double-click paper to fit · F2 rename</span>
       </footer>
+      <input
+        ref={imageInput}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          insertImages(e.target.files);
+          e.target.value = '';
+        }}
+      />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {showLoad && <LoadDialog onLoad={loadTemplate} onClose={() => setShowLoad(false)} onError={flash} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
 }
 
-function ScaleQuick() {
-  const scale = useEditor((s) => s.template!.scale);
-  const [draft, setDraft] = useState(String(scale.horizontal));
-  useEffect(() => setDraft(String(scale.horizontal)), [scale.horizontal]);
+/** One tab per chart needed to cover the survey line; each chart starts where the previous one ends. */
+function ChartTabs() {
+  const template = useEditor((s) => s.template)!;
+  const current = useEditor((s) => s.sheetIndex);
+  const n = sheetCount(template);
   return (
-    <label title="Horizontal scale. Linked to the plan view width and the Chart Information scale bar.">
-      Scale 1:
-      <input
-        className="scale-input"
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          const v = parseFloat(draft);
-          if (v > 0 && v !== scale.horizontal) useEditor.getState().setHorizontalScale(v);
-          else setDraft(String(scale.horizontal));
+    <nav className="chart-tabs" aria-label="Charts">
+      {Array.from({ length: n }, (_, i) => {
+        const r = sheetRange(template, i);
+        return (
+          <button key={i} className={i === current ? 'active' : ''} onClick={() => useEditor.getState().setSheet(i)} title={`KP ${r.start.toFixed(3)} to KP ${r.end.toFixed(3)}`}>
+            Chart {i + 1}
+            <span>
+              KP {r.start.toFixed(3)}–{r.end.toFixed(3)}
+            </span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
+function LoadDialog({ onLoad, onClose, onError }: { onLoad(t: ChartTemplate): void; onClose(): void; onError(msg: string): void }) {
+  const users = listUserTemplates();
+  const builtins = BUILTIN_TEMPLATES.map((f) => f());
+  const all = [...users, ...builtins];
+  const [id, setId] = useState(all[0]?.id ?? '');
+  const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    document.getElementById('load-select')?.focus();
+  }, []);
+  return (
+    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
+      <form
+        className="dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="load-title"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const t = all.find((x) => x.id === id);
+          if (t) onLoad(t);
         }}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
-      />
-      <span className="muted"> {(scale.kpPerSheet / 1000).toFixed(3)} km/sheet</span>
-    </label>
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === 'Escape') onClose();
+        }}
+      >
+        <h3 id="load-title">Load template</h3>
+        <select id="load-select" size={Math.min(8, all.length + 2)} value={id} onChange={(e) => setId(e.target.value)} onDoubleClick={() => all.find((x) => x.id === id) && onLoad(all.find((x) => x.id === id)!)}>
+          {users.length > 0 && (
+            <optgroup label="My templates">
+              {users.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </optgroup>
+          )}
+          <optgroup label="Built-in">
+            {builtins.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </optgroup>
+        </select>
+        <div className="dialog-actions">
+          <button type="button" className="push-left" onClick={() => fileRef.current?.click()}>
+            Import file…
+          </button>
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={!id}>
+            Load
+          </button>
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".json"
+          hidden
+          onChange={async (e) => {
+            const f = e.target.files?.[0];
+            e.target.value = '';
+            if (!f) return;
+            try {
+              onLoad(await importTemplateFile(f));
+            } catch (err) {
+              onError((err as Error).message);
+            }
+          }}
+        />
+      </form>
+    </div>
+  );
+}
+
+function ScaleQuick() {
+  const template = useEditor((s) => s.template!);
+  const scale = template.scale;
+  const [draft, setDraft] = useState(String(scale.horizontal));
+  const [route, setRoute] = useState((scale.routeLength / 1000).toFixed(3));
+  useEffect(() => setDraft(String(scale.horizontal)), [scale.horizontal]);
+  useEffect(() => setRoute((scale.routeLength / 1000).toFixed(3)), [scale.routeLength]);
+  return (
+    <>
+      <label title="Plan view scale. The panel keeps its size; this sets how much route fits in it.">
+        Scale 1:
+        <input
+          className="scale-input"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            const v = parseFloat(draft);
+            if (v > 0 && v !== scale.horizontal) useEditor.getState().setHorizontalScale(v);
+            else setDraft(String(scale.horizontal));
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        />
+        <span className="muted"> {(scale.kpPerSheet / 1000).toFixed(3)} km/chart</span>
+      </label>
+      <label title="Survey line length. Filled in from the route file once data import arrives.">
+        Route
+        <input
+          className="scale-input"
+          value={route}
+          onChange={(e) => setRoute(e.target.value)}
+          onBlur={() => {
+            const v = parseFloat(route) * 1000;
+            if (v > 0 && v !== scale.routeLength) useEditor.getState().setScale({ routeLength: v });
+            else setRoute((scale.routeLength / 1000).toFixed(3));
+          }}
+          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        />
+        km
+        <span className="muted"> = {sheetCount(template)} charts</span>
+      </label>
+    </>
   );
 }

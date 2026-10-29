@@ -44,8 +44,85 @@ export interface Panel {
   rows?: EventRow[];
   /** Width of the row label column for row-based panels. */
   labelWidth?: number;
+  /** Second text column shown to the right of body (e.g. datum shift parameters). */
+  body2?: string;
   /** Header bar fill, e.g. the CHART INFORMATION banner. */
   fill?: string;
+  /** Colour for the panel's own text (body, title). */
+  textColor?: string;
+  /** Text style for body text. */
+  font?: TextStyle;
+  /** Legend entries (legend panels). */
+  legend?: LegendItem[];
+  /** Code + description lines shown as "EVENT CODE DEFINITIONS" in the legend. */
+  eventCodes?: string;
+  /** Revision history rows, newest first (title block). */
+  revisions?: RevisionRow[];
+}
+
+export interface TextStyle {
+  /** Cap height in mm. */
+  size: number;
+  bold?: boolean;
+  italic?: boolean;
+  align?: 'start' | 'middle' | 'end';
+  /** Vertically centre the text inside the panel. */
+  vcenter?: boolean;
+}
+
+export type LegendGroup = 'plan' | 'long' | 'trans' | 'cp' | 'status';
+
+export type LegendSymbol =
+  | 'kpMarker'
+  | 'line'
+  | 'thinLine'
+  | 'dashed'
+  | 'dashedThick'
+  | 'doubleLine'
+  | 'matchline'
+  | 'assetBlob'
+  | 'seabedProfile'
+  | 'cpStab'
+  | 'burial'
+  | 'freespan'
+  | 'box'
+  | 'circle';
+
+export interface LegendItem {
+  id: string;
+  group: LegendGroup;
+  symbol: LegendSymbol;
+  label: string;
+  color: string;
+  /** Short text drawn with the symbol, e.g. "-1090mV" or a chart number. */
+  symbolText?: string;
+  /** Filled in automatically from plan view layers once data is loaded (plan step 3). */
+  linked?: boolean;
+}
+
+export interface RevisionRow {
+  id: string;
+  rev: string;
+  date: string;
+  desc: string;
+  drawn: string;
+  checked: string;
+  approved: string;
+}
+
+export type RevisionColumn = Exclude<keyof RevisionRow, 'id'>;
+
+export interface ImageItem {
+  id: string;
+  /** Images sit relative to a panel (a logo box) or to the sheet. */
+  panelId?: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** data: URL, downscaled on import so templates stay small. */
+  src: string;
+  name?: string;
 }
 
 export interface TextItem {
@@ -62,15 +139,13 @@ export interface TextItem {
   color?: string;
 }
 
-export type ScaleLock = 'kp' | 'scale';
-
 export interface ScaleSettings {
   /** Horizontal (plan and KP) scale denominator, e.g. 5000 for 1:5,000. */
   horizontal: number;
-  /** Route length covered by one sheet, in metres. */
+  /** Route length covered by one sheet, in metres. Always plan view width x scale; panels never resize for it. */
   kpPerSheet: number;
-  /** Which value stays fixed when the plan view width changes. */
-  lock: ScaleLock;
+  /** Total survey line length in metres. Comes from the route file once loaded; typed in until then. */
+  routeLength: number;
   verticalLong: number;
   verticalTrans: number;
   lateralTrans: number;
@@ -100,9 +175,12 @@ export interface ChartTemplate {
   scale: ScaleSettings;
   panels: Panel[];
   texts: TextItem[];
+  images?: ImageItem[];
+  /** Font family used for all sheet text. */
+  fontFamily?: string;
   /** Title block and other fill-in values, referenced from text as {KEY}. */
   fields: Record<string, string>;
   updatedAt?: string;
 }
 
-export type Selection = { kind: 'panel' | 'text'; id: string };
+export type Selection = { kind: 'panel' | 'text' | 'image'; id: string };

@@ -5,8 +5,6 @@ export type Edge = 'left' | 'right' | 'top' | 'bottom';
 export const MIN_PANEL = 5;
 /** Edges closer than this (mm) are treated as the same divider. */
 const COINCIDENT_TOL = 0.3;
-/** Facing edges closer than this (mm) form a gutter that moves as one divider. */
-const GUTTER_TOL = 15;
 
 export function edgePos(p: Panel, e: Edge): number {
   switch (e) {
@@ -22,15 +20,10 @@ export function edgePos(p: Panel, e: Edge): number {
 }
 
 const isVertical = (e: Edge) => e === 'left' || e === 'right';
-const opposite: Record<Edge, Edge> = { left: 'right', right: 'left', top: 'bottom', bottom: 'top' };
 
 /** Extent of an edge along its own direction, e.g. a left edge spans [y, y + h]. */
 function span(p: Panel, e: Edge): [number, number] {
   return isVertical(e) ? [p.y, p.y + p.h] : [p.x, p.x + p.w];
-}
-
-function overlaps(a: [number, number], b: [number, number], tol = COINCIDENT_TOL): boolean {
-  return a[0] < b[1] + tol && b[0] < a[1] + tol;
 }
 
 /** Strict overlap: the edges share a real length, not just a corner. */
@@ -39,9 +32,10 @@ function overlapsStrict(a: [number, number], b: [number, number]): boolean {
 }
 
 /**
- * Every (panel, edge) that should move together with the dragged edge. This is how
- * dividers work: a shared edge between neighbours, a gutter between facing edges,
- * and container edges that line up with their sections all move as one.
+ * Every (panel, edge) that should move together with the dragged edge. Only true
+ * dividers link: an edge two panels share, and a container's edge with the edges
+ * of its sections. Panels separated by a gap (the left column and Chart
+ * Information) stay independent.
  */
 export function linkedEdges(panels: Panel[], id: string, edge: Edge): Array<[string, Edge]> {
   const byId = new Map(panels.map((p) => [p.id, p]));
@@ -60,14 +54,10 @@ export function linkedEdges(panels: Panel[], id: string, edge: Edge): Array<[str
         if (seen.has(key)) continue;
         const rp = edgePos(r, re);
         const rs = span(r, re);
-        const coincident = Math.abs(rp - pos) < COINCIDENT_TOL && overlaps(sp, rs);
-        // Facing across a gutter: my right edge and their left edge with a small gap between.
-        const facing = re === opposite[qe];
-        const gap = qe === 'right' || qe === 'bottom' ? rp - pos : pos - rp;
-        const gutter = facing && gap > COINCIDENT_TOL && gap < GUTTER_TOL && overlapsStrict(sp, rs);
+        const coincident = Math.abs(rp - pos) < COINCIDENT_TOL && overlapsStrict(sp, rs);
         // A container's edge and its sections' edges move together.
         const family = (r.parentId === qid || q.parentId === r.id) && re === qe && Math.abs(rp - pos) < COINCIDENT_TOL;
-        if (coincident || gutter || family) {
+        if (coincident || family) {
           seen.add(key);
           out.push([r.id, re]);
           queue.push([r.id, re]);
