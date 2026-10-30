@@ -8,6 +8,8 @@ import type { ImageItem, KeyplanStyle, PlanStyle, LegendGroup, LegendItem, Legen
 import { PANEL_DEFAULTS } from '../state/panelDefaults';
 import { useEditor } from '../state/store';
 import { useSurvey } from '../state/surveyData';
+import { TARGETS, targetInfo, type TextMode } from '../model/datasets';
+import { useImport } from './ImportDialog';
 import { keyplanStyle } from './Keyplan';
 import { planStyle } from './PlanView';
 
@@ -96,6 +98,7 @@ function TemplateProps({ t }: { t: ChartTemplate }) {
     <aside className="props">
       <h3>Template</h3>
       <Field label="Name" value={t.name} onCommit={(v) => s.renameTemplate(v)} />
+      <DataList />
       <label className="field">
         <span>Chart type</span>
         <select value={t.kind} onChange={(e) => s.commit((tt) => ({ ...tt, kind: e.target.value as ChartTemplate['kind'] }))}>
@@ -270,6 +273,7 @@ function PanelProps({ p }: { p: Panel }) {
       {p.body !== undefined && <p className="muted">Use a Tab between a label and its value to line values up, e.g. "Ellipsoid⇥: WGS84".</p>}
       {p.body !== undefined && <FontEditor p={p} />}
       {p.type === 'legend' && <LegendEditor p={p} />}
+      <DataList panelType={p.type} />
       {p.type === 'keyplan' && <KeyplanEditor p={p} />}
       {p.type === 'plan' && <PlanStyleEditor p={p} />}
       {p.type === 'titleBlock' && (
@@ -501,8 +505,6 @@ function ImageProps({ im }: { im: ImageItem }) {
 function KeyplanEditor({ p }: { p: Panel }) {
   const s = useEditor.getState();
   const st = keyplanStyle(p);
-  const route = useSurvey((x) => x.route);
-  const background = useSurvey((x) => x.background);
   const set = (patch: Partial<KeyplanStyle>) => s.updatePanel(p.id, { keyplan: { ...st, ...patch } });
   const colour = (label: string, key: 'background' | 'dxfColor' | 'routeColor' | 'boundaryColor' | 'currentColor' | 'gridColor') => (
     <label className="field">
@@ -513,16 +515,8 @@ function KeyplanEditor({ p }: { p: Panel }) {
   return (
     <>
       <h4>Key plan</h4>
-      <p className="hint">
-        Drop the route (.dig, .xyz) and a background DXF onto the sheet.
-        <br />
-        Route: {route ? `${route.name} (${(route.length / 1000).toFixed(3)} km)` : 'none'}
-        <br />
-        Background: {background ? `${background.name} (${background.lines.length} lines)` : 'none'}
-      </p>
       <div className="row2">
         {colour('Background', 'background')}
-        {colour('DXF lines', 'dxfColor')}
       </div>
       <div className="row2">
         {colour('Survey line', 'routeColor')}
@@ -544,16 +538,6 @@ function KeyplanEditor({ p }: { p: Panel }) {
           <input type="checkbox" checked={st.showBoundaries} onChange={(e) => set({ showBoundaries: e.target.checked })} /> Chart boundaries
         </label>
       </div>
-      {(route || background) && (
-        <div className="row2">
-          {route && (
-            <button onClick={() => useSurvey.getState().setRoute(null)}>Remove route</button>
-          )}
-          {background && (
-            <button onClick={() => useSurvey.getState().setBackground(null)}>Remove background</button>
-          )}
-        </div>
-      )}
     </>
   );
 }
@@ -580,7 +564,6 @@ function PlanStyleEditor({ p }: { p: Panel }) {
         {colour('Route colour', 'routeColor')}
         {size('Route width', 'routeWidth')}
       </div>
-      {colour('Background DXF colour', 'dxfColor')}
       <h4>KP blocks</h4>
       <label className="check">
         <input type="checkbox" checked={st.showKp} onChange={(e) => set({ showKp: e.target.checked })} /> Show KP blocks
@@ -625,6 +608,109 @@ function PlanStyleEditor({ p }: { p: Panel }) {
         {size('Size', 'northSize')}
         {colour('Colour', 'northColor')}
       </div>
+    </>
+  );
+}
+
+/** Imported files drawn in panels of this type, with show/hide, colour and remove. */
+function DataList({ panelType }: { panelType?: string }) {
+  const datasets = useSurvey((x) => x.datasets);
+  const events = useEditor((x) => x.template?.panels.find((p) => p.type === 'events'));
+  const targets = TARGETS.filter((t) => (panelType ? t.panelType === panelType : t.key !== 'logo'));
+  if (!targets.length) return null;
+  const mine = datasets.filter((d) => targets.some((t) => t.key === d.target));
+  const sv = useSurvey.getState();
+  return (
+    <>
+      <h4>Data</h4>
+      {mine.length === 0 && <p className="hint">Nothing imported here yet.</p>}
+      <ul className="data-list">
+        {mine.map((d) => (
+          <li key={d.id}>
+            <div className="data-row">
+              <input type="checkbox" checked={d.visible} title="Show" onChange={(e) => sv.updateDataset(d.id, { visible: e.target.checked })} />
+              {d.kind !== 'long' && <input type="color" value={d.color} title="Colour" onChange={(e) => sv.updateDataset(d.id, { color: e.target.value })} />}
+              <span className="fname" title={d.name}>
+                {d.name}
+              </span>
+              <button className="link" title="Remove" onClick={() => sv.removeDataset(d.id)}>
+                ×
+              </button>
+            </div>
+            <div className="data-meta">
+              {targetInfo(d.target).label}
+              {d.kind === 'route' && ` · ${(d.route.length / 1000).toFixed(3)} km`}
+              {d.kind === 'linework' && ` · ${d.lw.lines.length} lines, ${d.lw.texts.length} texts`}
+              {d.kind === 'long' && ` · ${d.kp.length.toLocaleString()} rows`}
+              {d.kind === 'trans' && ` · ${d.kp.length.toLocaleString()} profiles`}
+              {d.kind === 'events' && ` · ${d.records.length} events`}
+              {d.kind === 'cp' && ` · ${d.kp.length} readings`}
+            </div>
+            {d.kind === 'linework' && d.lw.texts.length > 0 && (
+              <div className="row2">
+                <label className="field">
+                  <span>DXF text</span>
+                  <select value={d.textMode} onChange={(e) => sv.updateDataset(d.id, { textMode: e.target.value as TextMode })}>
+                    <option value="auto">Scaled, kept readable</option>
+                    <option value="drawn">As drawn, scaled</option>
+                    <option value="fixed">Fixed height on paper</option>
+                  </select>
+                </label>
+                {d.textMode !== 'fixed' ? (
+                  <Field label="Scale" type="number" step={10} suffix="%" value={d.textScale} onCommit={(v) => num(v) > 0 && sv.updateDataset(d.id, { textScale: num(v) })} />
+                ) : (
+                  <Field label="Height" type="number" step={0.1} suffix="mm" value={d.textHeight} onCommit={(v) => num(v) > 0 && sv.updateDataset(d.id, { textHeight: num(v) })} />
+                )}
+              </div>
+            )}
+            {d.kind === 'linework' && (
+              <label className="check">
+                <input type="checkbox" checked={!!d.both} onChange={(e) => sv.updateDataset(d.id, { both: e.target.checked })} />
+                {d.target === 'plan' ? 'Also show in the key plan' : 'Also show in the plan view'}
+              </label>
+            )}
+            {d.kind === 'linework' && (
+              <Field label="Line width" type="number" step={0.05} suffix="mm" value={d.width} onCommit={(v) => num(v) > 0 && sv.updateDataset(d.id, { width: num(v) })} />
+            )}
+            {d.kind === 'long' && (
+              <div className="checks">
+                {d.series.map((se, i) => (
+                  <label key={i} className="check">
+                    <input
+                      type="color"
+                      value={se.color}
+                      onChange={(e) => sv.updateDataset(d.id, { series: d.series.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) })}
+                    />
+                    {se.name}
+                  </label>
+                ))}
+              </div>
+            )}
+            {d.kind === 'events' && events && (
+              <label className="field">
+                <span>Row</span>
+                <select value={d.rowId ?? ''} onChange={(e) => sv.updateDataset(d.id, { rowId: e.target.value })}>
+                  {(events.rows ?? []).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            {d.kind === 'cp' && (
+              <label className="field">
+                <span>Draw as</span>
+                <select value={d.style} onChange={(e) => sv.updateDataset(d.id, { style: e.target.value as 'line' | 'ticks' })}>
+                  <option value="line">Line (gradient CP)</option>
+                  <option value="ticks">Ticks (stab CP)</option>
+                </select>
+              </label>
+            )}
+          </li>
+        ))}
+      </ul>
+      <button onClick={() => useImport.getState().request([], panelType)}>Import data…</button>
     </>
   );
 }

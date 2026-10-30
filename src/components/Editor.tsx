@@ -13,6 +13,7 @@ import { fitInto, readImageFile } from './imageImport';
 import { titleInsideHeight } from './PanelContent';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { askConfirm, askText } from './Dialog';
+import { ImportDialog, useImport } from './ImportDialog';
 import { PropertiesPanel } from './PropertiesPanel';
 import { SheetView, type ContextTarget } from './SheetView';
 
@@ -35,6 +36,9 @@ export function Editor({ onExit }: { onExit(): void }) {
   const [menu, setMenu] = useState<Menu | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [fitSignal, setFitSignal] = useState(0);
+  const importOpen = useImport((s) => s.open);
+  const importFiles = useImport((s) => s.files);
+  const importPanel = useImport((s) => s.panelType);
   const route = useSurvey((s) => s.route);
   const plan = planPanel(template);
   // Refit the charts to the line whenever the line, the scale or the plan view changes.
@@ -292,6 +296,9 @@ export function Editor({ onExit }: { onExit(): void }) {
           <button onClick={() => exportTemplateFile(template)} title="Download the template as a file to share">
             Export file
           </button>
+          <button onClick={() => useImport.getState().request()} title="Import survey data: route, plan view data, profiles, events, CP, logos, site plan">
+            Import data…
+          </button>
         </div>
         <div className="group">
           <button onClick={() => s().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)">
@@ -371,6 +378,7 @@ export function Editor({ onExit }: { onExit(): void }) {
         }}
       />
       {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
+      {importOpen && <ImportDialog initial={importFiles} dropPanelType={importPanel} onClose={() => useImport.getState().close()} onNotice={flash} />}
       {showLoad && <LoadDialog onLoad={loadTemplate} onClose={() => setShowLoad(false)} onError={flash} />}
       {toast && <div className="toast">{toast}</div>}
     </div>

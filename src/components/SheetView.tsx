@@ -10,7 +10,7 @@ import { distanceBeforeStart, nearestChainage } from '../model/route';
 import { editSheet, planPanel, sheetFrame, sheetRange, sheetRotation } from '../model/scale';
 import { planStyle } from './PlanView';
 import { useSurvey } from '../state/surveyData';
-import { importSurveyFiles } from './surveyImport';
+import { useImport } from './ImportDialog';
 import { PanelContent, TITLE_CAP, titleInsideHeight, titleLineHeight, titleLines } from './PanelContent';
 import { approxTextWidth, fontSize } from './svgText';
 
@@ -38,9 +38,9 @@ interface ViewBox {
 }
 
 type Drag =
-  | { type: 'move'; start: Pt; panelIds: string[]; textIds: string[]; imageIds: string[]; moved: boolean; wasSelected: boolean; hit: Selection }
+  | { type: 'move'; start: Pt; panelIds: string[]; textIds: string[]; imageIds: string[]; moved: boolean; wasSelected: boolean; hit: Selection; toggle: boolean }
   | { type: 'imgResize'; start: Pt; id: string; sx: number; sy: number; origin: ImageItem }
-  | { type: 'mapPan'; start: Pt; index: number; panU: number; panV: number; k: number }
+  | { type: 'mapPan'; start: Pt; index: number; panU: number; panV: number; k: number; moved?: boolean; hit?: Selection }
   | { type: 'north'; panelId: string }
   | { type: 'frame'; index: number; startChain: number; startKp: number; toGrid: (p: Pt) => [number, number] }
   | { type: 'rotate'; index: number; centre: [number, number]; startAngle: number; startRot: number; toGrid: (p: Pt) => [number, number] }
@@ -176,11 +176,21 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       return;
     }
     const plan = planPanel(template);
-    if (store().panMap && plan && at.x >= plan.x && at.x <= plan.x + plan.w && at.y >= plan.y && at.y <= plan.y + plan.h) {
-      // Pan mode: slide the map inside the plan view for this chart only.
+    const inPlan = !!plan && at.x >= plan.x && at.x <= plan.x + plan.w && at.y >= plan.y && at.y <= plan.y + plan.h;
+    if (inPlan && (store().panMap || e.shiftKey) && !edgeEl && !imgHandle) {
+      // Shift+drag (or pan mode): slide the map inside the plan view for this chart only.
       const f = sheetFrame(template, store().sheetIndex);
+      const hitEl = itemEl?.getAttribute('data-kind') === 'panel' ? itemEl : null;
       store().beginGesture();
-      setDrag({ type: 'mapPan', start: at, index: store().sheetIndex, panU: f?.panU ?? 0, panV: f?.panV ?? 0, k: template.scale.horizontal / 1000 });
+      setDrag({
+        type: 'mapPan',
+        start: at,
+        index: store().sheetIndex,
+        panU: f?.panU ?? 0,
+        panV: f?.panV ?? 0,
+        k: template.scale.horizontal / 1000,
+        hit: e.shiftKey && hitEl ? { kind: 'panel', id: hitEl.getAttribute('data-item')! } : undefined,
+      });
       return;
     }
     const route = useSurvey.getState().route;
@@ -228,17 +238,20 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       const id = itemEl.getAttribute('data-item')!;
       const hit: Selection = { kind, id };
       const wasSelected = isSelected(hit);
-      if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      if (e.shiftKey) {
         store().select(hit, true);
         return;
       }
-      if (!wasSelected) store().select(hit);
-      const sel = wasSelected ? store().selection : [hit];
-      const panelIds = sel.filter((s) => s.kind === 'panel').map((s) => s.id).filter((pid) => !template.panels.find((p) => p.id === pid)?.locked);
+      // Ctrl+drag moves panels; a plain drag only selects them, so a stray drag can't shift the layout.
+      // Ctrl+click without moving toggles the item in the selection, as in Windows.
+      const toggle = e.ctrlKey || e.metaKey;
+      if (!wasSelected && !toggle) store().select(hit);
+      const sel = wasSelected ? store().selection : toggle ? [...store().selection, hit] : [hit];
+      const panelIds = toggle ? sel.filter((s) => s.kind === 'panel').map((s) => s.id).filter((pid) => !template.panels.find((p) => p.id === pid)?.locked) : [];
       const textIds = sel.filter((s) => s.kind === 'text').map((s) => s.id);
       const imageIds = sel.filter((s) => s.kind === 'image').map((s) => s.id);
       store().beginGesture();
-      setDrag({ type: 'move', start: at, panelIds, textIds, imageIds, moved: false, wasSelected, hit });
+      setDrag({ type: 'move', start: at, panelIds, textIds, imageIds, moved: false, wasSelected, hit, toggle });
       return;
     }
     setDrag({ type: 'marquee', start: at, cur: at, additive: e.shiftKey });
@@ -311,6 +324,7 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       const panU = Math.round((drag.panU - (at.x - drag.start.x) * drag.k) * 10) / 10;
       const panV = Math.round((drag.panV + (at.y - drag.start.y) * drag.k) * 10) / 10;
       store().updateGesture((t) => editSheet(t, drag.index, { panU, panV }));
+      if (!drag.moved) setDrag({ ...drag, moved: true });
       return;
     }
     if (drag.type === 'north') {
@@ -373,6 +387,13 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     svgRef.current!.releasePointerCapture?.(e.pointerId);
     if (drag.type === 'move') {
       store().endGesture();
+      if (drag.toggle) {
+        // Ctrl+click toggles; Ctrl+drag of an unselected item adds it to what moved.
+        if (!drag.moved || !drag.wasSelected) store().select(drag.hit, true);
+        setGuides({});
+        setDrag(null);
+        return;
+      }
       // Windows-style slow click: clicking an already-selected item again starts a rename.
       if (!drag.moved && drag.wasSelected && store().selection.length === 1) {
         clearRenameTimer();
@@ -383,7 +404,11 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
             store().startEdit(hit.kind === 'text' ? { kind: 'text', id: hit.id } : { kind: 'panelTitle', id: hit.id });
           }, SLOW_CLICK_MS);
       }
-    } else if (drag.type === 'edge' || drag.type === 'imgResize' || drag.type === 'frame' || drag.type === 'rotate' || drag.type === 'mapPan' || drag.type === 'north') {
+    } else if (drag.type === 'mapPan') {
+      store().endGesture();
+      // Shift+click on the plan view without dragging still adds it to the selection.
+      if (!drag.moved && drag.hit) store().select(drag.hit, true);
+    } else if (drag.type === 'edge' || drag.type === 'imgResize' || drag.type === 'frame' || drag.type === 'rotate' || drag.type === 'north') {
       store().endGesture();
     } else if (drag.type === 'marquee') {
       const x0 = Math.min(drag.start.x, drag.cur.x);
@@ -439,25 +464,22 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     const at = toMm(e.clientX, e.clientY);
     // Go by extension: some systems label .dxf as image/vnd.dxf.
     const isPicture = (f: File) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name);
-    const imagesIn = files.filter(isPicture);
-    const other = await importSurveyFiles(files.filter((f) => !isPicture(f)), onNotice);
-    if (other.length) onNotice(`Import of ${other.map((f) => f.name).join(', ')} arrives in step 2. Route files (.dig, .xyz), background DXF and logo images can be dropped now.`);
     // Drop onto the innermost panel under the cursor; logos fit inside its box.
     const target = [...template.panels]
       .reverse()
       .find((p) => at.x >= p.x && at.x <= p.x + p.w && at.y >= p.y && at.y <= p.y + p.h && p.type !== 'chartInfo');
+    // Pictures dropped on a logo panel go straight in; everything else opens the import window.
+    const onLogo = target?.type === 'logo';
+    const imagesIn = onLogo ? files.filter(isPicture) : [];
+    const other = files.filter((f) => !imagesIn.includes(f));
+    if (other.length) useImport.getState().request(other, target?.type);
     for (const [i, f] of imagesIn.entries()) {
       try {
         const img = await readImageFile(f);
-        if (target) {
-          const top = target.titlePosition === 'inside' ? titleInsideHeight(target) : 1;
-          const box = { x: 1.5, y: top, w: target.w - 3, h: target.h - top - 1.5 };
-          const r = fitInto(img.width, img.height, box);
-          store().addImage({ panelId: target.id, ...r, x: r.x + i * 4, src: img.src, name: f.name });
-        } else {
-          const w = 40;
-          store().addImage({ x: at.x + i * 4, y: at.y + i * 4, w, h: (w * img.height) / img.width, src: img.src, name: f.name });
-        }
+        const top = target!.titlePosition === 'inside' ? titleInsideHeight(target!) : 1;
+        const box = { x: 1.5, y: top, w: target!.w - 3, h: target!.h - top - 1.5 };
+        const r = fitInto(img.width, img.height, box);
+        store().addImage({ panelId: target!.id, ...r, x: r.x + i * 4, src: img.src, name: f.name });
       } catch (err) {
         onNotice((err as Error).message);
       }

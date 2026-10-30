@@ -2,6 +2,9 @@ import { LEGEND_GROUPS } from '../model/presets';
 import { formatScale, niceScaleBar, resolveTokens } from '../model/scale';
 import type { ChartTemplate, LegendGroup, LegendItem, Panel, RevisionColumn, RevisionRow, TextStyle } from '../model/types';
 import { Keyplan } from './Keyplan';
+import { KpPanelData } from './KpPanels';
+
+const sheetOf = (tokens: Record<string, string>) => Math.max(0, (parseInt(tokens.SHEET ?? '1', 10) || 1) - 1);
 import { PlanView } from './PlanView';
 import { useSurvey } from '../state/surveyData';
 import { approxTextWidth, fontSize, wrapLines } from './svgText';
@@ -45,9 +48,19 @@ export function PanelContent({ panel: p, template, tokens, hasImage, onRowDouble
     case 'longProfile':
     case 'transProfile':
     case 'cp':
-      return <ProfilePlaceholder p={p} label={dropHint(p)} />;
+      return (
+        <>
+          <ProfilePlaceholder p={p} label={dropHint(p)} />
+          <KpPanelData p={p} t={template} sheetIndex={sheetOf(tokens)} />
+        </>
+      );
     case 'events':
-      return <EventRows p={p} onRowDoubleClick={onRowDoubleClick} />;
+      return (
+        <>
+          <EventRows p={p} onRowDoubleClick={onRowDoubleClick} />
+          <KpPanelData p={p} t={template} sheetIndex={sheetOf(tokens)} />
+        </>
+      );
     case 'scale':
       return <ScaleBars p={p} top={top} template={template} />;
     case 'titleBlock':
@@ -87,7 +100,7 @@ function Hint({ p, top, text }: { p: Panel; top: number; text: string }) {
 }
 
 function PlanSection({ p, northUp, tokens, template }: { p: Panel; northUp: boolean; tokens: Record<string, string>; template: ChartTemplate }) {
-  const loaded = useSurvey((s) => !!s.route || !!s.background);
+  const loaded = useSurvey((s) => !!s.route || s.datasets.some((d) => d.kind === 'linework' && d.visible && (d.target === 'plan' || !!d.both)));
   if (loaded) return <PlanView p={p} template={template} tokens={tokens} sheetIndex={Math.max(0, (parseInt(tokens.SHEET ?? '1', 10) || 1) - 1)} />;
   return <PlanPlaceholder p={p} northUp={northUp} tokens={tokens} />;
 }
@@ -100,7 +113,7 @@ function PlanPlaceholder({ p, northUp, tokens }: { p: Panel; northUp: boolean; t
   return (
     <g>
       <g className="grid">{lines}</g>
-      <Hint p={p} top={p.y} text={northUp ? 'North-Up plan view: drop route (.dig, .dxf, .csv)' : 'Plan view: drop route (.dig, .dxf, .xyz, .csv) and background DXF'} />
+      <Hint p={p} top={p.y} text={northUp ? 'North-Up plan view: drop or import the route and drawings' : 'Plan view: drop or import the route (.dig, .dxf, .csv, .rlx) and drawings'} />
       <text className="hint" x={p.x + 3} y={p.y + p.h - 3} fontSize={fontSize(2)}>
         KP {tokens.KP_START}
       </text>

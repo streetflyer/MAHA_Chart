@@ -6,7 +6,9 @@ import { useSurvey } from '../state/surveyData';
 
 export { DEFAULT_PLAN, planStyle };
 import { niceGrid } from './Keyplan';
-import { linesPath, routePath } from './linework';
+import { routePath } from './linework';
+import { LineworkLayer } from './LineworkLayer';
+import { lineworkFor } from '../model/datasets';
 import { fontSize, measureText } from './svgText';
 
 
@@ -20,7 +22,8 @@ type Pt = [number, number];
  */
 export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; template: ChartTemplate; sheetIndex: number; tokens: Record<string, string> }) {
   const route = useSurvey((s) => s.route);
-  const background = useSurvey((s) => s.background);
+  const datasets = useSurvey((s) => s.datasets);
+  const sets = useMemo(() => lineworkFor(datasets, 'plan'), [datasets]);
   const st = planStyle(p);
   const rect = useMemo(() => ({ x: p.x, y: p.y, w: p.w, h: p.h }), [p.x, p.y, p.w, p.h]);
   const along = (p.w * template.scale.horizontal) / 1000;
@@ -28,23 +31,17 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
 
   const geo = useMemo<ChartGeometry | null>(() => {
     if (route) return chartGeometry(template, route, sheetIndex);
-    if (!background) return null;
-    // No route yet: show the middle of the background at the chart scale.
-    const b = background.bounds;
+    if (!sets.length) return null;
+    // No route yet: show the middle of the drawings at the chart scale.
+    const b = sets[0].lw.bounds;
     return { origin: [(b.minE + b.maxE) / 2 - along / 2, (b.minN + b.maxN) / 2], u: [1, 0], along, across, northUp: true };
-  }, [route, background, template, sheetIndex, along, across]);
+  }, [route, sets, template, sheetIndex, along, across]);
 
-  const paths = useMemo(() => {
-    if (!geo) return null;
-    const project = gridToPlan(geo, rect);
-    return {
-      bg: background ? linesPath(background.lines, frameBounds(geo), project, 0.05) : '',
-      route: route ? routePath(route, project, 0.05) : '',
-    };
-  }, [geo, background, route, rect]);
+  const view = useMemo(() => (geo ? { project: gridToPlan(geo, rect), area: frameBounds(geo) } : null), [geo, rect]);
+  const routeD = useMemo(() => (view && route ? routePath(route, view.project, 0.05) : ''), [view, route]);
 
-  if (!geo || !paths) return null;
-  const project = gridToPlan(geo, rect);
+  if (!geo || !view) return null;
+  const project = view.project;
   const clipId = `plan-clip-${p.id}`;
   return (
     <g pointerEvents="none">
@@ -54,9 +51,9 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
         </clipPath>
       </defs>
       <g clipPath={`url(#${clipId})`}>
-        {paths.bg && <path d={paths.bg} fill="none" stroke={st.dxfColor} strokeWidth={0.18} />}
+        <LineworkLayer sets={sets} area={view.area} project={project} mmPerM={1000 / template.scale.horizontal} uAngle={(Math.atan2(geo.u[1], geo.u[0]) * 180) / Math.PI} />
         {st.showGrid && <PlanGrid geo={geo} rect={rect} st={st} />}
-        {paths.route && <path d={paths.route} fill="none" stroke={st.routeColor} strokeWidth={st.routeWidth} strokeLinejoin="round" />}
+        {routeD && <path d={routeD} fill="none" stroke={st.routeColor} strokeWidth={st.routeWidth} strokeLinejoin="round" />}
         {route && st.showKp && <KpBlocks template={template} project={project} rect={rect} st={st} />}
       </g>
       {st.showNorth && <PlanNorth p={p} project={project} st={st} />}

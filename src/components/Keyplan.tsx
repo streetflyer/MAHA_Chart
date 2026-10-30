@@ -3,7 +3,9 @@ import { planPanel } from '../model/scale';
 import { chartFrames, emptyBounds, extend, routeBounds, type Bounds } from '../model/route';
 import type { ChartTemplate, KeyplanStyle, Panel } from '../model/types';
 import { useSurvey } from '../state/surveyData';
-import { linesPath, routePath } from './linework';
+import { routePath } from './linework';
+import { LineworkLayer } from './LineworkLayer';
+import { lineworkFor } from '../model/datasets';
 import { fontSize } from './svgText';
 
 export const DEFAULT_KEYPLAN: KeyplanStyle = {
@@ -35,7 +37,9 @@ export function niceGrid(span: number): number {
  */
 export function Keyplan({ p, top, template, sheetIndex }: { p: Panel; top: number; template: ChartTemplate; sheetIndex: number }) {
   const route = useSurvey((s) => s.route);
-  const background = useSurvey((s) => s.background);
+  const datasets = useSurvey((s) => s.datasets);
+  const sets = useMemo(() => lineworkFor(datasets, 'siteplan'), [datasets]);
+  const background = sets[0]?.lw ?? null;
   const st = keyplanStyle(p);
   const area = { x: p.x + 0.6, y: top + 0.3, w: p.w - 1.2, h: p.y + p.h - top - 0.9 };
   const frames = useMemo(() => (route ? chartFrames(template, route) : []), [route, template]);
@@ -70,11 +74,11 @@ export function Keyplan({ p, top, template, sheetIndex }: { p: Panel; top: numbe
     return { minE: cE - w / 2, maxE: cE + w / 2, minN: cN - h / 2, maxN: cN + h / 2 } as Bounds;
   }, [route, background, half, st.showBoundaries, area.w, area.h]);
 
-  const bgPath = useMemo(() => {
-    if (!view || !background) return '';
+  const projectBg = useMemo(() => {
+    if (!view) return null;
     const k = area.w / (view.maxE - view.minE);
-    return linesPath(background.lines, view, (e, n) => [area.x + (e - view.minE) * k, area.y + (view.maxN - n) * k], 0.08);
-  }, [background, view, area.x, area.y, area.w]);
+    return (e: number, n: number): [number, number] => [area.x + (e - view.minE) * k, area.y + (view.maxN - n) * k];
+  }, [view, area.x, area.y, area.w]);
 
   if (!view) {
     return (
@@ -103,7 +107,7 @@ export function Keyplan({ p, top, template, sheetIndex }: { p: Panel; top: numbe
       </defs>
       <rect x={area.x} y={area.y} width={area.w} height={area.h} fill={st.background} />
       <g clipPath={`url(#${clipId})`}>
-        {background && <path d={bgPath} fill="none" stroke={st.dxfColor} strokeWidth={lw * 0.6} />}
+        {projectBg && <LineworkLayer sets={sets} area={view} project={projectBg} mmPerM={k} widthScale={lw * 3.3} />}
         {route && <path d={routePath(route, project, 0.05)} fill="none" stroke={st.routeColor} strokeWidth={lw * 2} strokeLinejoin="round" />}
         {st.showBoundaries &&
           frames.map((f, i) => {
