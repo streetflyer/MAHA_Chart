@@ -51,21 +51,88 @@ export interface EventRecord {
   kp: number;
   code: string;
   value: string;
+  /** Freespan / burial listings: length and height (m) carried on the start record. */
+  length?: number;
+  height?: number;
 }
+
+/** Text look for data drawn on the sheet. */
+export interface DataFont {
+  family: string;
+  /** Cap height, mm. */
+  size: number;
+  color: string;
+  bold?: boolean;
+  italic?: boolean;
+}
+
+export const DEFAULT_FONT: DataFont = { family: 'Arial', size: 1.3, color: '#111111' };
+export const FONT_FAMILIES = ['Arial', 'Helvetica', 'Calibri', 'Segoe UI', 'Tahoma', 'Verdana', 'Times New Roman', 'Courier New', 'Consolas'];
+
+export type LabelPos = 'top' | 'bottom' | 'none';
+
+/**
+ * Two codes drawn as one linked event (freespan start → end): end lines joined by
+ * a bar, the length above it and the height below, by default.
+ */
+export interface EventLink {
+  start: string;
+  end: string;
+  color: string;
+  /** Legend wording, e.g. "Flowline Status - Freespan". */
+  label: string;
+  lengthPos: LabelPos;
+  heightPos: LabelPos;
+}
+
+export const newLink = (start = 'FS.FS', end = 'FS.FE'): EventLink => ({
+  start,
+  end,
+  color: /B/.test(start.split('.')[1] ?? '') ? '#7f9cff' : '#7fbfff',
+  label: /B/.test(start.split('.')[1] ?? '') ? 'Flowline Status - Burial' : 'Flowline Status - Freespan',
+  lengthPos: 'top',
+  heightPos: 'bottom',
+});
+
+export type CpSymbol = 'tick' | 'circle' | 'circleFill' | 'square' | 'squareFill' | 'triangle' | 'triangleFill' | 'diamond' | 'diamondFill';
+export const CP_SYMBOLS: Record<CpSymbol, string> = {
+  tick: 'Tick only',
+  circle: 'Circle',
+  circleFill: 'Circle, filled',
+  square: 'Square',
+  squareFill: 'Square, filled',
+  triangle: 'Triangle',
+  triangleFill: 'Triangle, filled',
+  diamond: 'Diamond',
+  diamondFill: 'Diamond, filled',
+};
 
 /** How DXF text is sized on paper: with the map, with the map but kept readable, or one fixed height. */
 export type TextMode = 'auto' | 'drawn' | 'fixed';
 
 export type Dataset =
   /** `before`: any part of the runline before KP 0, drawn but not charted. */
-  | (Base & { kind: 'route'; route: Route; before?: Float64Array })
+  | (Base & { kind: 'route'; route: Route; before?: Float64Array; width: number })
   | (Base & { kind: 'linework'; lw: Linework; width: number; textMode: TextMode; textScale: number; textHeight: number; both?: boolean })
   /** Pipe drawn between the top and bottom series; the rest are seabed lines. */
-  | (Base & { kind: 'long'; kp: Float64Array; series: LongSeries[]; top?: number; bop?: number })
+  | (Base & { kind: 'long'; kp: Float64Array; series: LongSeries[]; top?: number; bop?: number; fill: string })
   /** Profiles sorted by KP; one is drawn every `every` metres (0: chosen from the scale). */
-  | (Base & { kind: 'trans'; kp: Float64Array; profiles: CrossProfile[]; every: number; pipeColor: string })
-  | (Base & { kind: 'events'; records: EventRecord[]; labels: boolean })
-  | (Base & { kind: 'cp'; kp: Float64Array; mv: Float64Array; style: 'line' | 'ticks' });
+  | (Base & { kind: 'trans'; kp: Float64Array; profiles: CrossProfile[]; every: number; pipeColor: string; pipeFill: string })
+  | (Base & { kind: 'events'; records: EventRecord[]; labels: boolean; font: DataFont; links: EventLink[] })
+  | (Base & { kind: 'cp'; kp: Float64Array; mv: Float64Array; style: 'line' | 'ticks'; font: DataFont; symbol: CpSymbol });
+
+/** Look settings the import window can set before a dataset exists. */
+export type DataStyle = Partial<{
+  color: string;
+  width: number;
+  fill: string;
+  pipeColor: string;
+  pipeFill: string;
+  font: DataFont;
+  links: EventLink[];
+  symbol: CpSymbol;
+  labels: boolean;
+}>;
 
 export const SERIES_COLOURS = ['#16a34a', '#2563eb', '#9333ea', '#ea580c', '#0891b2', '#64748b'];
 

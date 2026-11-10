@@ -1,8 +1,13 @@
+import { useMemo } from 'react';
 import { LEGEND_GROUPS } from '../model/presets';
 import { formatScale, niceScaleBar, resolveTokens } from '../model/scale';
 import type { ChartTemplate, LegendGroup, LegendItem, Panel, RevisionColumn, RevisionRow, TextStyle } from '../model/types';
 import { Keyplan } from './Keyplan';
-import { KpPanelData } from './KpPanels';
+import { CpMark, KpPanelData } from './KpPanels';
+import { DEFAULT_LEGEND_STYLE, dataEventCodes, dataLegend, groupsWithData, type DataLegendItem } from '../model/legendData';
+import type { CpSymbol } from '../model/datasets';
+import { planStyle } from '../model/planStyle';
+import { useEditor } from '../state/store';
 
 const sheetOf = (tokens: Record<string, string>) => Math.max(0, (parseInt(tokens.SHEET ?? '1', 10) || 1) - 1);
 import { PlanView } from './PlanView';
@@ -321,13 +326,34 @@ function trim(v: number): string {
 const LEFT_GROUPS: LegendGroup[] = ['plan'];
 const RIGHT_GROUPS: LegendGroup[] = ['long', 'trans', 'cp'];
 
+/** The legend's items: built from the imported data where there is some, plus the user's own. */
+export function useLegendItems(p: Panel) {
+  const datasets = useSurvey((s) => s.datasets);
+  const plan = useEditor((s) => s.template?.panels.find((x) => x.type === 'plan'));
+  return useMemo(() => {
+    const manual = p.legend ?? [];
+    const ld = p.legendData ?? { on: true, overrides: {} };
+    if (!ld.on) return { items: manual, data: [] as DataLegendItem[], codes: p.eventCodes ?? '' };
+    const data = dataLegend(datasets, plan ? planStyle(plan).kpColor : '#e00000')
+      .map((d) => ({ ...d, label: ld.overrides[d.key]?.label ?? d.label, hidden: ld.overrides[d.key]?.hidden }))
+      .filter((d) => !d.hidden);
+    const groups = groupsWithData(dataLegend(datasets, '#000'));
+    const items = [...data, ...manual.filter((i) => !groups.has(i.group) || i.custom)];
+    const fromEvents = datasets.some((d) => d.kind === 'events' && d.visible);
+    return { items, data, codes: fromEvents ? dataEventCodes(datasets) : (p.eventCodes ?? '') };
+  }, [p.legend, p.legendData, p.eventCodes, datasets, plan]);
+}
+
 function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
-  const items = p.legend ?? [];
+  const { items, codes: codeText } = useLegendItems(p);
+  const ls = { ...DEFAULT_LEGEND_STYLE, ...p.legendStyle };
   const pad = 2;
   const colW = (p.w - 3 * pad) / 2;
   const symW = Math.min(16, colW * 0.3);
-  const labelCap = 1.45;
-  const headCap = 1.9;
+  const labelCap = ls.size;
+  const headCap = ls.headSize;
+  const textFont = { fontFamily: `${ls.family}, Arial, sans-serif`, fill: ls.color, fontWeight: ls.bold ? 700 : undefined, fontStyle: ls.italic ? 'italic' : undefined };
+  const headFont = { fontFamily: `${ls.family}, Arial, sans-serif`, fill: ls.headColor };
 
   function column(groups: LegendGroup[], x: number, y0: number) {
     const out: React.ReactNode[] = [];
@@ -338,7 +364,7 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
       if (g !== 'status') {
         y += fontSize(headCap) * 1.2;
         out.push(
-          <text key={`h${g}`} x={x} y={y} fontSize={fontSize(headCap)}>
+          <text key={`h${g}`} x={x} y={y} fontSize={fontSize(headCap)} {...headFont}>
             {LEGEND_GROUPS[g]}
           </text>,
         );
@@ -352,7 +378,7 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
         out.push(
           <g key={it.id} data-legend={it.id}>
             <LegendSymbolView it={it} x={x} cy={cy} w={symW} tokens={tokens} />
-            <text x={x + symW + 2} y={cy - ((lines.length - 1) * lh) / 2} fontSize={fontSize(labelCap)} dominantBaseline="middle">
+            <text x={x + symW + 2} y={cy - ((lines.length - 1) * lh) / 2} fontSize={fontSize(labelCap)} dominantBaseline="middle" {...textFont}>
               {lines.map((l, j) => (
                 <tspan key={j} x={x + symW + 2} dy={j === 0 ? 0 : lh}>
                   {l}
@@ -370,7 +396,7 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
 
   const left = column(LEFT_GROUPS, p.x + pad, p.y + 1);
   const right = column(RIGHT_GROUPS, p.x + 2 * pad + colW, p.y + 1);
-  const codes = (p.eventCodes ?? '').trim();
+  const codes = codeText.trim();
   const codesTop = left.bottom + 1;
   const status = column(['status'], p.x + 2 * pad + colW, Math.max(right.bottom, codesTop + 4));
   return (
@@ -379,10 +405,10 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
       {right.nodes}
       {codes && (
         <g data-codes="1">
-          <text x={p.x + pad} y={codesTop + fontSize(headCap)} fontSize={fontSize(headCap)}>
+          <text x={p.x + pad} y={codesTop + fontSize(headCap)} fontSize={fontSize(headCap)} {...headFont}>
             EVENT CODE DEFINITIONS:
           </text>
-          <TextColumn text={codes} x={p.x + pad} y={codesTop + fontSize(headCap) + 0.5} w={colW + 10} h={p.y + p.h - codesTop - 4} style={{ size: 1.4 }} />
+          <TextColumn text={codes} x={p.x + pad} y={codesTop + fontSize(headCap) + 0.5} w={colW + 10} h={p.y + p.h - codesTop - 4} style={{ size: ls.codeSize }} color={ls.codeColor} />
         </g>
       )}
       {status.nodes}
@@ -446,14 +472,22 @@ function LegendSymbolView({ it, x, cy, w, tokens }: { it: LegendItem; x: number;
       return (
         <g>
           <polyline points={pts} style={st(0.35)} />
-          <circle cx={x + w / 2} cy={cy} r={0.7} style={{ fill: 'none', stroke: '#e00000', strokeWidth: 0.35 }} />
+          <circle cx={x + w / 2} cy={cy} r={0.7} style={{ fill: it.fill ?? 'none', stroke: it.outline ?? '#e00000', strokeWidth: 0.35 }} />
         </g>
       );
     }
+    case 'pipeBand':
+      return (
+        <g>
+          <rect x={x} y={cy - 0.7} width={w} height={1.4} style={{ fill: it.fill ?? '#6b6b6b' }} />
+          <line x1={x} y1={cy - 0.7} x2={x + w} y2={cy - 0.7} style={st(0.3)} />
+          <line x1={x} y1={cy + 0.7} x2={x + w} y2={cy + 0.7} style={st(0.3)} />
+        </g>
+      );
     case 'cpStab':
       return (
         <g>
-          <circle cx={x + 1.2} cy={cy} r={0.9} style={{ fill: 'none', stroke: c, strokeWidth: 0.45 }} />
+          {it.cpSymbol ? <CpMark symbol={it.cpSymbol as CpSymbol} x={x + 1.2} y={cy} r={0.9} color={c} /> : <circle cx={x + 1.2} cy={cy} r={0.9} style={{ fill: 'none', stroke: c, strokeWidth: 0.45 }} />}
           <text x={x + 3} y={cy + 0.6} fontSize={fontSize(1.3)}>
             {it.symbolText}
           </text>
@@ -467,7 +501,8 @@ function LegendSymbolView({ it, x, cy, w, tokens }: { it: LegendItem; x: number;
           <text x={cx} y={cy - 1.6} fontSize={fontSize(0.9)} textAnchor="middle" style={{ fill: c }}>
             {it.symbolText}
           </text>
-          <path d={`M${cx - 1.2} ${cy - 1} L${cx - 1.2} ${cy + 1.6} M${cx + 1.2} ${cy - 1} L${cx + 1.2} ${cy + 1.6} M${cx - 1.2} ${cy + 0.3} L${cx + 1.2} ${cy + 0.3}`} style={st(it.symbol === 'burial' ? 0.7 : 0.5)} />
+          {it.id.startsWith('data:') && <rect x={cx - 1.2} y={cy - 0.4} width={2.4} height={1.4} style={{ fill: c }} />}
+          <path d={`M${cx - 1.2} ${cy - 1} L${cx - 1.2} ${cy + 1.6} M${cx + 1.2} ${cy - 1} L${cx + 1.2} ${cy + 1.6} M${cx - 1.2} ${cy + 0.3} L${cx + 1.2} ${cy + 0.3}`} style={it.id.startsWith('data:') ? { stroke: '#111', strokeWidth: 0.15, fill: 'none' } : st(it.symbol === 'burial' ? 0.7 : 0.5)} />
         </g>
       );
     }

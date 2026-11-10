@@ -56,6 +56,8 @@ export interface Panel {
   font?: TextStyle;
   /** Legend entries (legend panels). */
   legend?: LegendItem[];
+  legendStyle?: LegendStyle;
+  legendData?: LegendData;
   /** Code + description lines shown as "EVENT CODE DEFINITIONS" in the legend. */
   eventCodes?: string;
   /** Revision history rows, newest first (title block). */
@@ -146,7 +148,8 @@ export type LegendSymbol =
   | 'burial'
   | 'freespan'
   | 'box'
-  | 'circle';
+  | 'circle'
+  | 'pipeBand';
 
 export interface LegendItem {
   id: string;
@@ -158,6 +161,33 @@ export interface LegendItem {
   symbolText?: string;
   /** Filled in automatically from plan view layers once data is loaded (plan step 3). */
   linked?: boolean;
+  /** Added by the user (kept beside the items built from imported data). */
+  custom?: boolean;
+  /** Extra look for data-built symbols: band / pipe fill, outline, CP symbol. */
+  fill?: string;
+  outline?: string;
+  cpSymbol?: string;
+}
+
+/** Text look of a legend panel. */
+export interface LegendStyle {
+  family: string;
+  /** Item text cap height, mm. */
+  size: number;
+  color: string;
+  headSize: number;
+  headColor: string;
+  codeColor: string;
+  codeSize: number;
+  bold?: boolean;
+  italic?: boolean;
+}
+
+/** A legend panel's items built from the imported data: on/off, and the user's wording per item. */
+export interface LegendData {
+  on: boolean;
+  /** Keyed by the item's data key: new wording, or hidden. */
+  overrides: Record<string, { label?: string; hidden?: boolean }>;
 }
 
 export interface RevisionRow {

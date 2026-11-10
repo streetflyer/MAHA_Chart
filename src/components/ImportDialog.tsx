@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { profileFromRow, VW_RAW, type CrossProfile } from '../model/crossProfile';
-import { TARGETS, extOf, targetInfo, targetsFor, type Dataset, type EventRecord, type ImportTarget } from '../model/datasets';
+import { TARGETS, extOf, newLink, targetInfo, targetsFor, type DataStyle, type Dataset, type EventRecord, type ImportTarget } from '../model/datasets';
 import { parseDxfLinework, type Linework } from '../model/dxf';
 import { newId } from '../model/ids';
 import {
   DEFAULT_COLOURS,
-  FIELDS,
   buildDataset,
   dataRows,
   defaultMapping,
   dxfLayers,
+  fieldsFor,
+  spanCodes,
   fromPreset,
   headerOf,
   loadPresets,
@@ -22,10 +23,12 @@ import {
 } from '../model/importers';
 import { makeRoute } from '../model/route';
 import { parseRlx, parseRlxp, splitAtKp0, type Runline } from '../model/runline';
-import { fileHead, fileLines, lineSplitter, parseDelimited, readXlsx, type Table } from '../model/tables';
+import { fileHead, fileLines, guessColumns, lineSplitter, parseDelimited, readXlsx, type Table } from '../model/tables';
 import { useEditor } from '../state/store';
 import { useSurvey } from '../state/surveyData';
+import { StyleControls, LinksEditor, applyStyle, defaultStyle } from './DataStyleControls';
 import { fitInto, readImageFile } from './imageImport';
+import { ImportPreview } from './ImportPreview';
 import { titleInsideHeight } from './PanelContent';
 
 /** Opening the import window from anywhere (toolbar, drop on the sheet, a panel's data list). */
@@ -47,6 +50,8 @@ interface Item {
   lw?: Linework;
   runlines?: Runline[];
   mapping: Mapping;
+  /** Colours, widths and fonts chosen before import. */
+  style: DataStyle;
   /** Logo panel to place an image in. */
   panelId?: string;
   error?: string;
@@ -131,6 +136,7 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
       file,
       target: forced ?? guessTarget(file.name, dropPanelType, hasRoute),
       mapping: defaultMapping('plan', null),
+      style: {},
       panelId: logoPanels[0]?.id,
       loading: true,
     }));
@@ -143,7 +149,7 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
         const t0 = got.tables?.[got.mapping?.sheet ?? 0];
         const target = !forced && t0 ? guessTarget(it.file.name, dropPanelType, hasRoute, t0.rows) : it.target;
         const mapping = target !== it.target ? { ...defaultMapping(target, t0 ?? null), sheet: got.mapping?.sheet ?? 0 } : (got.mapping ?? it.mapping);
-        setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, ...got, target, mapping, loading: false } : x)));
+        setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, ...got, target, mapping, style: defaultStyle(target), loading: false } : x)));
       } catch (e) {
         setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, loading: false, error: (e as Error).message } : x)));
       }
@@ -163,7 +169,23 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
   function changeTarget(target: ImportTarget) {
     if (!it) return;
     const mapping = { ...defaultMapping(target, table), sheet: it.mapping.sheet, layer: target === 'route' && it.lw ? dxfLayers(it.lw)[0]?.layer : it.mapping.layer };
-    update(it.id, { target, mapping });
+    update(it.id, { target, mapping, style: defaultStyle(target) });
+  }
+
+  /** Another sheet of the same workbook, as its own item with its own columns. */
+  function toggleSheet(sheet: number, on: boolean) {
+    if (!it?.tables) return;
+    const same = items.filter((x) => x.file === it.file);
+    const has = same.find((x) => x.mapping.sheet === sheet);
+    if (on && !has) {
+      const t = it.tables[sheet];
+      const copy: Item = { ...it, id: newId(), mapping: { ...defaultMapping(it.target, t), sheet }, style: { ...it.style } };
+      setItems((xs) => [...xs, copy]);
+      setCurrent(copy.id);
+    } else if (!on && has && same.length > 1) {
+      setItems((xs) => xs.filter((x) => x.id !== has.id));
+      if (current === has.id) setCurrent(same.find((x) => x.id !== has.id)!.id);
+    }
   }
 
   function openPicker(target?: ImportTarget) {
@@ -194,6 +216,7 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
         color: DEFAULT_COLOURS.route!,
         kind: 'route',
         route: makeRoute(rl.name, line),
+        width: 0.35,
         before: before ? new Float64Array(before) : undefined,
       };
       // A runline that starts past KP 0 carries its own start KP.
@@ -204,6 +227,7 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
       d = buildDataset(x.target, x.file.name, x.tables?.[x.mapping.sheet] ?? null, x.mapping, x.lw);
     }
     if (typeof d === 'string') return d;
+    d = applyStyle(d, x.style);
     useSurvey.getState().addDataset(d);
     if (d.kind === 'route') s.setScale({ routeLength: Math.round(d.route.length * 1000) / 1000, sheets: undefined });
     return null;
@@ -310,6 +334,7 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
                         <li key={x.id} className={x.id === current ? 'active' : ''} onClick={() => setCurrent(x.id)}>
                           <span className="fname" title={x.file.name}>
                             {x.file.name}
+                            {x.tables && x.tables.length > 1 ? ` › ${x.tables[x.mapping.sheet]?.name}` : ''}
                           </span>
                           <span className={x.error ? 'status error' : 'status'}>{x.loading ? 'Reading…' : x.error ? 'Can’t read' : 'Ready'}</span>
                           <button
@@ -377,6 +402,8 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
                 setMapping={setMapping}
                 update={(patch) => update(it.id, patch)}
                 changeTarget={changeTarget}
+                sheetsChosen={items.filter((x) => x.file === it.file).map((x) => x.mapping.sheet)}
+                toggleSheet={toggleSheet}
                 savePreset={(name) => {
                   const next = [...presets.filter((p) => !(p.name === name && p.target === it.target)), toPreset(name, it.target, table, it.mapping)];
                   setPresets(next);
@@ -413,6 +440,8 @@ function Wizard({
   setMapping,
   update,
   changeTarget,
+  sheetsChosen,
+  toggleSheet,
   savePreset,
   deletePreset,
 }: {
@@ -423,11 +452,13 @@ function Wizard({
   setMapping(patch: Partial<Mapping>): void;
   update(patch: Partial<Item>): void;
   changeTarget(t: ImportTarget): void;
+  sheetsChosen: number[];
+  toggleSheet(sheet: number, on: boolean): void;
   savePreset(name: string): void;
   deletePreset(name: string): void;
 }) {
   const m = it.mapping;
-  const fields = FIELDS[it.target] ?? [];
+  const fields = fieldsFor(it.target, m);
   const header = headerOf(table, m);
   const nCols = table ? Math.min(60, Math.max(...table.rows.slice(0, 30).map((r) => r.length))) : 0;
   const colName = (i: number) => (header[i] ? `${i + 1}: ${header[i].replace(/\s+/g, ' ')}` : `Column ${i + 1}`);
@@ -435,6 +466,11 @@ function Wizard({
   const mine = presets.filter((p) => p.target === it.target);
   const [presetName, setPresetName] = useState('');
   const preview = table ? table.rows.slice(m.skip, m.skip + 9) : [];
+  function setSpan(start: string, end: string) {
+    const old = m.span!;
+    const links = m.links.map((l) => (l.start === old.start && l.end === old.end ? { ...l, start, end } : l));
+    setMapping({ span: { start, end }, links });
+  }
 
   return (
     <>
@@ -449,6 +485,19 @@ function Wizard({
             ))}
           </select>
         </label>
+        {it.tables && it.tables.length > 1 && (it.target === 'events' || it.target === 'cp') && (
+          <div className="field sheet-picks">
+            <span>Sheets to import (each gets its own columns)</span>
+            <div className="checks">
+              {it.tables.map((t, i) => (
+                <label key={i} className="check">
+                  <input type="checkbox" checked={sheetsChosen.includes(i)} disabled={sheetsChosen.length === 1 && sheetsChosen[0] === i} onChange={(e) => toggleSheet(i, e.target.checked)} />
+                  {t.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
         {it.tables && it.tables.length > 1 && (
           <label className="field">
             <span>Sheet</span>
@@ -609,6 +658,36 @@ function Wizard({
               </label>
             )}
           </div>
+          {it.target === 'events' && (
+            <div className="span-opt">
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={!!m.span}
+                  onChange={(e) => {
+                    const [a, b] = spanCodes(table.name);
+                    const span = e.target.checked ? { start: a, end: b } : undefined;
+                    const links = e.target.checked ? [...m.links.filter((l) => l.start !== a), newLink(a, b)] : m.links;
+                    const base = { ...m, span, links };
+                    update({ mapping: { ...base, cols: guessFor(table, base) } });
+                  }}
+                />
+                Freespan / burial data (one row per span: start KP, end KP, length, height)
+              </label>
+              {m.span && (
+                <div className="row2">
+                  <label className="field">
+                    <span>Code for the start</span>
+                    <input value={m.span.start} onChange={(e) => setSpan(e.target.value.toUpperCase(), m.span!.end)} />
+                  </label>
+                  <label className="field">
+                    <span>Code for the end</span>
+                    <input value={m.span.end} onChange={(e) => setSpan(m.span!.start, e.target.value.toUpperCase())} />
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
           {it.target === 'long' && (
             <div className="checks">
               <span>Seabed lines:</span>
@@ -631,6 +710,16 @@ function Wizard({
 
           <div className="preview-wrap">
             <table className="preview">
+              <thead>
+                <tr>
+                  <th className="rownum">#</th>
+                  {Array.from({ length: nCols }, (_, i) => (
+                    <th key={i} className={mapped.has(i) ? 'mapped' : ''}>
+                      {i + 1}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
               <tbody>
                 {preview.map((r, ri) => (
                   <tr key={ri} className={m.header && ri === 0 ? 'head' : ''}>
@@ -650,6 +739,24 @@ function Wizard({
       )}
 
       {it.target === 'events' && <ExtraEvents list={m.extra} onChange={(extra) => setMapping({ extra })} />}
+      {it.target === 'events' && (
+        <LinksEditor
+          links={m.links}
+          onChange={(links) => {
+            // A span sheet's own pair follows the codes typed for it.
+            setMapping({ links });
+          }}
+          codes={eventCodes(table, m)}
+        />
+      )}
+      {it.target !== 'logo' && (
+        <>
+          <h4>Look</h4>
+          <StyleControls target={it.target} style={it.style} onChange={(patch) => update({ style: { ...it.style, ...patch } })} />
+          <h4>Preview</h4>
+          <ImportPreview it={it} table={table} />
+        </>
+      )}
     </>
   );
 }
@@ -698,4 +805,18 @@ function ExtraEvents({ list, onChange }: { list: EventRecord[]; onChange(l: Even
       </button>
     </div>
   );
+}
+
+/** Columns guessed for a mapping whose field list changed (span sheets). */
+function guessFor(t: Table, m: Mapping): Mapping['cols'] {
+  const rows = t.rows.slice(m.skip);
+  return guessColumns(rows, m.header, fieldsFor('events', m));
+}
+
+/** Codes in the mapped column, for picking linked event codes. */
+function eventCodes(t: Table | null, m: Mapping): string[] {
+  const c = m.cols.code;
+  const set = new Set<string>(m.span ? [m.span.start, m.span.end] : []);
+  if (t && c !== undefined) for (const r of dataRows(t, m)) if (r[c]) set.add(r[c].trim().toUpperCase());
+  return [...set].filter(Boolean).sort();
 }

@@ -24,6 +24,7 @@ export const LEGEND_SYMBOLS: Record<LegendSymbol, string> = {
   freespan: 'Freespan length bracket',
   box: 'Filled box',
   circle: 'Circle',
+  pipeBand: 'Pipe band (top / bottom of product)',
 };
 
 type Preset = Omit<LegendItem, 'id'>;

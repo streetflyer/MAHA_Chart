@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { guessColumns, hasHeader, parseDelimited, readXlsx } from './tables';
+import { findHeaderRow, guessColumns, hasHeader, parseDelimited, readXlsx } from './tables';
 
 describe('tables', () => {
   it('reads every sheet of an .xlsx, with shared strings and blank cells', async () => {
@@ -21,5 +21,10 @@ describe('tables', () => {
     expect(t.rows[2][4]).toBe('3');
     expect(parseDelimited('PP.SZ,0,"Wa=146kg/m, Wf=124"').rows[0]).toEqual(['PP.SZ', '0', 'Wa=146kg/m, Wf=124']);
     expect(parseDelimited('1 2 3\n4  5 6').rows[1]).toEqual(['4', '5', '6']);
+  });
+  it('finds the header under a title row, and sees headerless CODE,KP,VALUE listings', () => {
+    expect(findHeaderRow([['Events Listing'], ['ID', 'Code', 'Grid KP'], ['1', 'AN.OK', '0.12']])).toBe(1);
+    expect(findHeaderRow([['PP.SN', '0', '323.8MM O.D'], ['AN.OK', '0.12', '0']])).toBe(-1);
+    expect(findHeaderRow([['KP', 'TOP'], ['0', '91.9']])).toBe(0);
   });
 });

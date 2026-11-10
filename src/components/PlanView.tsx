@@ -48,6 +48,9 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
 
   if (!geo || !view) return null;
   const project = view.project;
+  // The runline's own colour and width, set on import or in its data list entry.
+  const routeColor = before?.color ?? st.routeColor;
+  const routeWidth = before?.kind === 'route' ? before.width : st.routeWidth;
   const clipId = `plan-clip-${p.id}`;
   return (
     <g pointerEvents="none">
@@ -59,8 +62,8 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
       <g clipPath={`url(#${clipId})`}>
         <LineworkLayer sets={sets} area={view.area} project={project} mmPerM={1000 / template.scale.horizontal} uAngle={(Math.atan2(geo.u[1], geo.u[0]) * 180) / Math.PI} />
         {st.showGrid && <PlanGrid geo={geo} rect={rect} st={st} />}
-        {beforeD && <path d={beforeD} fill="none" stroke={st.routeColor} strokeWidth={st.routeWidth} strokeDasharray="2 1" />}
-        {routeD && <path d={routeD} fill="none" stroke={st.routeColor} strokeWidth={st.routeWidth} strokeLinejoin="round" />}
+        {beforeD && <path d={beforeD} fill="none" stroke={routeColor} strokeWidth={routeWidth} strokeDasharray="2 1" />}
+        {routeD && <path d={routeD} fill="none" stroke={routeColor} strokeWidth={routeWidth} strokeLinejoin="round" />}
         {route && st.showKp && <KpBlocks template={template} project={project} rect={rect} st={st} />}
       </g>
       {st.showNorth && <PlanNorth p={p} project={project} st={st} />}

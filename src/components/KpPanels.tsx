@@ -1,7 +1,7 @@
 import { useMemo, type ReactElement } from 'react';
 import { nearestProfile } from '../model/crossProfile';
-import type { Dataset } from '../model/datasets';
-import { codeMatcher, isKpRow, rowCodes, splitRanges, type EventMark, type EventRange } from '../model/events';
+import type { CpSymbol, DataFont, Dataset, LabelPos } from '../model/datasets';
+import { codeMatcher, isKpRow, rowCodes, splitRanges, type EventMark, type EventRange, type LinkedEvent } from '../model/events';
 import { kpInterval, planStyle } from '../model/planStyle';
 import { chartGeometry, gridToPlan, pointAt, type Route } from '../model/route';
 import { planPanel, sheetRange } from '../model/scale';
@@ -103,6 +103,14 @@ function kpTicks(t: ChartTemplate, toX: (kp: number) => number, x0: number, x1: 
 
 const kpText = (kp: number) => (kp / 1000).toFixed(3);
 
+/** SVG text attributes for a data font. */
+export const fontProps = (f: DataFont) => ({
+  fontFamily: `${f.family}, Arial, Helvetica, sans-serif`,
+  fontWeight: f.bold ? 700 : undefined,
+  fontStyle: f.italic ? 'italic' : undefined,
+  fill: f.color,
+});
+
 function KpLabels({ ticks, y }: { ticks: [number, number][]; y: number }) {
   const cap = 1.8;
   return (
@@ -198,7 +206,7 @@ function LongProfile({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'long
   return (
     <g>
       <DepthAxis p={p} y={y} lo={mid - half} hi={mid + half} step={step} />
-      {band && <path d={band} fill="#6b6b6b" stroke="none" />}
+      {band && <path d={band} fill={d.fill} stroke="none" />}
       {d.series.map((s, j) => (
         <path key={j} d={line(s.values, a, b)} fill="none" stroke={s.color} strokeWidth={j === d.top || j === d.bop ? 0.3 : 0.2} />
       ))}
@@ -245,7 +253,7 @@ function TransProfiles({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'tr
         return (
           <g key={pr.kp}>
             <path d={dots} stroke={d.color} strokeWidth={0.3} strokeLinecap="round" fill="none" />
-            <circle cx={x0} cy={cy} r={Math.max(0.4, (pr.diameter / 2) * k)} fill="#bdbdbd" stroke={d.pipeColor} strokeWidth={0.15} />
+            <circle cx={x0} cy={cy} r={Math.max(0.4, (pr.diameter / 2) * k)} fill={d.pipeFill} stroke={d.pipeColor} strokeWidth={0.15} />
             <line x1={x0} y1={p.y} x2={x0} y2={p.y + 1.5} stroke="currentColor" strokeWidth={0.15} />
             <text fontSize={fontSize(cap)} transform={`translate(${x0 - fontSize(cap) * 0.35} ${p.y + 2}) rotate(90)`}>
               {kpText(pr.kp)}
@@ -264,7 +272,7 @@ function TransProfiles({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'tr
  */
 function EventsPanel({ p, x0, toX, span, sets, ticks, routeEnd }: { p: Panel; x0: number; toX: (kp: number) => number; span: [number, number]; sets: EventsSet[]; ticks: [number, number][]; routeEnd: number }) {
   const rows = p.rows ?? [];
-  const split = useMemo(() => sets.map((d) => ({ d, ...splitRanges(d.records) })), [sets]);
+  const split = useMemo(() => sets.map((d) => ({ d, ...splitRanges(d.records, d.links) })), [sets]);
   if (!rows.length) return null;
   const rh = p.h / rows.length;
   const x1 = p.x + p.w;
@@ -286,17 +294,19 @@ function EventsPanel({ p, x0, toX, span, sets, ticks, routeEnd }: { p: Panel; x0
       return;
     }
     const match = codeMatcher(rowCodes(r));
-    for (const { d, points, ranges } of split) {
+    for (const { d, points, ranges, linked } of split) {
       const rs = ranges.filter((e) => match(e.code) && (Number.isFinite(e.end) ? e.end : routeEnd) >= span[0] && e.kp <= span[1]);
-      rs.forEach((e, j) => out.push(<RangeBar key={`${r.id}-${d.id}-r${j}`} e={e} y0={y0} rh={rh} toX={toX} x0={x0} x1={x1} routeEnd={routeEnd} color={d.color} n={rs.length} j={j} />));
+      rs.forEach((e, j) => out.push(<RangeBar key={`${r.id}-${d.id}-r${j}`} e={e} y0={y0} rh={rh} toX={toX} x0={x0} x1={x1} routeEnd={routeEnd} color={d.color} font={d.font} n={rs.length} j={j} />));
+      const ls = linked.filter((e) => match(e.startCode) && e.end >= span[0] && e.kp <= span[1]);
+      if (ls.length) out.push(<LinkedEvents key={`${r.id}-${d.id}-l`} list={ls} y0={y0} rh={rh} toX={toX} font={d.font} labels={d.labels} />);
       const ps = points.filter((e) => match(e.code) && e.kp >= span[0] && e.kp <= span[1]);
-      out.push(<PointTicks key={`${r.id}-${d.id}-p`} list={ps} y0={y0} rh={rh} toX={toX} color={d.color} labels={d.labels} />);
+      out.push(<PointTicks key={`${r.id}-${d.id}-p`} list={ps} y0={y0} rh={rh} toX={toX} color={d.color} font={d.font} labels={d.labels} />);
     }
   });
   return <g>{out}</g>;
 }
 
-function RangeBar({ e, y0, rh, toX, x0, x1, routeEnd, color, n, j }: { e: EventRange; y0: number; rh: number; toX: (kp: number) => number; x0: number; x1: number; routeEnd: number; color: string; n: number; j: number }) {
+function RangeBar({ e, y0, rh, toX, x0, x1, routeEnd, color, font, n, j }: { e: EventRange; y0: number; rh: number; toX: (kp: number) => number; x0: number; x1: number; routeEnd: number; color: string; font: DataFont; n: number; j: number }) {
   // Several bars in one row share it top to bottom.
   const slot = rh / Math.max(1, n);
   const bh = Math.min(slot * 0.5, 3.2);
@@ -304,7 +314,7 @@ function RangeBar({ e, y0, rh, toX, x0, x1, routeEnd, color, n, j }: { e: EventR
   const xa = Math.max(x0, toX(e.kp));
   const xb = Math.min(x1, toX(Number.isFinite(e.end) ? e.end : routeEnd));
   if (xb <= xa) return null;
-  const cap = Math.min(1.6, bh * 0.6);
+  const cap = Math.min(font.size, slot * 0.4);
   let text = e.value && e.value !== '0' ? e.value : e.code;
   const room = xb - xa - 2;
   while (text.length > 3 && measureText(text, cap) > room) text = text.slice(0, -2);
@@ -314,7 +324,7 @@ function RangeBar({ e, y0, rh, toX, x0, x1, routeEnd, color, n, j }: { e: EventR
       <rect x={xa} y={cy - bh / 2} width={xb - xa} height={bh} fill="#cfcfcf" />
       <line x1={xa} y1={cy} x2={xb} y2={cy} stroke={color} strokeWidth={0.12} />
       {room > 6 && (
-        <text x={(xa + xb) / 2} y={cy - bh / 2 - 0.5} fontSize={fontSize(cap)} fill={color} textAnchor="middle">
+        <text x={(xa + xb) / 2} y={cy - bh / 2 - 0.5} fontSize={fontSize(cap)} {...fontProps(font)} textAnchor="middle">
           {text}
         </text>
       )}
@@ -322,11 +332,11 @@ function RangeBar({ e, y0, rh, toX, x0, x1, routeEnd, color, n, j }: { e: EventR
   );
 }
 
-function PointTicks({ list, y0, rh, toX, color, labels }: { list: EventMark[]; y0: number; rh: number; toX: (kp: number) => number; color: string; labels: boolean }) {
+function PointTicks({ list, y0, rh, toX, color, font, labels }: { list: EventMark[]; y0: number; rh: number; toX: (kp: number) => number; color: string; font: DataFont; labels: boolean }) {
   if (!list.length) return null;
   const foot = y0 + rh;
   const len = Math.min(rh * 0.25, 2.5);
-  const cap = Math.min(1.3, rh / 5);
+  const cap = Math.min(font.size, rh / 5);
   const fs = fontSize(cap);
   let path = '';
   const texts: ReactElement[] = [];
@@ -337,7 +347,7 @@ function PointTicks({ list, y0, rh, toX, color, labels }: { list: EventMark[]; y
     // Label sparse events with their code; dense ones (field joints) stay as ticks.
     if (labels && x - lastX > fs * 1.15 && list.length <= 80) {
       texts.push(
-        <text key={texts.length} fontSize={fs} fill={color} transform={`translate(${(x + fs * 0.35).toFixed(2)} ${(foot - len - 0.4).toFixed(2)}) rotate(-90)`}>
+        <text key={texts.length} fontSize={fs} {...fontProps(font)} transform={`translate(${(x + fs * 0.35).toFixed(2)} ${(foot - len - 0.4).toFixed(2)}) rotate(-90)`}>
           {e.code}
         </text>,
       );
@@ -352,6 +362,66 @@ function PointTicks({ list, y0, rh, toX, color, labels }: { list: EventMark[]; y
   );
 }
 
+/**
+ * Linked events (freespan, burial): a line at each end, a bar between them, the
+ * length above and the height below by default, and the codes along the end lines.
+ */
+function LinkedEvents({ list, y0, rh, toX, font, labels }: { list: LinkedEvent[]; y0: number; rh: number; toX: (kp: number) => number; font: DataFont; labels: boolean }) {
+  const fs = fontSize(Math.min(font.size, rh / 6));
+  const barTop = y0 + rh * 0.22;
+  const barBot = y0 + rh * 0.42;
+  const pos = (p: LabelPos) => (p === 'top' ? barTop - fs * 0.35 : y0 + rh * 0.62);
+  return (
+    <g>
+      {list.map((e, i) => {
+        const xa = toX(e.kp);
+        const xb = toX(e.end);
+        const mid = (xa + xb) / 2;
+        const c = e.link.color;
+        const t = { ...fontProps(font), fill: c };
+        const lines = `M${xa.toFixed(2)} ${(y0 + rh * 0.1).toFixed(2)}V${(y0 + rh).toFixed(2)}M${xb.toFixed(2)} ${(y0 + rh * 0.1).toFixed(2)}V${(y0 + rh).toFixed(2)}`;
+        return (
+          <g key={i}>
+            <rect x={xa} y={barTop} width={Math.max(0.1, xb - xa)} height={barBot - barTop} fill={c} />
+            <path d={lines} stroke={font.color} strokeWidth={0.12} fill="none" />
+            {e.link.lengthPos !== 'none' && (
+              <text x={mid} y={pos(e.link.lengthPos)} fontSize={fs} textAnchor="middle" {...t}>
+                {e.length.toFixed(2)}
+              </text>
+            )}
+            {e.link.heightPos !== 'none' && e.height !== undefined && (
+              <text x={mid} y={pos(e.link.heightPos)} fontSize={fs} textAnchor="middle" {...t}>
+                {e.height.toFixed(2)}
+              </text>
+            )}
+            {labels && xb - xa > fs * 2.2 && (
+              <>
+                <text fontSize={fs} {...fontProps(font)} transform={`translate(${(xa - fs * 0.35).toFixed(2)} ${(barBot + 0.6).toFixed(2)}) rotate(90)`}>
+                  {e.startCode}
+                </text>
+                <text fontSize={fs} {...fontProps(font)} transform={`translate(${(xb - fs * 0.35).toFixed(2)} ${(barBot + 0.6).toFixed(2)}) rotate(90)`}>
+                  {e.endCode}
+                </text>
+              </>
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+/** A CP marker symbol centred on (x, y). */
+export function CpMark({ symbol, x, y, r, color }: { symbol: CpSymbol; x: number; y: number; r: number; color: string }) {
+  const fill = symbol.endsWith('Fill') ? color : 'none';
+  const st = { stroke: color, strokeWidth: 0.2, fill };
+  if (symbol === 'tick') return null;
+  if (symbol.startsWith('circle')) return <circle cx={x} cy={y} r={r} {...st} />;
+  if (symbol.startsWith('square')) return <rect x={x - r} y={y - r} width={2 * r} height={2 * r} {...st} />;
+  if (symbol.startsWith('triangle')) return <path d={`M${x} ${y - r}L${x + r} ${y + r * 0.8}L${x - r} ${y + r * 0.8}Z`} {...st} />;
+  return <path d={`M${x} ${y - r}L${x + r} ${y}L${x} ${y + r}L${x - r} ${y}Z`} {...st} />;
+}
+
 /** CP readings: ticks with the reading, like engineering events, or a gradient line. */
 function Cp({ d, p, toX, span }: { d: Extract<Dataset, { kind: 'cp' }>; p: Panel; toX: (kp: number) => number; span: [number, number] }) {
   const [a, b] = indexRange(d.kp, span);
@@ -359,7 +429,9 @@ function Cp({ d, p, toX, span }: { d: Extract<Dataset, { kind: 'cp' }>; p: Panel
   if (d.style === 'ticks') {
     const foot = p.y + p.h;
     const len = Math.min(p.h * 0.25, 3);
-    const fs = fontSize(Math.min(1.4, p.h / 8));
+    const fs = fontSize(Math.min(d.font.size, p.h / 8));
+    const r = Math.max(0.4, fs * 0.35);
+    const top = d.symbol === 'tick' ? 0 : 2 * r;
     const out: ReactElement[] = [];
     let path = '';
     let lastX = -Infinity;
@@ -367,9 +439,10 @@ function Cp({ d, p, toX, span }: { d: Extract<Dataset, { kind: 'cp' }>; p: Panel
       if (d.kp[i] < span[0] || d.kp[i] > span[1]) continue;
       const x = toX(d.kp[i]);
       path += `M${x.toFixed(2)} ${foot.toFixed(2)}v${(-len).toFixed(2)}`;
+      out.push(<CpMark key={`m${i}`} symbol={d.symbol} x={x} y={foot - len - r} r={r} color={d.color} />);
       if (x - lastX > fs * 1.15) {
         out.push(
-          <text key={i} fontSize={fs} fill={d.color} transform={`translate(${(x + fs * 0.35).toFixed(2)} ${(foot - len - 0.4).toFixed(2)}) rotate(-90)`}>
+          <text key={i} fontSize={fs} {...fontProps(d.font)} transform={`translate(${(x + fs * 0.35).toFixed(2)} ${(foot - len - top - 0.4).toFixed(2)}) rotate(-90)`}>
             {Math.round(d.mv[i])} mV
           </text>,
         );

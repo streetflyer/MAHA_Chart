@@ -71,6 +71,8 @@ export function findHeaderRow(rows: string[][]): number {
     // Data straight away: no header.
     if (cur.filter(isNumber).length >= Math.max(1, cur.length / 2)) return -1;
     // Names: mostly text, about as wide as the data under them, which has numbers.
+    // A row with any number in it is data (CODE,KP,VALUE listings start straight away).
+    if (cur.some(isNumber)) return -1;
     if (cur.length >= 2 && cur.length >= next.length * 0.6 && next.some(isNumber)) return i;
   }
   return hasHeader(rows) ? 0 : -1;

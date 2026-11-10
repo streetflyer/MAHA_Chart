@@ -27,4 +27,21 @@ describe('events', () => {
     const by = Object.fromEntries(ranges.map((r) => [r.code, r.end]));
     expect(by).toEqual({ 'PP.SN': 21633, 'OT.VS': 21000, 'PP.SZ': Infinity });
   });
+  it('links freespan start and end codes, keeping the listed length and height', () => {
+    const { linked, points } = splitRanges(
+      [
+        { kp: 3454, code: 'FS.FS', value: '', length: 22.73, height: 0.26 },
+        { kp: 3477, code: 'FS.FE', value: '' },
+        { kp: 5161, code: 'FS.FS', value: '' },
+        { kp: 5178, code: 'FS.FE', value: '' },
+        { kp: 4000, code: 'AN.OK', value: '' },
+      ],
+      [{ start: 'FS.FS', end: 'FS.FE', color: '#7fbfff', label: 'Freespan', lengthPos: 'top', heightPos: 'bottom' }],
+    );
+    expect(points).toHaveLength(1);
+    expect(linked.map((l) => [l.kp, l.end, l.length, l.height])).toEqual([
+      [3454, 3477, 22.73, 0.26],
+      [5161, 5178, 17, undefined],
+    ]);
+  });
 });

@@ -1,5 +1,5 @@
 import { type CrossProfile, VW_RAW, profileFromRow } from './crossProfile';
-import { SERIES_COLOURS, type Dataset, type EventRecord, type ImportTarget } from './datasets';
+import { DEFAULT_FONT, SERIES_COLOURS, newLink, type Dataset, type EventLink, type EventRecord, type ImportTarget } from './datasets';
 import type { Linework } from './dxf';
 import { newId } from './ids';
 import { makeRoute } from './route';
@@ -47,6 +47,19 @@ export const FIELDS: Partial<Record<ImportTarget, FieldSpec[]>> = {
   ],
 };
 
+/** Freespan / burial listings: one row per span, start and end KP. */
+export const SPAN_FIELDS: FieldSpec[] = [
+  { key: 'start', label: 'Start KP', names: ['STARTGRIDKP', 'STARTKP', 'START', 'KPSTART', 'FROM'], required: true },
+  { key: 'end', label: 'End KP', names: ['ENDGRIDKP', 'ENDKP', 'END', 'KPEND', 'TO'], required: true },
+  { key: 'length', label: 'Length', names: ['LENGTH'] },
+  { key: 'height', label: 'Height', names: ['HEIGHT', 'GAP', 'DEPTH'] },
+];
+
+export const fieldsFor = (target: ImportTarget, m: Pick<Mapping, 'span'>) => (target === 'events' && m.span ? SPAN_FIELDS : (FIELDS[target] ?? []));
+
+/** Span sheets are named for what they hold; pick the codes to match. */
+export const spanCodes = (sheetName: string): [string, string] => (/BURI/i.test(sheetName) ? ['FS.BS', 'FS.BE'] : ['FS.FS', 'FS.FE']);
+
 export interface Mapping {
   /** Rows above the column names (titles in a workbook). */
   skip: number;
@@ -62,6 +75,10 @@ export interface Mapping {
   layer?: string;
   /** Events typed in by hand (pipe spec, survey dates...). */
   extra: EventRecord[];
+  /** Events: rows are spans (start KP, end KP, length, height) written as these two codes. */
+  span?: { start: string; end: string };
+  /** Events: code pairs drawn as linked events. */
+  links: EventLink[];
 }
 
 const SKIP_SERIES = ['KP', 'GRIDKP', 'DCC', 'EAST', 'NORTH', 'X', 'Y', 'CHAINAGE', 'TIME', 'TOP', 'BOP'];
@@ -72,7 +89,7 @@ export const dataRows = (t: Table | null, m: Pick<Mapping, 'header' | 'skip'>) =
 
 /** Best first guess at the column mapping for a table. */
 export function defaultMapping(target: ImportTarget, t: Table | null): Mapping {
-  const m: Mapping = { skip: 0, header: false, cols: {}, series: [], kpUnit: 'km', cpStyle: 'ticks', sheet: 0, extra: [] };
+  const m: Mapping = { skip: 0, header: false, cols: {}, series: [], kpUnit: 'km', cpStyle: 'ticks', sheet: 0, extra: [], links: [] };
   if (!t || !t.rows.length) {
     if (target === 'trans') m.cols = { ...VW_RAW };
     return m;
@@ -81,7 +98,16 @@ export function defaultMapping(target: ImportTarget, t: Table | null): Mapping {
   m.header = h >= 0;
   m.skip = Math.max(0, h);
   const rows = t.rows.slice(m.skip);
-  m.cols = guessColumns(rows, m.header, FIELDS[target] ?? []);
+  // A listing of spans (start and end KP per row) is a freespan / burial sheet.
+  if (target === 'events' && m.header) {
+    const names = rows[0].map((c) => c.toUpperCase().replace(/[^A-Z]/g, ''));
+    if (names.some((n) => n.startsWith('START')) && names.some((n) => n.startsWith('END'))) {
+      const [a, b] = spanCodes(t.name);
+      m.span = { start: a, end: b };
+      m.links = [newLink(a, b)];
+    }
+  }
+  m.cols = guessColumns(rows, m.header, fieldsFor(target, m));
   const data = dataRows(t, m);
   const width = Math.max(...data.slice(0, 20).map((r) => r.length), 0);
   const numericCols = Array.from({ length: width }, (_, i) => i).filter(
@@ -134,7 +160,7 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
   const kpScale = m.kpUnit === 'km' ? 1000 : 1;
   const data = dataRows(t, m);
   const col = (k: string) => m.cols[k];
-  const need = (FIELDS[target] ?? []).filter((f) => f.required && col(f.key) === undefined);
+  const need = fieldsFor(target, m).filter((f) => f.required && col(f.key) === undefined);
   if (t && need.length) return `Pick a column for ${need.map((f) => f.label).join(' and ')}.`;
 
   if (target === 'route') {
@@ -142,11 +168,11 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
       const pool = lw.lines.filter((_, i) => !m.layer || lw.layers[i] === m.layer);
       if (!pool.length) return 'That layer has no lines.';
       const longest = pool.reduce((a, b) => (polyLength(b) > polyLength(a) ? b : a));
-      return { ...base, kind: 'route', route: makeRoute(name, Array.from(longest)) };
+      return { ...base, kind: 'route', route: makeRoute(name, Array.from(longest)), width: 0.35 };
     }
     const en = eastNorth(data, col('e'), col('n'));
     if (en.length < 4) return 'Found fewer than two points with easting and northing.';
-    return { ...base, kind: 'route', route: makeRoute(name, en) };
+    return { ...base, kind: 'route', route: makeRoute(name, en), width: 0.35 };
   }
   if (target === 'plan' || target === 'siteplan' || target === 'asbuilt') {
     let work = lw;
@@ -180,7 +206,7 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
       const color = role === 'line' ? SERIES_COLOURS[extra++ % SERIES_COLOURS.length] : '#e00000';
       return { name: header[c] || `Column ${c + 1}`, values: new Float64Array(cols[j]), color };
     });
-    return { ...base, kind: 'long', kp: new Float64Array(kp), series, top: hasTop ? 0 : undefined, bop: hasBop ? (hasTop ? 1 : 0) : undefined };
+    return { ...base, kind: 'long', kp: new Float64Array(kp), series, top: hasTop ? 0 : undefined, bop: hasBop ? (hasTop ? 1 : 0) : undefined, fill: '#6b6b6b' };
   }
   if (target === 'trans') {
     const c = { ...VW_RAW, ...m.cols };
@@ -193,7 +219,18 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
   }
   if (target === 'events') {
     const records: EventRecord[] = [];
-    for (const r of data) {
+    if (m.span) {
+      for (const r of data) {
+        const a = num(r[col('start')]);
+        const b = num(r[col('end')]);
+        if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
+        const length = col('length') !== undefined ? num(r[col('length')]) : NaN;
+        const height = col('height') !== undefined ? num(r[col('height')]) : NaN;
+        records.push({ kp: a * kpScale, code: m.span.start, value: '', length: Number.isFinite(length) ? length : undefined, height: Number.isFinite(height) ? height : undefined });
+        records.push({ kp: b * kpScale, code: m.span.end, value: '' });
+      }
+    }
+    for (const r of m.span ? [] : data) {
       const k = num(r[col('kp')]);
       const code = (r[col('code')] ?? '').trim();
       if (!Number.isFinite(k) || !code) continue;
@@ -201,7 +238,7 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
     }
     records.push(...m.extra.filter((e) => e.code.trim() && Number.isFinite(e.kp)));
     if (!records.length) return 'No rows with both a KP and a code.';
-    return { ...base, kind: 'events', records, labels: true };
+    return { ...base, kind: 'events', records, labels: true, font: { ...DEFAULT_FONT }, links: m.links };
   }
   if (target === 'cp') {
     const kp: number[] = [];
@@ -216,7 +253,7 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
     }
     if (!kp.length) return 'No rows with both a KP and a reading.';
     const order = kp.map((_, i) => i).sort((a, b) => kp[a] - kp[b]);
-    return { ...base, kind: 'cp', kp: new Float64Array(order.map((i) => kp[i])), mv: new Float64Array(order.map((i) => mv[i])), style: m.cpStyle };
+    return { ...base, kind: 'cp', kp: new Float64Array(order.map((i) => kp[i])), mv: new Float64Array(order.map((i) => mv[i])), style: m.cpStyle, font: { ...DEFAULT_FONT }, symbol: 'circle' };
   }
   return 'This file type is not handled here.';
 }
@@ -224,7 +261,7 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
 export function transDataset(base: { id: string; name: string; target: ImportTarget; visible: boolean; color: string }, profiles: CrossProfile[]): Dataset | string {
   if (!profiles.length) return 'No cross profiles found: check the KP and raw point columns.';
   profiles.sort((a, b) => a.kp - b.kp);
-  return { ...base, kind: 'trans', kp: new Float64Array(profiles.map((p) => p.kp)), profiles, every: 0, pipeColor: '#e00000' };
+  return { ...base, kind: 'trans', kp: new Float64Array(profiles.map((p) => p.kp)), profiles, every: 0, pipeColor: '#e00000', pipeFill: '#bdbdbd' };
 }
 
 function eastNorth(data: string[][], ce: number, cn: number): number[] {
@@ -275,6 +312,8 @@ export interface MappingPreset {
   series: (string | number)[];
   extra: EventRecord[];
   sheetName?: string;
+  span?: Mapping['span'];
+  links?: EventLink[];
 }
 
 const PRESET_KEY = 'maha.mappingPresets';
@@ -309,6 +348,8 @@ export function toPreset(name: string, target: ImportTarget, t: Table | null, m:
     series: m.series.map(ref),
     extra: m.extra,
     sheetName: t?.name,
+    span: m.span,
+    links: m.links,
   };
 }
 
@@ -317,7 +358,7 @@ export function fromPreset(p: MappingPreset, tables: Table[] | undefined, curren
   const sheet = Math.max(0, tables?.findIndex((t) => t.name === p.sheetName) ?? -1);
   const useSheet = tables && p.sheetName && tables.some((t) => t.name === p.sheetName) ? sheet : current.sheet;
   const t = tables?.[useSheet] ?? null;
-  const m: Mapping = { ...current, sheet: useSheet, skip: p.skip, header: p.header, kpUnit: p.kpUnit, cpStyle: p.cpStyle, extra: p.extra ?? [] };
+  const m: Mapping = { ...current, sheet: useSheet, skip: p.skip, header: p.header, kpUnit: p.kpUnit, cpStyle: p.cpStyle, extra: p.extra ?? [], span: p.span, links: p.links ?? [] };
   const h = headerOf(t, m).map((x) => x.trim().toUpperCase());
   const find = (ref: string | number) => (typeof ref === 'number' ? ref : h.indexOf(ref.trim().toUpperCase()));
   m.cols = {};

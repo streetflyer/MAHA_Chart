@@ -997,3 +997,76 @@ table.preview .mapped {
   top: 0;
   right: 0;
 }
+.style-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.style-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: end;
+}
+.style-row .field {
+  flex: 1 1 110px;
+  min-width: 0;
+}
+.colour-field input[type='color'] {
+  width: 100%;
+  min-width: 44px;
+  height: 28px;
+  padding: 1px;
+}
+.with-suffix {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.with-suffix input {
+  width: 100%;
+  min-width: 50px;
+}
+.links-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+.links-editor h4 {
+  margin: 6px 0 0;
+}
+.links-editor > button {
+  align-self: flex-start;
+}
+.link-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 6px;
+  align-items: end;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.link-row .field.wide {
+  grid-column: span 2;
+}
+.link-row > button {
+  justify-self: end;
+}
+.sheet-picks .checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.span-opt {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+svg.import-preview {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}

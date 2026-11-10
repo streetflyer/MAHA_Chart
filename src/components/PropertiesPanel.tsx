@@ -11,6 +11,9 @@ import { useSurvey } from '../state/surveyData';
 import { TARGETS, targetInfo, type Dataset, type TextMode } from '../model/datasets';
 import { codeMatcher, defaultRowCodes, isKpRow, rowCodes } from '../model/events';
 import { useImport } from './ImportDialog';
+import { FontControls, LinksEditor, StyleControls, applyStyle, styleOf } from './DataStyleControls';
+import { DEFAULT_LEGEND_STYLE, dataLegend, type DataLegendItem } from '../model/legendData';
+import { useLegendItems } from './PanelContent';
 import { keyplanStyle } from './Keyplan';
 import { planStyle } from './PlanView';
 
@@ -431,16 +434,84 @@ function FontEditor({ p }: { p: Panel }) {
   );
 }
 
+/** Colour picked on a data legend line: it is the data's colour, so change it there. */
+function setDataColour(it: DataLegendItem, color: string) {
+  const sv = useSurvey.getState();
+  const d = sv.datasets.find((x) => x.id === it.datasetId);
+  if (!d || !it.colorOf) return;
+  if (it.colorOf === 'color') return sv.updateDataset(d.id, { color });
+  if (d.kind === 'long') {
+    const pick = (i: number) => (it.colorOf === 'pipe' ? i === d.top || i === d.bop : it.colorOf === `series:${i}`);
+    return sv.updateDataset(d.id, { series: d.series.map((x, i) => (pick(i) ? { ...x, color } : x)) });
+  }
+  if (d.kind === 'events' && it.colorOf.startsWith('link:')) {
+    const n = Number(it.colorOf.slice(5));
+    sv.updateDataset(d.id, { links: d.links.map((l, i) => (i === n ? { ...l, color } : l)) });
+  }
+}
+
 function LegendEditor({ p }: { p: Panel }) {
   const s = useEditor.getState();
   const items = p.legend ?? [];
   const setItems = (legend: LegendItem[]) => s.updatePanel(p.id, { legend });
   const update = (id: string, patch: Partial<LegendItem>) => setItems(items.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   const [preset, setPreset] = useState('0');
+  const { data } = useLegendItems(p);
+  const datasets = useSurvey((x) => x.datasets);
+  const ld = p.legendData ?? { on: true, overrides: {} };
+  const setLd = (patch: Partial<typeof ld>) => s.updatePanel(p.id, { legendData: { ...ld, ...patch } });
+  const ls = { ...DEFAULT_LEGEND_STYLE, ...p.legendStyle };
+  const setLs = (patch: Partial<typeof ls>) => s.updatePanel(p.id, { legendStyle: { ...ls, ...patch } });
   return (
     <>
+      <h4>Legend text</h4>
+      <FontControls
+        font={{ family: ls.family, size: ls.size, color: ls.color, bold: ls.bold, italic: ls.italic }}
+        onChange={(f) => setLs({ family: f.family, size: f.size, color: f.color, bold: f.bold, italic: f.italic })}
+      />
+      <div className="style-row">
+        <Field label="Heading height" type="number" step={0.1} suffix="mm" value={ls.headSize} onCommit={(v) => num(v) > 0 && setLs({ headSize: num(v) })} />
+        <label className="field colour-field">
+          <span>Heading colour</span>
+          <input type="color" value={ls.headColor} onChange={(e) => setLs({ headColor: e.target.value })} />
+        </label>
+        <Field label="Event codes height" type="number" step={0.1} suffix="mm" value={ls.codeSize} onCommit={(v) => num(v) > 0 && setLs({ codeSize: num(v) })} />
+        <label className="field colour-field">
+          <span>Event codes colour</span>
+          <input type="color" value={ls.codeColor} onChange={(e) => setLs({ codeColor: e.target.value })} />
+        </label>
+      </div>
+
+      <h4>From imported data</h4>
+      <label className="check">
+        <input type="checkbox" checked={ld.on} onChange={(e) => setLd({ on: e.target.checked })} />
+        Build the legend from the imported data, in the colours it is drawn with
+      </label>
+      {ld.on && data.length === 0 && <p className="hint">Import data and its legend lines appear here.</p>}
+      {ld.on && (
+        <ul className="legend-list">
+          {dataLegend(datasets, '#e00000').map((it) => {
+            const o = ld.overrides[it.key] ?? {};
+            const setO = (patch: { label?: string; hidden?: boolean }) => setLd({ overrides: { ...ld.overrides, [it.key]: { ...o, ...patch } } });
+            return (
+              <li key={it.key}>
+                <div className="legend-row">
+                  <input type="checkbox" checked={!o.hidden} title="Show in the legend" onChange={(e) => setO({ hidden: !e.target.checked })} />
+                  {it.datasetId && <input type="color" value={it.color} title="Colour (changes the data too)" onChange={(e) => setDataColour(it, e.target.value)} />}
+                  <input
+                    defaultValue={o.label ?? it.label}
+                    key={o.label ?? it.label}
+                    onBlur={(e) => e.target.value !== (o.label ?? it.label) && setO({ label: e.target.value })}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+                  />
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
       <h4>Legend items</h4>
-      <p className="muted">Items marked "plan view" will also be filled in automatically from the plan view layers once data is loaded.</p>
+      <p className="muted">{ld.on ? 'Your own items. Preset items in a group that has imported data step aside for the data lines.' : 'Items drawn in the legend.'}</p>
       <ul className="legend-list">
         {items.map((it, i) => (
           <li key={it.id}>
@@ -486,11 +557,12 @@ function LegendEditor({ p }: { p: Panel }) {
             </option>
           ))}
         </select>
-        <button onClick={() => setItems([...items, { ...LEGEND_PRESETS[Number(preset)], id: newId('lg') }])}>Add preset</button>
+        <button onClick={() => setItems([...items, { ...LEGEND_PRESETS[Number(preset)], id: newId('lg'), custom: true }])}>Add preset</button>
       </div>
-      <button onClick={() => setItems([...items, { id: newId('lg'), group: 'plan', symbol: 'line', label: 'New legend item', color: '#111111' }])}>
+      <button onClick={() => setItems([...items, { id: newId('lg'), group: 'plan', symbol: 'line', label: 'New legend item', color: '#111111', custom: true }])}>
         Add your own item
       </button>
+      {ld.on && datasets.some((d) => d.kind === 'events') && <p className="hint">Event code definitions come from the imported events; untick “Build the legend from the imported data” to type your own.</p>}
       <Field label="Event code definitions (code, Tab, description)" multiline value={p.eventCodes ?? ''} onCommit={(v) => s.updatePanel(p.id, { eventCodes: v })} />
     </>
   );
@@ -574,11 +646,7 @@ function PlanStyleEditor({ p }: { p: Panel }) {
   );
   return (
     <>
-      <h4>Route</h4>
-      <div className="row2">
-        {colour('Route colour', 'routeColor')}
-        {size('Route width', 'routeWidth')}
-      </div>
+      <p className="hint">Runline and As Built colours and widths are set under Data above.</p>
       <h4>KP blocks</h4>
       <label className="check">
         <input type="checkbox" checked={st.showKp} onChange={(e) => set({ showKp: e.target.checked })} /> Show KP blocks
@@ -652,7 +720,6 @@ function DataList({ panelType }: { panelType?: string }) {
           <li key={d.id}>
             <div className="data-row">
               <input type="checkbox" checked={d.visible} title="Show" onChange={(e) => sv.updateDataset(d.id, { visible: e.target.checked })} />
-              {d.kind !== 'long' && <input type="color" value={d.color} title="Colour" onChange={(e) => sv.updateDataset(d.id, { color: e.target.value })} />}
               <span className="fname" title={d.name}>
                 {d.name}
               </span>
@@ -692,9 +759,7 @@ function DataList({ panelType }: { panelType?: string }) {
                 {d.target === 'plan' ? 'Also show in the key plan' : 'Also show in the plan view'}
               </label>
             )}
-            {d.kind === 'linework' && (
-              <Field label="Line width" type="number" step={0.05} suffix="mm" value={d.width} onCommit={(v) => num(v) > 0 && sv.updateDataset(d.id, { width: num(v) })} />
-            )}
+            <StyleControls target={d.target} style={styleOf(d)} onChange={(patch) => sv.updateDataset(d.id, applyStyle(d, { ...styleOf(d), ...patch }))} />
             {d.kind === 'long' && (
               <div className="checks">
                 {d.series.map((se, i) => (
@@ -711,10 +776,7 @@ function DataList({ panelType }: { panelType?: string }) {
             )}
             {d.kind === 'events' && (
               <>
-                <label className="check">
-                  <input type="checkbox" checked={d.labels} onChange={(e) => sv.updateDataset(d.id, { labels: e.target.checked })} />
-                  Label single events with their code
-                </label>
+                <LinksEditor links={d.links} onChange={(links) => sv.updateDataset(d.id, { links })} codes={[...new Set(d.records.map((r) => r.code.toUpperCase()))].sort()} />
                 {events && <UnplacedCodes d={d} rows={events.rows ?? []} />}
               </>
             )}
