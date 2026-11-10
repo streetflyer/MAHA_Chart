@@ -124,7 +124,14 @@ function PlanPlaceholder({ p, northUp, tokens }: { p: Panel; northUp: boolean; t
   );
 }
 
+const PANEL_TARGET: Record<string, string> = { longProfile: 'long', transProfile: 'trans', cp: 'cp', events: 'events' };
+
+/** True once data for this kind of panel has been imported (placeholders step aside). */
+const usePanelHasData = (p: Panel) => useSurvey((s) => s.datasets.some((d) => d.visible && d.target === PANEL_TARGET[p.type]));
+
 function ProfilePlaceholder({ p, label }: { p: Panel; label: string }) {
+  const has = usePanelHasData(p);
+  if (has) return null;
   const ticks = [];
   const n = 10;
   for (let i = 1; i < n; i++) {
@@ -140,10 +147,12 @@ function ProfilePlaceholder({ p, label }: { p: Panel; label: string }) {
 }
 
 function EventRows({ p, onRowDoubleClick }: Pick<Props, 'onRowDoubleClick'> & { p: Panel }) {
+  const hasEvents = usePanelHasData(p);
   const rows = p.rows ?? [];
   if (!rows.length) return <Hint p={p} top={p.y} text="No rows: right-click to add one" />;
   const rh = p.h / rows.length;
   const lw = p.labelWidth ?? 30;
+  const has = hasEvents;
   return (
     <g>
       <line className="frame-line" x1={p.x + lw} y1={p.y} x2={p.x + lw} y2={p.y + p.h} />
@@ -164,7 +173,7 @@ function EventRows({ p, onRowDoubleClick }: Pick<Props, 'onRowDoubleClick'> & { 
           >
             <rect className="row-hit" x={p.x} y={y} width={lw} height={rh} />
             {i > 0 && <line className="frame-line" x1={p.x} y1={y} x2={p.x + p.w} y2={y} />}
-            <line className="row-axis" x1={p.x + lw + 2} y1={y + rh / 2} x2={p.x + p.w - 2} y2={y + rh / 2} />
+            {!has && <line className="row-axis" x1={p.x + lw + 2} y1={y + rh / 2} x2={p.x + p.w - 2} y2={y + rh / 2} />}
             <text x={p.x + lw / 2} y={y + rh / 2 - ((lines.length - 1) * lh) / 2} fontSize={fontSize(cap)} textAnchor="middle" dominantBaseline="middle">
               {lines.map((l, j) => (
                 <tspan key={j} x={p.x + lw / 2} dy={j === 0 ? 0 : lh}>

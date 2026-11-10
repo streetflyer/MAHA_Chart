@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { newId } from '../model/ids';
 import { PAPER_SIZES } from '../model/paper';
 import { formatScale, sheetCount } from '../model/scale';
-import type { ChartTemplate, Panel, PaperSizeName, TextItem } from '../model/types';
+import type { ChartTemplate, EventRow, Panel, PaperSizeName, TextItem } from '../model/types';
 import { LEGEND_GROUPS, LEGEND_PRESETS, LEGEND_SYMBOLS } from '../model/presets';
 import type { ImageItem, KeyplanStyle, PlanStyle, LegendGroup, LegendItem, LegendSymbol, TextStyle } from '../model/types';
 import { PANEL_DEFAULTS } from '../state/panelDefaults';
 import { useEditor } from '../state/store';
 import { useSurvey } from '../state/surveyData';
-import { TARGETS, targetInfo, type TextMode } from '../model/datasets';
+import { TARGETS, targetInfo, type Dataset, type TextMode } from '../model/datasets';
+import { codeMatcher, defaultRowCodes, isKpRow, rowCodes } from '../model/events';
 import { useImport } from './ImportDialog';
 import { keyplanStyle } from './Keyplan';
 import { planStyle } from './PlanView';
@@ -309,6 +310,20 @@ function RowsEditor({ p }: { p: Panel }) {
             <button className="icon" title="Delete row" onClick={() => setRows(rows.filter((x) => x.id !== r.id))}>
               ×
             </button>
+            {p.type === 'events' && !isKpRow(r) && (
+              <input
+                key={`${r.id}:${rowCodes(r)}`}
+                className="row-codes"
+                title="Event codes drawn in this row, comma separated; * matches anything (D.*)"
+                placeholder="Event codes, e.g. AN.*"
+                defaultValue={rowCodes(r)}
+                onBlur={(e) => {
+                  const v = e.target.value.trim().toUpperCase();
+                  if (v !== rowCodes(r)) setRows(rows.map((x) => (x.id === r.id ? { ...x, codes: v === defaultRowCodes(r.label) ? undefined : v } : x)));
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+              />
+            )}
           </li>
         ))}
       </ol>
@@ -613,6 +628,14 @@ function PlanStyleEditor({ p }: { p: Panel }) {
 }
 
 /** Imported files drawn in panels of this type, with show/hide, colour and remove. */
+/** Codes in an events file that no row of the events panel takes, so the user can add them to a row. */
+function UnplacedCodes({ d, rows }: { d: Extract<Dataset, { kind: 'events' }>; rows: EventRow[] }) {
+  const matchers = rows.filter((r) => !isKpRow(r)).map((r) => codeMatcher(rowCodes(r)));
+  const codes = [...new Set(d.records.map((e) => e.code.toUpperCase()))].filter((c) => !matchers.some((m) => m(c)));
+  if (!codes.length) return null;
+  return <p className="hint warn">Not in any row: {codes.join(', ')}. Add them to a row’s codes in the events panel.</p>;
+}
+
 function DataList({ panelType }: { panelType?: string }) {
   const datasets = useSurvey((x) => x.datasets);
   const events = useEditor((x) => x.template?.panels.find((p) => p.type === 'events'));
@@ -686,24 +709,31 @@ function DataList({ panelType }: { panelType?: string }) {
                 ))}
               </div>
             )}
-            {d.kind === 'events' && events && (
-              <label className="field">
-                <span>Row</span>
-                <select value={d.rowId ?? ''} onChange={(e) => sv.updateDataset(d.id, { rowId: e.target.value })}>
-                  {(events.rows ?? []).map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            {d.kind === 'events' && (
+              <>
+                <label className="check">
+                  <input type="checkbox" checked={d.labels} onChange={(e) => sv.updateDataset(d.id, { labels: e.target.checked })} />
+                  Label single events with their code
+                </label>
+                {events && <UnplacedCodes d={d} rows={events.rows ?? []} />}
+              </>
+            )}
+            {d.kind === 'trans' && (
+              <Field
+                label="Draw a profile every"
+                type="number"
+                step={10}
+                suffix="m (0 = auto)"
+                value={d.every}
+                onCommit={(v) => num(v) >= 0 && sv.updateDataset(d.id, { every: num(v) })}
+              />
             )}
             {d.kind === 'cp' && (
               <label className="field">
                 <span>Draw as</span>
                 <select value={d.style} onChange={(e) => sv.updateDataset(d.id, { style: e.target.value as 'line' | 'ticks' })}>
+                  <option value="ticks">Ticks with readings</option>
                   <option value="line">Line (gradient CP)</option>
-                  <option value="ticks">Ticks (stab CP)</option>
                 </select>
               </label>
             )}

@@ -1,0 +1,42 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<rlxp VERSION="">
+  <ContainerGuid>e42f119c-3b7f-483a-9dc5-fd0d8b680313</ContainerGuid>
+  <ContainerRev>0</ContainerRev>
+  <NMRunline>
+    <RUNLINE_ENTRY>
+      <NAME>0</NAME>
+      <GUID>da65ceeb-bf2e-45d5-899c-a50d1a6bc65b</GUID>
+      <RevisionNumber>0</RevisionNumber>
+      <VISIBLE_0>TRUE</VISIBLE_0>
+      <SyncVisibility_0>TRUE</SyncVisibility_0>
+      <Color>255 173 216 230</Color>
+      <Weight>2</Weight>
+      <PointSize>0.01</PointSize>
+      <RuninKP>0</RuninKP>
+      <RunoutKP>0</RunoutKP>
+      <m_DisplayLineStyle>65535</m_DisplayLineStyle>
+      <m_RunInOutcolor>50 173 216 230</m_RunInOutcolor>
+      <m_DisplayLineWidth>1</m_DisplayLineWidth>
+      <ID>1</ID>
+      <angleOffset>0</angleOffset>
+      <laybackDistance>0</laybackDistance>
+      <crosslineKpOffset>0</crosslineKpOffset>
+      <linespace>0</linespace>
+      <parallelOffset>0</parallelOffset>
+      <DrawAttributeWhenClose>FALSE</DrawAttributeWhenClose>
+      <DrawDirection>TRUE</DrawDirection>
+      <_drawName>FALSE</_drawName>
+      <_drawSegmentIDs>FALSE</_drawSegmentIDs>
+      <RLXString>"0"; 64; 0; "Meter"
+310201.527; 534775.828; 310379.606; 529052.104; 0.00000000; 5.72649360; 0.00000000; 1; 64
+310379.606; 529052.104; 310416.091; 528585.082; 5.72649360; 6.19511005; -4999.99130575; 1; 128
+310416.091; 528585.082; 311701.823; 518338.433; 6.19511005; 16.52210963; 0.00000000; 1; 64
+</RLXString>
+      <ZPoints>0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0</ZPoints>
+      <Type>STRAIGHT</Type>
+      <StartKPRange>0</StartKPRange>
+      <EndKPRange>0</EndKPRange>
+      <Epsilon>0.003</Epsilon>
+    </RUNLINE_ENTRY>
+  </NMRunline>
+</rlxp>

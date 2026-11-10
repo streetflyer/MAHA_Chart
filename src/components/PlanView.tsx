@@ -6,7 +6,7 @@ import { useSurvey } from '../state/surveyData';
 
 export { DEFAULT_PLAN, planStyle };
 import { niceGrid } from './Keyplan';
-import { routePath } from './linework';
+import { linesPath, routePath } from './linework';
 import { LineworkLayer } from './LineworkLayer';
 import { lineworkFor } from '../model/datasets';
 import { fontSize, measureText } from './svgText';
@@ -39,6 +39,12 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
 
   const view = useMemo(() => (geo ? { project: gridToPlan(geo, rect), area: frameBounds(geo) } : null), [geo, rect]);
   const routeD = useMemo(() => (view && route ? routePath(route, view.project, 0.05) : ''), [view, route]);
+  // Runline before KP 0 (a platform approach): drawn, but not part of the KP line.
+  const before = useSurvey((s) => (s.reversed ? undefined : s.datasets.find((d) => d.kind === 'route' && d.visible)));
+  const beforeD = useMemo(
+    () => (view && before?.kind === 'route' && before.before ? linesPath([before.before], view.area, view.project, 0.05) : ''),
+    [view, before],
+  );
 
   if (!geo || !view) return null;
   const project = view.project;
@@ -53,6 +59,7 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
       <g clipPath={`url(#${clipId})`}>
         <LineworkLayer sets={sets} area={view.area} project={project} mmPerM={1000 / template.scale.horizontal} uAngle={(Math.atan2(geo.u[1], geo.u[0]) * 180) / Math.PI} />
         {st.showGrid && <PlanGrid geo={geo} rect={rect} st={st} />}
+        {beforeD && <path d={beforeD} fill="none" stroke={st.routeColor} strokeWidth={st.routeWidth} strokeDasharray="2 1" />}
         {routeD && <path d={routeD} fill="none" stroke={st.routeColor} strokeWidth={st.routeWidth} strokeLinejoin="round" />}
         {route && st.showKp && <KpBlocks template={template} project={project} rect={rect} st={st} />}
       </g>

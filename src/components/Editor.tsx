@@ -13,6 +13,7 @@ import { fitInto, readImageFile } from './imageImport';
 import { titleInsideHeight } from './PanelContent';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { askConfirm, askText } from './Dialog';
+import { ThemeButton } from './ThemeButton';
 import { ImportDialog, useImport } from './ImportDialog';
 import { PropertiesPanel } from './PropertiesPanel';
 import { SheetView, type ContextTarget } from './SheetView';
@@ -348,6 +349,7 @@ export function Editor({ onExit }: { onExit(): void }) {
             />{' '}
             Dark sheet
           </label>
+          <ThemeButton />
         </div>
       </header>
       <div className="workspace">

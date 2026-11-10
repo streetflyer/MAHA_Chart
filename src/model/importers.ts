@@ -1,8 +1,9 @@
-import { SERIES_COLOURS, type Dataset, type ImportTarget } from './datasets';
+import { type CrossProfile, VW_RAW, profileFromRow } from './crossProfile';
+import { SERIES_COLOURS, type Dataset, type EventRecord, type ImportTarget } from './datasets';
 import type { Linework } from './dxf';
 import { newId } from './ids';
 import { makeRoute } from './route';
-import { guessColumns, hasHeader, isNumber, type Table } from './tables';
+import { findHeaderRow, guessColumns, isNumber, type Table } from './tables';
 
 export interface FieldSpec {
   key: string;
@@ -11,98 +12,127 @@ export interface FieldSpec {
   required?: boolean;
 }
 
+const KP_NAMES = ['KP', 'GRIDKP', 'CHAINAGE'];
+const EN = (): FieldSpec[] => [
+  { key: 'e', label: 'Easting', names: ['EAST', 'E', 'X'], required: true },
+  { key: 'n', label: 'Northing', names: ['NORTH', 'N', 'Y'], required: true },
+];
+
 /** Columns each kind of table import asks for. */
 export const FIELDS: Partial<Record<ImportTarget, FieldSpec[]>> = {
-  route: [
-    { key: 'e', label: 'Easting', names: ['EAST', 'E', 'X'], required: true },
-    { key: 'n', label: 'Northing', names: ['NORTH', 'N', 'Y'], required: true },
+  route: EN(),
+  asbuilt: EN(),
+  plan: EN(),
+  long: [
+    { key: 'kp', label: 'KP', names: KP_NAMES, required: true },
+    { key: 'top', label: 'Top of pipe (TOP)', names: ['TOP'] },
+    { key: 'bop', label: 'Bottom of pipe (BOP)', names: ['BOP'] },
   ],
-  plan: [
-    { key: 'e', label: 'Easting', names: ['EAST', 'E', 'X'], required: true },
-    { key: 'n', label: 'Northing', names: ['NORTH', 'N', 'Y'], required: true },
+  trans: [
+    { key: 'kp', label: 'KP', names: KP_NAMES, required: true },
+    { key: 'diameter', label: 'Pipe diameter', names: ['DIAM'], required: true },
+    { key: 'toPipe', label: 'Distance to pipe', names: ['DISTANCETOPIPE'], required: true },
+    { key: 'pipeDz', label: 'Delta depth to pipe', names: ['DELTADEPTH'], required: true },
+    { key: 'count', label: 'Number of raw points', names: ['NUMBEROF'], required: true },
+    { key: 'first', label: 'First raw point dx', names: ['RAWPOINT'], required: true },
   ],
-  long: [{ key: 'kp', label: 'KP', names: ['KP', 'CHAINAGE'], required: true }],
-  trans: [{ key: 'kp', label: 'KP', names: ['KP', 'CHAINAGE'], required: true }],
   events: [
-    { key: 'kp', label: 'KP', names: ['KP', 'CHAINAGE'], required: true },
-    { key: 'code', label: 'Event code', names: ['CODE', 'EVENT', 'TYPE'], required: true },
-    { key: 'value', label: 'Description', names: ['VALUE', 'DESC', 'COMMENT', 'REMARK'] },
+    { key: 'code', label: 'Event code', names: ['CODE', 'EVENTCODE', 'EVENTTYPE'], required: true },
+    { key: 'kp', label: 'KP', names: KP_NAMES, required: true },
+    { key: 'value', label: 'Description', names: ['VALUE', 'DESC', 'EVENTDESC', 'COMMENT', 'REMARK'] },
   ],
   cp: [
-    { key: 'kp', label: 'KP', names: ['KP', 'CHAINAGE'], required: true },
+    { key: 'kp', label: 'KP', names: KP_NAMES, required: true },
     { key: 'mv', label: 'CP reading (mV)', names: ['MV', 'CP', 'POTENTIAL', 'READING'], required: true },
   ],
 };
 
 export interface Mapping {
+  /** Rows above the column names (titles in a workbook). */
+  skip: number;
   header: boolean;
   cols: Record<string, number>;
-  /** Long profile: the depth columns to draw. */
+  /** Long profile: extra (seabed) columns to draw as lines. */
   series: number[];
   kpUnit: 'km' | 'm';
-  /** Events: which row of the events panel. */
-  rowId?: string;
   /** CP: gradient line or stab ticks. */
   cpStyle: 'line' | 'ticks';
   sheet: number;
   /** Route from DXF: layer holding the line. */
   layer?: string;
+  /** Events typed in by hand (pipe spec, survey dates...). */
+  extra: EventRecord[];
 }
 
-const SKIP_SERIES = ['KP', 'DCC', 'EAST', 'NORTH', 'X', 'Y', 'CHAINAGE', 'TIME'];
+const SKIP_SERIES = ['KP', 'GRIDKP', 'DCC', 'EAST', 'NORTH', 'X', 'Y', 'CHAINAGE', 'TIME', 'TOP', 'BOP'];
+
+/** Header names of a table as mapped, upper case letters only. */
+export const headerOf = (t: Table | null, m: Pick<Mapping, 'header' | 'skip'>) => (t && m.header ? (t.rows[m.skip] ?? []) : []);
+export const dataRows = (t: Table | null, m: Pick<Mapping, 'header' | 'skip'>) => (t ? t.rows.slice(m.skip + (m.header ? 1 : 0)) : []);
 
 /** Best first guess at the column mapping for a table. */
 export function defaultMapping(target: ImportTarget, t: Table | null): Mapping {
-  const m: Mapping = { header: false, cols: {}, series: [], kpUnit: 'km', cpStyle: 'line', sheet: 0 };
-  if (!t || !t.rows.length) return m;
-  const rows = t.rows;
-  m.header = hasHeader(rows);
+  const m: Mapping = { skip: 0, header: false, cols: {}, series: [], kpUnit: 'km', cpStyle: 'ticks', sheet: 0, extra: [] };
+  if (!t || !t.rows.length) {
+    if (target === 'trans') m.cols = { ...VW_RAW };
+    return m;
+  }
+  const h = findHeaderRow(t.rows);
+  m.header = h >= 0;
+  m.skip = Math.max(0, h);
+  const rows = t.rows.slice(m.skip);
   m.cols = guessColumns(rows, m.header, FIELDS[target] ?? []);
-  const data = rows.slice(m.header ? 1 : 0);
-  const numericCols = (rows[m.header ? 1 : 0] ?? []).map((_, i) => i).filter((i) => data.slice(0, 20).every((r) => r[i] === undefined || r[i] === '' || isNumber(r[i])) && data.slice(0, 20).some((r) => isNumber(r[i])));
+  const data = dataRows(t, m);
+  const width = Math.max(...data.slice(0, 20).map((r) => r.length), 0);
+  const numericCols = Array.from({ length: width }, (_, i) => i).filter(
+    (i) => data.slice(0, 20).every((r) => r[i] === undefined || r[i] === '' || isNumber(r[i])) && data.slice(0, 20).some((r) => isNumber(r[i])),
+  );
   if (!m.header) {
     // Common headerless layouts.
-    if (target === 'route' || target === 'plan') {
+    if (target === 'route' || target === 'plan' || target === 'asbuilt') {
       const big = numericCols.filter((i) => Math.abs(Number(data[0]?.[i])) > 1000);
-      if (big.length >= 2) m.cols = { e: big[0], n: big[1] };
-      else m.cols = { e: numericCols[0] ?? 0, n: numericCols[1] ?? 1 };
-    } else if (target === 'trans') m.cols = { kp: 2 };
+      m.cols = big.length >= 2 ? { e: big[0], n: big[1] } : { e: numericCols[0] ?? 0, n: numericCols[1] ?? 1 };
+    } else if (target === 'trans') m.cols = { ...VW_RAW };
     else if (target === 'events') m.cols = { code: 0, kp: 1, value: 2 };
-    else if (target === 'cp' || target === 'long') m.cols = { kp: numericCols[0] ?? 0, mv: numericCols[1] ?? 1 };
+    else if (target === 'cp') m.cols = { kp: numericCols[0] ?? 0, mv: numericCols[1] ?? 1 };
+    else if (target === 'long') m.cols = { kp: numericCols[0] ?? 0 };
   }
+  if (target === 'trans') m.cols = { ...VW_RAW, ...m.cols };
   if (target === 'long') {
-    const names = m.header ? rows[0].map((c) => c.toUpperCase().replace(/[^A-Z]/g, '')) : [];
-    const used = new Set<number>();
-    m.series = numericCols.filter((i) => {
-      if (i === m.cols.kp) return false;
-      const n = names[i] ?? '';
-      if (!n && m.header) return false;
-      if (SKIP_SERIES.some((s) => n.startsWith(s))) return false;
-      if (used.has(i)) return false;
-      used.add(i);
-      return true;
-    });
-    // A listing usually wants top/bottom of pipe and the seabed; keep the first few by default.
-    const prefer = names.length ? m.series.filter((i) => /^(TOP|BOP|MEANSEABED|MEANADJ)$/.test(names[i])) : [];
-    if (prefer.length) m.series = prefer;
+    const names = headerOf(t, m).map((c) => c.toUpperCase().replace(/[^A-Z]/g, ''));
+    const cand = numericCols.filter((i) => i !== m.cols.kp && i !== m.cols.top && i !== m.cols.bop && !SKIP_SERIES.some((s) => (names[i] ?? '').startsWith(s)));
+    // A listing wants the seabed lines; the reference charts show mean adjacent and mean seabed.
+    const prefer = cand.filter((i) => /^MEAN(ADJ|SEABED)/.test(names[i] ?? ''));
+    m.series = prefer.length ? prefer.slice(0, 2) : [];
   }
   const kpCol = m.cols.kp;
   if (kpCol !== undefined) {
-    const vals = data.map((r) => Number(r[kpCol])).filter(Number.isFinite);
+    const vals = data.slice(0, 2000).map((r) => Number(r[kpCol])).filter(Number.isFinite);
     const max = Math.max(...vals.map(Math.abs), 0);
-    m.kpUnit = max > 500 || vals.every((v) => Number.isInteger(v)) && max > 50 ? 'm' : 'km';
+    m.kpUnit = max > 500 || (vals.every((v) => Number.isInteger(v)) && max > 50) ? 'm' : 'km';
   }
   return m;
 }
 
 const num = (s: string | undefined) => (s === undefined || s.trim() === '' ? NaN : Number(s));
 
+export const DEFAULT_COLOURS: Partial<Record<ImportTarget, string>> = {
+  route: '#e00000',
+  asbuilt: '#16a34a',
+  plan: '#1f6feb',
+  siteplan: '#8a8a8a',
+  events: '#111111',
+  cp: '#111111',
+  trans: '#222222',
+  long: '#e00000',
+};
+
 /** Turn a mapped table (or DXF linework) into a dataset ready to draw. */
 export function buildDataset(target: ImportTarget, name: string, t: Table | null, m: Mapping, lw?: Linework): Dataset | string {
   const id = newId();
-  const base = { id, name, target, visible: true, color: target === 'route' ? '#e00000' : target === 'plan' ? '#1f6feb' : '#8a8a8a' };
+  const base = { id, name, target, visible: true, color: DEFAULT_COLOURS[target] ?? '#8a8a8a' };
   const kpScale = m.kpUnit === 'km' ? 1000 : 1;
-  const data = t ? t.rows.slice(m.header ? 1 : 0) : [];
+  const data = dataRows(t, m);
   const col = (k: string) => m.cols[k];
   const need = (FIELDS[target] ?? []).filter((f) => f.required && col(f.key) === undefined);
   if (t && need.length) return `Pick a column for ${need.map((f) => f.label).join(' and ')}.`;
@@ -114,64 +144,64 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
       const longest = pool.reduce((a, b) => (polyLength(b) > polyLength(a) ? b : a));
       return { ...base, kind: 'route', route: makeRoute(name, Array.from(longest)) };
     }
-    const en: number[] = [];
-    for (const r of data) {
-      const e = num(r[col('e')]);
-      const n = num(r[col('n')]);
-      if (Number.isFinite(e) && Number.isFinite(n)) en.push(e, n);
-    }
+    const en = eastNorth(data, col('e'), col('n'));
     if (en.length < 4) return 'Found fewer than two points with easting and northing.';
     return { ...base, kind: 'route', route: makeRoute(name, en) };
   }
-  if (target === 'plan' || target === 'siteplan') {
+  if (target === 'plan' || target === 'siteplan' || target === 'asbuilt') {
     let work = lw;
     if (!work) {
-      const en: number[] = [];
-      for (const r of data) {
-        const e = num(r[col('e')]);
-        const n = num(r[col('n')]);
-        if (Number.isFinite(e) && Number.isFinite(n)) en.push(e, n);
-      }
+      const en = eastNorth(data, col('e'), col('n'));
       if (en.length < 4) return 'Found fewer than two points with easting and northing.';
       const line = new Float64Array(en);
       work = { name, lines: [line], layers: ['0'], texts: [], bounds: boundsOf(line) };
     }
-    return { ...base, kind: 'linework', lw: work, width: target === 'plan' && !lw ? 0.35 : 0.18, textMode: 'auto', textScale: 100, textHeight: 1.5 };
+    const width = target === 'asbuilt' ? 0.35 : 0.18;
+    return { ...base, kind: 'linework', lw: work, width, textMode: 'auto', textScale: 100, textHeight: 1.5 };
   }
   if (target === 'long') {
-    if (!m.series.length) return 'Tick at least one depth column to draw.';
+    const header = headerOf(t, m);
+    const wanted = [col('top'), col('bop'), ...m.series].filter((c): c is number => c !== undefined);
+    if (!wanted.length) return 'Pick the top and bottom of pipe columns, or tick a column to draw.';
     const kp: number[] = [];
-    const cols: number[][] = m.series.map(() => []);
+    const cols: number[][] = wanted.map(() => []);
     for (const r of data) {
       const k = num(r[col('kp')]);
       if (!Number.isFinite(k)) continue;
       kp.push(k * kpScale);
-      m.series.forEach((c, j) => cols[j].push(num(r[c])));
+      wanted.forEach((c, j) => cols[j].push(num(r[c])));
     }
     if (kp.length < 2) return 'Found fewer than two rows with a KP.';
-    const header = m.header && t ? t.rows[0] : [];
-    return {
-      ...base,
-      kind: 'long',
-      kp: new Float64Array(kp),
-      series: m.series.map((c, j) => ({ name: header[c] || `Column ${c + 1}`, values: new Float64Array(cols[j]), color: SERIES_COLOURS[j % SERIES_COLOURS.length] })),
-    };
+    const hasTop = col('top') !== undefined;
+    const hasBop = col('bop') !== undefined;
+    let extra = 0;
+    const series = wanted.map((c, j) => {
+      const role = j === 0 && hasTop ? 'top' : j === (hasTop ? 1 : 0) && hasBop ? 'bop' : 'line';
+      const color = role === 'line' ? SERIES_COLOURS[extra++ % SERIES_COLOURS.length] : '#e00000';
+      return { name: header[c] || `Column ${c + 1}`, values: new Float64Array(cols[j]), color };
+    });
+    return { ...base, kind: 'long', kp: new Float64Array(kp), series, top: hasTop ? 0 : undefined, bop: hasBop ? (hasTop ? 1 : 0) : undefined };
   }
   if (target === 'trans') {
-    const kp = data.map((r) => num(r[col('kp')]) * kpScale).filter(Number.isFinite);
-    if (!kp.length) return 'No KP values found.';
-    return { ...base, kind: 'trans', kp: new Float64Array(kp) };
+    const c = { ...VW_RAW, ...m.cols };
+    const profiles: CrossProfile[] = [];
+    for (const r of data) {
+      const p = profileFromRow(r, c, kpScale);
+      if (p) profiles.push(p);
+    }
+    return transDataset(base, profiles);
   }
   if (target === 'events') {
-    const records = [];
+    const records: EventRecord[] = [];
     for (const r of data) {
       const k = num(r[col('kp')]);
       const code = (r[col('code')] ?? '').trim();
       if (!Number.isFinite(k) || !code) continue;
       records.push({ kp: k * kpScale, code, value: col('value') !== undefined ? (r[col('value')] ?? '').trim() : '' });
     }
+    records.push(...m.extra.filter((e) => e.code.trim() && Number.isFinite(e.kp)));
     if (!records.length) return 'No rows with both a KP and a code.';
-    return { ...base, color: '#111111', kind: 'events', records, rowId: m.rowId };
+    return { ...base, kind: 'events', records, labels: true };
   }
   if (target === 'cp') {
     const kp: number[] = [];
@@ -185,9 +215,26 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
       }
     }
     if (!kp.length) return 'No rows with both a KP and a reading.';
-    return { ...base, color: '#2563eb', kind: 'cp', kp: new Float64Array(kp), mv: new Float64Array(mv), style: m.cpStyle };
+    const order = kp.map((_, i) => i).sort((a, b) => kp[a] - kp[b]);
+    return { ...base, kind: 'cp', kp: new Float64Array(order.map((i) => kp[i])), mv: new Float64Array(order.map((i) => mv[i])), style: m.cpStyle };
   }
   return 'This file type is not handled here.';
+}
+
+export function transDataset(base: { id: string; name: string; target: ImportTarget; visible: boolean; color: string }, profiles: CrossProfile[]): Dataset | string {
+  if (!profiles.length) return 'No cross profiles found: check the KP and raw point columns.';
+  profiles.sort((a, b) => a.kp - b.kp);
+  return { ...base, kind: 'trans', kp: new Float64Array(profiles.map((p) => p.kp)), profiles, every: 0, pipeColor: '#e00000' };
+}
+
+function eastNorth(data: string[][], ce: number, cn: number): number[] {
+  const en: number[] = [];
+  for (const r of data) {
+    const e = num(r[ce]);
+    const n = num(r[cn]);
+    if (Number.isFinite(e) && Number.isFinite(n)) en.push(e, n);
+  }
+  return en;
 }
 
 function polyLength(l: Float64Array): number {
@@ -196,7 +243,7 @@ function polyLength(l: Float64Array): number {
   return s;
 }
 
-function boundsOf(l: Float64Array) {
+export function boundsOf(l: ArrayLike<number>) {
   const b = { minE: Infinity, minN: Infinity, maxE: -Infinity, maxN: -Infinity };
   for (let i = 0; i < l.length; i += 2) {
     b.minE = Math.min(b.minE, l[i]);
@@ -212,4 +259,72 @@ export function dxfLayers(lw: Linework): { layer: string; longest: number }[] {
   const by = new Map<string, number>();
   lw.lines.forEach((l, i) => by.set(lw.layers[i], Math.max(by.get(lw.layers[i]) ?? 0, polyLength(l))));
   return [...by.entries()].map(([layer, longest]) => ({ layer, longest })).sort((a, b) => b.longest - a.longest);
+}
+
+// --- Saved column mappings ("mapping templates") ----------------------------------
+
+export interface MappingPreset {
+  name: string;
+  target: ImportTarget;
+  skip: number;
+  header: boolean;
+  kpUnit: Mapping['kpUnit'];
+  cpStyle: Mapping['cpStyle'];
+  /** Field to column: by header name when the file has one, else by number. */
+  cols: Record<string, string | number>;
+  series: (string | number)[];
+  extra: EventRecord[];
+  sheetName?: string;
+}
+
+const PRESET_KEY = 'maha.mappingPresets';
+
+export function loadPresets(): MappingPreset[] {
+  try {
+    return JSON.parse(localStorage.getItem(PRESET_KEY) ?? '[]') as MappingPreset[];
+  } catch {
+    return [];
+  }
+}
+
+export function savePresets(list: MappingPreset[]) {
+  try {
+    localStorage.setItem(PRESET_KEY, JSON.stringify(list));
+  } catch {
+    // Private windows: presets just don't persist.
+  }
+}
+
+export function toPreset(name: string, target: ImportTarget, t: Table | null, m: Mapping): MappingPreset {
+  const h = headerOf(t, m);
+  const ref = (c: number) => (h[c] ? h[c] : c);
+  return {
+    name,
+    target,
+    skip: m.skip,
+    header: m.header,
+    kpUnit: m.kpUnit,
+    cpStyle: m.cpStyle,
+    cols: Object.fromEntries(Object.entries(m.cols).map(([k, c]) => [k, ref(c)])),
+    series: m.series.map(ref),
+    extra: m.extra,
+    sheetName: t?.name,
+  };
+}
+
+/** Apply a saved mapping to a new file, finding columns by name where it can. */
+export function fromPreset(p: MappingPreset, tables: Table[] | undefined, current: Mapping): Mapping {
+  const sheet = Math.max(0, tables?.findIndex((t) => t.name === p.sheetName) ?? -1);
+  const useSheet = tables && p.sheetName && tables.some((t) => t.name === p.sheetName) ? sheet : current.sheet;
+  const t = tables?.[useSheet] ?? null;
+  const m: Mapping = { ...current, sheet: useSheet, skip: p.skip, header: p.header, kpUnit: p.kpUnit, cpStyle: p.cpStyle, extra: p.extra ?? [] };
+  const h = headerOf(t, m).map((x) => x.trim().toUpperCase());
+  const find = (ref: string | number) => (typeof ref === 'number' ? ref : h.indexOf(ref.trim().toUpperCase()));
+  m.cols = {};
+  for (const [k, ref] of Object.entries(p.cols)) {
+    const i = find(ref);
+    if (i >= 0) m.cols[k] = i;
+  }
+  m.series = p.series.map(find).filter((i) => i >= 0);
+  return m;
 }

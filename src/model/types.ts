@@ -22,6 +22,8 @@ export type TitlePosition = 'above' | 'inside' | 'none';
 export interface EventRow {
   id: string;
   label: string;
+  /** Event codes drawn in this row, comma separated, `*` wildcard. Unset: guessed from the label. */
+  codes?: string;
 }
 
 export interface Panel {

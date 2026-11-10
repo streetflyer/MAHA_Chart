@@ -1,3 +1,4 @@
+import { ThemeButton } from './ThemeButton';
 import { useMemo, useRef, useState } from 'react';
 import { BUILTIN_TEMPLATES } from '../model/builtinTemplates';
 import { newId } from '../model/ids';
@@ -39,6 +40,7 @@ export function StartPage({ onOpen }: { onOpen(t: ChartTemplate): void }) {
       <header>
         <h1>MAHA Chart</h1>
         <p>Survey alignment and North-Up chart maker</p>
+        <ThemeButton />
       </header>
       <section className="start-open">
         <label className="field">

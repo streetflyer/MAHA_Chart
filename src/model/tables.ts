@@ -59,6 +59,58 @@ export function hasHeader(rows: string[][]): boolean {
 }
 
 /**
+ * Where the column names are: workbooks often have a title line or two above
+ * them. Returns the row index of the header, or -1 when the data has none.
+ */
+export function findHeaderRow(rows: string[][]): number {
+  const filled = (r: string[] | undefined) => (r ?? []).filter((c) => c !== '');
+  for (let i = 0; i < Math.min(12, rows.length - 1); i++) {
+    const cur = filled(rows[i]);
+    if (!cur.length) continue;
+    const next = filled(rows[i + 1]);
+    // Data straight away: no header.
+    if (cur.filter(isNumber).length >= Math.max(1, cur.length / 2)) return -1;
+    // Names: mostly text, about as wide as the data under them, which has numbers.
+    if (cur.length >= 2 && cur.length >= next.length * 0.6 && next.some(isNumber)) return i;
+  }
+  return hasHeader(rows) ? 0 : -1;
+}
+
+/**
+ * Lines of a text file read in pieces, so listings of hundreds of MB never sit in
+ * memory as one string.
+ */
+export async function* fileLines(file: Blob): AsyncGenerator<string> {
+  const reader = file.stream().pipeThrough(new TextDecoderStream()).getReader();
+  let rest = '';
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    const parts = (rest + value).split(/\r?\n/);
+    rest = parts.pop() ?? '';
+    for (const l of parts) yield l;
+  }
+  if (rest) yield rest;
+}
+
+/** The first part of a big text file, cut at a line end, for previews. */
+export async function fileHead(file: Blob, bytes = 256 * 1024): Promise<string> {
+  const text = await file.slice(0, bytes).text();
+  return file.size > bytes ? text.slice(0, text.lastIndexOf('\n') + 1) : text;
+}
+
+/** The delimiter parseDelimited settled on, for splitting further lines the same way. */
+export function lineSplitter(sample: string): (line: string) => string[] {
+  const t = parseDelimited(sample.split(/\r?\n/).slice(0, 50).join('\n'));
+  const n = t.rows[0]?.length ?? 1;
+  for (const d of [',', '\t', ';', /\s+/] as (string | RegExp)[]) {
+    const first = sample.split(/\r?\n/).find((l) => l.trim());
+    if (first && splitLine(first, d).length === n) return (l) => splitLine(l, d);
+  }
+  return (l) => splitLine(l, ',');
+}
+
+/**
  * Guess which column holds each wanted field from header names (KP, EASTING, ...)
  * or, without a header, from the order of numeric columns.
  */
