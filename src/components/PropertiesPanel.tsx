@@ -1,3 +1,4 @@
+import { ColourBox } from './ColourBox';
 import { useEffect, useState } from 'react';
 import { newId } from '../model/ids';
 import { PAPER_SIZES } from '../model/paper';
@@ -259,7 +260,7 @@ function PanelProps({ p }: { p: Panel }) {
       <label className="field">
         <span>Fill colour</span>
         <span className="input-wrap">
-          <input type="color" value={p.fill ?? '#ffffff'} onChange={(e) => set({ fill: e.target.value })} />
+          <ColourBox value={p.fill ?? '#ffffff'} onChange={(c) => set({ fill: c })} />
           {p.fill && (
             <button className="link" onClick={() => set({ fill: undefined })}>
               Clear
@@ -411,7 +412,7 @@ function FontEditor({ p }: { p: Panel }) {
       <label className="field">
         <span>Text colour</span>
         <span className="input-wrap">
-          <input type="color" value={p.textColor ?? '#111111'} onChange={(e) => s.updatePanel(p.id, { textColor: e.target.value })} />
+          <ColourBox value={p.textColor ?? '#111111'} onChange={(c) => s.updatePanel(p.id, { textColor: c })} />
           {p.textColor && (
             <button className="link" onClick={() => s.updatePanel(p.id, { textColor: undefined })}>
               Default
@@ -473,12 +474,12 @@ function LegendEditor({ p }: { p: Panel }) {
         <Field label="Heading height" type="number" step={0.1} suffix="mm" value={ls.headSize} onCommit={(v) => num(v) > 0 && setLs({ headSize: num(v) })} />
         <label className="field colour-field">
           <span>Heading colour</span>
-          <input type="color" value={ls.headColor} onChange={(e) => setLs({ headColor: e.target.value })} />
+          <ColourBox value={ls.headColor} onChange={(c) => setLs({ headColor: c })} />
         </label>
         <Field label="Event codes height" type="number" step={0.1} suffix="mm" value={ls.codeSize} onCommit={(v) => num(v) > 0 && setLs({ codeSize: num(v) })} />
         <label className="field colour-field">
           <span>Event codes colour</span>
-          <input type="color" value={ls.codeColor} onChange={(e) => setLs({ codeColor: e.target.value })} />
+          <ColourBox value={ls.codeColor} onChange={(c) => setLs({ codeColor: c })} />
         </label>
       </div>
 
@@ -497,7 +498,7 @@ function LegendEditor({ p }: { p: Panel }) {
               <li key={it.key}>
                 <div className="legend-row">
                   <input type="checkbox" checked={!o.hidden} title="Show in the legend" onChange={(e) => setO({ hidden: !e.target.checked })} />
-                  {it.datasetId && <input type="color" value={it.color} title="Colour (changes the data too)" onChange={(e) => setDataColour(it, e.target.value)} />}
+                  {it.datasetId && <ColourBox value={it.color} title="Colour (changes the data too)" onChange={(c) => setDataColour(it, c)} />}
                   <input
                     defaultValue={o.label ?? it.label}
                     key={o.label ?? it.label}
@@ -516,7 +517,7 @@ function LegendEditor({ p }: { p: Panel }) {
         {items.map((it, i) => (
           <li key={it.id}>
             <div className="legend-row">
-              <input type="color" value={it.color} title="Colour" onChange={(e) => update(it.id, { color: e.target.value })} />
+              <ColourBox value={it.color} title="Colour" onChange={(c) => update(it.id, { color: c })} />
               <input
                 defaultValue={it.label}
                 key={it.label}
@@ -596,7 +597,7 @@ function KeyplanEditor({ p }: { p: Panel }) {
   const colour = (label: string, key: 'background' | 'dxfColor' | 'routeColor' | 'boundaryColor' | 'currentColor' | 'gridColor') => (
     <label className="field">
       <span>{label}</span>
-      <input type="color" value={st[key]} onChange={(e) => set({ [key]: e.target.value })} />
+      <ColourBox value={st[key]} onChange={(c) => set({ [key]: c })} />
     </label>
   );
   return (
@@ -638,7 +639,7 @@ function PlanStyleEditor({ p }: { p: Panel }) {
   const colour = (label: string, key: ColourKey) => (
     <label className="field">
       <span>{label}</span>
-      <input type="color" value={st[key]} onChange={(e) => set({ [key]: e.target.value })} />
+      <ColourBox value={st[key]} onChange={(c) => set({ [key]: c })} />
     </label>
   );
   const size = (label: string, key: NumberKey, suffix = 'mm', step = 0.1) => (
@@ -764,11 +765,7 @@ function DataList({ panelType }: { panelType?: string }) {
               <div className="checks">
                 {d.series.map((se, i) => (
                   <label key={i} className="check">
-                    <input
-                      type="color"
-                      value={se.color}
-                      onChange={(e) => sv.updateDataset(d.id, { series: d.series.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) })}
-                    />
+                    <ColourBox value={se.color} onChange={(c) => sv.updateDataset(d.id, { series: d.series.map((x, j) => (j === i ? { ...x, color: c } : x)) })} />
                     {se.name}
                   </label>
                 ))}

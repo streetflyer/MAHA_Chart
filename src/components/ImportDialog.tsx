@@ -459,13 +459,21 @@ function Wizard({
 }) {
   const m = it.mapping;
   const fields = fieldsFor(it.target, m);
-  const header = headerOf(table, m);
+  const header = columnNames(it.target, table, m);
   const nCols = table ? Math.min(60, Math.max(...table.rows.slice(0, 30).map((r) => r.length))) : 0;
   const colName = (i: number) => (header[i] ? `${i + 1}: ${header[i].replace(/\s+/g, ' ')}` : `Column ${i + 1}`);
   const mapped = new Set([...Object.values(m.cols), ...m.series]);
+  // What each column is used for, shown under its name in the preview.
+  const usedFor = new Map<number, string>();
+  for (const f of fields) {
+    if (m.cols[f.key] !== undefined) usedFor.set(m.cols[f.key], f.pair ? `${f.label} (1)` : f.label);
+    if (f.pair && m.cols[f.key + '2'] !== undefined) usedFor.set(m.cols[f.key + '2'], `${f.label} (2)`);
+  }
+  for (const c of m.series) if (!usedFor.has(c)) usedFor.set(c, 'Seabed line');
   const mine = presets.filter((p) => p.target === it.target);
   const [presetName, setPresetName] = useState('');
-  const preview = table ? table.rows.slice(m.skip, m.skip + 9) : [];
+  const preview = dataRows(table, m).slice(0, 9);
+  const firstRow = m.skip + (m.header ? 1 : 0);
   function setSpan(start: string, end: string) {
     const old = m.span!;
     const links = m.links.map((l) => (l.start === old.start && l.end === old.end ? { ...l, start, end } : l));
@@ -624,18 +632,15 @@ function Wizard({
             )}
           </div>
           <div className="map-fields">
-            {fields.map((f) => (
-              <label key={f.key} className="field">
-                <span>
-                  {f.label}
-                  {f.required ? '' : ' (optional)'}
-                </span>
+            {fields.map((f) => {
+              const pick = (key: string) => (
                 <select
-                  value={m.cols[f.key] ?? ''}
+                  key={key}
+                  value={m.cols[key] ?? ''}
                   onChange={(e) => {
                     const cols = { ...m.cols };
-                    if (e.target.value === '') delete cols[f.key];
-                    else cols[f.key] = Number(e.target.value);
+                    if (e.target.value === '') delete cols[key];
+                    else cols[key] = Number(e.target.value);
                     setMapping({ cols });
                   }}
                 >
@@ -646,8 +651,26 @@ function Wizard({
                     </option>
                   ))}
                 </select>
-              </label>
-            ))}
+              );
+              return (
+                <label key={f.key} className={f.pair ? 'field pair' : 'field'} title={f.pair?.hint}>
+                  <span>
+                    {f.label}
+                    {f.required ? '' : ' (optional)'}
+                  </span>
+                  {f.pair ? (
+                    <span className="pair-selects">
+                      {pick(f.key)}
+                      <span className="pair-plus">+</span>
+                      {pick(f.key + '2')}
+                      <span className="pair-plus">÷ 2</span>
+                    </span>
+                  ) : (
+                    pick(f.key)
+                  )}
+                </label>
+              );
+            })}
             {it.target === 'cp' && (
               <label className="field">
                 <span>Draw as</span>
@@ -692,7 +715,7 @@ function Wizard({
             <div className="checks">
               <span>Seabed lines:</span>
               {Array.from({ length: nCols }, (_, i) => i)
-                .filter((i) => i !== m.cols.kp && i !== m.cols.top && i !== m.cols.bop)
+                .filter((i) => !Object.values(m.cols).includes(i))
                 .map((i) => (
                   <label key={i} className="check">
                     <input
@@ -719,11 +742,20 @@ function Wizard({
                     </th>
                   ))}
                 </tr>
+                <tr className="head-names">
+                  <th className="rownum" title="Column names">{m.header ? m.skip + 1 : ''}</th>
+                  {Array.from({ length: nCols }, (_, i) => (
+                    <th key={i} className={mapped.has(i) ? 'mapped' : ''} title={header[i]}>
+                      {header[i] ? header[i].replace(/\s+/g, ' ').slice(0, 28) : '—'}
+                      {usedFor.has(i) && usedFor.get(i)!.toUpperCase() !== (header[i] ?? "").trim().toUpperCase() && <span className="used-for">{usedFor.get(i)}</span>}
+                    </th>
+                  ))}
+                </tr>
               </thead>
               <tbody>
                 {preview.map((r, ri) => (
-                  <tr key={ri} className={m.header && ri === 0 ? 'head' : ''}>
-                    <td className="rownum">{m.skip + ri + 1}</td>
+                  <tr key={ri}>
+                    <td className="rownum">{firstRow + ri + 1}</td>
                     {Array.from({ length: nCols }, (_, i) => (
                       <td key={i} className={mapped.has(i) ? 'mapped' : ''}>
                         {String(r[i] ?? '').slice(0, 24)}
@@ -759,6 +791,16 @@ function Wizard({
       )}
     </>
   );
+}
+
+/** VisualWorks raw cross profiles have no header row; these are the names from its format sheet. */
+const VW_RAW_NAMES = ['Time', 'Profile no.', 'KP', 'Easting', 'Northing', 'Depth', 'Heading', 'Pipe diameter', 'Distance to pipe', 'Delta depth to pipe', 'Mean seabed', 'Distance below seabed', 'No. of raw points', 'First raw point dx', 'First raw point dz'];
+
+/** Column names from the file's header row, or the known layout when it has none. */
+function columnNames(target: ImportTarget, t: Table | null, m: Mapping): string[] {
+  const h = headerOf(t, m);
+  if (h.length || target !== 'trans') return h;
+  return VW_RAW_NAMES;
 }
 
 /** Events typed in by hand: pipe spec, weights, coating, anodes, survey dates. */

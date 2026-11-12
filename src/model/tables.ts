@@ -116,13 +116,17 @@ export function lineSplitter(sample: string): (line: string) => string[] {
  * Guess which column holds each wanted field from header names (KP, EASTING, ...)
  * or, without a header, from the order of numeric columns.
  */
-export function guessColumns(rows: string[][], header: boolean, fields: { key: string; names: string[] }[]): Record<string, number> {
+export function guessColumns(rows: string[][], header: boolean, fields: { key: string; names: string[]; pair?: { names2: string[] } }[]): Record<string, number> {
   const out: Record<string, number> = {};
   if (header && rows[0]) {
     const h = rows[0].map((c) => c.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+    const pick = (key: string, names: string[]) => {
+      const i = h.findIndex((c, j) => !Object.values(out).includes(j) && names.some((n) => c === n || c.startsWith(n)));
+      if (i >= 0) out[key] = i;
+    };
     for (const f of fields) {
-      const i = h.findIndex((c) => f.names.some((n) => c === n || c.startsWith(n)));
-      if (i >= 0 && !Object.values(out).includes(i)) out[f.key] = i;
+      pick(f.key, f.names);
+      if (f.pair) pick(f.key + '2', f.pair.names2);
     }
   }
   return out;

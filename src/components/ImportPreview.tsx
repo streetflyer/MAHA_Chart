@@ -9,6 +9,7 @@ import type { Linework } from '../model/dxf';
 import type { ImportTarget, DataStyle } from '../model/datasets';
 import { applyStyle } from './DataStyleControls';
 import { CpMark, fontProps } from './KpPanels';
+import { useEditor } from '../state/store';
 
 const W = 600;
 const H = 180;
@@ -157,6 +158,9 @@ function TransPreview({ d }: { d: Extract<Dataset, { kind: 'trans' }> }) {
   const n = Math.min(5, d.profiles.length);
   const picks = Array.from({ length: n }, (_, i) => d.profiles[Math.floor((i * (d.profiles.length - 1)) / Math.max(1, n - 1))]);
   const k = (H - 2 * PAD) / 10; // ±5 m across the height
+  const sc = useEditor((s) => s.template?.scale);
+  // Heights are stretched by the vertical exaggeration (lateral scale / vertical scale).
+  const kh = k * (sc ? (sc.lateralTrans || sc.verticalTrans) / Math.max(1, sc.verticalTrans) : 1);
   const slot = (W - 2 * PAD) / n;
   const cy = H / 2;
   return (
@@ -165,13 +169,13 @@ function TransPreview({ d }: { d: Extract<Dataset, { kind: 'trans' }> }) {
         const x0 = PAD + slot * (j + 0.5);
         let dots = '';
         for (let i = 0; i < p.pts.length; i += 2) {
-          if (Math.abs(p.pts[i]) > 5 || Math.abs(p.pts[i + 1] * k) > slot * 0.45) continue;
-          dots += `M${(x0 + p.pts[i + 1] * k).toFixed(1)} ${(cy - p.pts[i] * k).toFixed(1)}h0.1`;
+          if (Math.abs(p.pts[i]) > 5 || Math.abs(p.pts[i + 1] * kh) > slot * 0.45) continue;
+          dots += `M${(x0 + p.pts[i + 1] * kh).toFixed(1)} ${(cy - p.pts[i] * k).toFixed(1)}h0.1`;
         }
         return (
           <g key={j}>
             <path d={dots} stroke={d.color} strokeWidth={1.4} strokeLinecap="round" />
-            <circle cx={x0} cy={cy} r={Math.max(2, (p.diameter / 2) * k)} fill={d.pipeFill} stroke={d.pipeColor} strokeWidth={0.8} />
+            <ellipse cx={x0} cy={cy} rx={Math.max(2, (p.diameter / 2) * kh)} ry={Math.max(2, (p.diameter / 2) * k)} fill={d.pipeFill} stroke={d.pipeColor} strokeWidth={0.8} />
             <Axis text={(p.kp / 1000).toFixed(3)} x={x0} y={14} anchor="middle" />
           </g>
         );

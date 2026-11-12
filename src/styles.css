@@ -1070,3 +1070,156 @@ svg.import-preview {
   border: 1px solid var(--border);
   border-radius: 6px;
 }
+
+/* Column names and their use, under the column numbers in the mapping preview. */
+table.preview tr.head-names th {
+  top: 23px;
+  font-weight: 600;
+  color: var(--text);
+  vertical-align: top;
+  max-width: 140px;
+  white-space: normal;
+  line-height: 1.25;
+}
+table.preview .used-for {
+  display: block;
+  margin-top: 2px;
+  font-weight: 500;
+  font-size: 10.5px;
+  color: var(--accent);
+}
+
+/* Two columns averaged into one line (mean adjacent / far seabed). */
+.map-fields .field.pair {
+  grid-column: span 2;
+}
+.pair-selects {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pair-selects select {
+  flex: 1;
+  min-width: 0;
+}
+.pair-plus {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.scale-input {
+  width: 90px;
+}
+
+/* Excel-style colour box. */
+.colour-box {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 4px;
+  height: 24px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--field);
+  color: var(--text);
+  cursor: pointer;
+}
+.colour-box:hover {
+  border-color: var(--accent);
+}
+.cb-chip {
+  width: 26px;
+  height: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  border-radius: 2px;
+}
+.cb-caret {
+  font-size: 9px;
+  color: var(--muted);
+}
+.cb-pop {
+  position: fixed;
+  z-index: 1000;
+  width: 236px;
+  padding: 6px 8px 8px;
+  background: var(--chrome);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  font-size: 12px;
+}
+.cb-head {
+  margin: 4px 0 3px;
+  padding: 2px 4px;
+  font-weight: 600;
+  background: var(--chrome-2);
+  border-radius: 3px;
+}
+.cb-row {
+  display: grid;
+  grid-template-columns: repeat(10, 18px);
+  gap: 4px;
+  margin-bottom: 2px;
+}
+.cb-shades {
+  margin-top: 4px;
+}
+.cb-row.tight {
+  margin-bottom: 0;
+}
+.cb-row.tight .cb-swatch {
+  border-radius: 0;
+}
+.cb-swatch {
+  width: 18px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 1px;
+  cursor: pointer;
+}
+.cb-swatch:hover,
+.cb-swatch.on {
+  outline: 2px solid #f0a020;
+  outline-offset: 0;
+  position: relative;
+  z-index: 1;
+}
+.cb-more {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 4px;
+  border: none;
+  border-top: 1px solid var(--border);
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.cb-more:hover {
+  background: var(--accent-soft);
+}
+.cb-wheel {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+}
+.cb-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+  bottom: 8px;
+  left: 8px;
+}
+.field > .colour-box,
+.colour-field > .colour-box {
+  align-self: flex-start;
+  width: auto;
+}

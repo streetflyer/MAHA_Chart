@@ -10,6 +10,8 @@ export interface FieldSpec {
   label: string;
   names: string[];
   required?: boolean;
+  /** Two columns averaged into one line; the second is stored as `${key}2`. */
+  pair?: { names2: string[]; hint: string };
 }
 
 const KP_NAMES = ['KP', 'GRIDKP', 'CHAINAGE'];
@@ -27,6 +29,8 @@ export const FIELDS: Partial<Record<ImportTarget, FieldSpec[]>> = {
     { key: 'kp', label: 'KP', names: KP_NAMES, required: true },
     { key: 'top', label: 'Top of pipe (TOP)', names: ['TOP'] },
     { key: 'bop', label: 'Bottom of pipe (BOP)', names: ['BOP'] },
+    { key: 'adj', label: 'Mean adjacent seabed', names: ['PORTADJ', 'PTADJ'], pair: { names2: ['STBADJ', 'STBDADJ', 'STARBOARDADJ', 'SBADJ'], hint: 'Pick two columns (port and starboard adjacent); they are averaged.' } },
+    { key: 'far', label: 'Mean far seabed', names: ['PORTMSBL', 'PORTFAR', 'PTMSBL'], pair: { names2: ['STBDMSBL', 'STBMSBL', 'STBDFAR', 'STBFAR', 'SBMSBL'], hint: 'Pick two columns (port and starboard far seabed); they are averaged.' } },
   ],
   trans: [
     { key: 'kp', label: 'KP', names: KP_NAMES, required: true },
@@ -48,6 +52,18 @@ export const FIELDS: Partial<Record<ImportTarget, FieldSpec[]>> = {
 };
 
 /** Freespan / burial listings: one row per span, start and end KP. */
+/** Mean of the finite values; NaN when there are none (a gap in the line). */
+export function meanOf(v: number[]): number {
+  let sum = 0;
+  let n = 0;
+  for (const x of v)
+    if (Number.isFinite(x)) {
+      sum += x;
+      n++;
+    }
+  return n ? sum / n : NaN;
+}
+
 export const SPAN_FIELDS: FieldSpec[] = [
   { key: 'start', label: 'Start KP', names: ['STARTGRIDKP', 'STARTKP', 'START', 'KPSTART', 'FROM'], required: true },
   { key: 'end', label: 'End KP', names: ['ENDGRIDKP', 'ENDKP', 'END', 'KPEND', 'TO'], required: true },
@@ -80,6 +96,12 @@ export interface Mapping {
   /** Events: code pairs drawn as linked events. */
   links: EventLink[];
 }
+
+/** Long profile lines made by averaging two columns, in drawing order. */
+export const MEAN_LINES = [
+  { key: 'adj', name: 'Mean Adjacent Seabed', color: '#16a34a' },
+  { key: 'far', name: 'Mean Far Seabed', color: '#2563eb' },
+];
 
 const SKIP_SERIES = ['KP', 'GRIDKP', 'DCC', 'EAST', 'NORTH', 'X', 'Y', 'CHAINAGE', 'TIME', 'TOP', 'BOP'];
 
@@ -126,10 +148,15 @@ export function defaultMapping(target: ImportTarget, t: Table | null): Mapping {
   if (target === 'trans') m.cols = { ...VW_RAW, ...m.cols };
   if (target === 'long') {
     const names = headerOf(t, m).map((c) => c.toUpperCase().replace(/[^A-Z]/g, ''));
-    const cand = numericCols.filter((i) => i !== m.cols.kp && i !== m.cols.top && i !== m.cols.bop && !SKIP_SERIES.some((s) => (names[i] ?? '').startsWith(s)));
+    const used = new Set(Object.values(m.cols));
+    const cand = numericCols.filter((i) => !used.has(i) && !SKIP_SERIES.some((s) => (names[i] ?? '').startsWith(s)));
     // A listing wants the seabed lines; the reference charts show mean adjacent and mean seabed.
-    const prefer = cand.filter((i) => /^MEAN(ADJ|SEABED)/.test(names[i] ?? ''));
-    m.series = prefer.length ? prefer.slice(0, 2) : [];
+    // When the port/starboard columns are there, the averaged lines replace the listing's own means.
+    const hasPairs = MEAN_LINES.some((l) => m.cols[l.key] !== undefined && m.cols[l.key + '2'] !== undefined);
+    const prefer = hasPairs ? [] : cand.filter((i) => /^MEAN(ADJ|SEABED)/.test(names[i] ?? ''));
+    m.series = prefer.slice(0, 2);
+    // Half a pair is no use: drop it rather than average one column with nothing.
+    for (const l of MEAN_LINES) if ((m.cols[l.key] === undefined) !== (m.cols[l.key + '2'] === undefined)) delete m.cols[l.key], delete m.cols[l.key + '2'];
   }
   const kpCol = m.cols.kp;
   if (kpCol !== undefined) {
@@ -187,26 +214,30 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
   }
   if (target === 'long') {
     const header = headerOf(t, m);
-    const wanted = [col('top'), col('bop'), ...m.series].filter((c): c is number => c !== undefined);
-    if (!wanted.length) return 'Pick the top and bottom of pipe columns, or tick a column to draw.';
+    // Each drawn line reads one column, or the mean of two.
+    const sources: { name: string; cols: number[]; color: string; role: 'top' | 'bop' | 'line' }[] = [];
+    if (col('top') !== undefined) sources.push({ name: header[col('top')!] || 'TOP', cols: [col('top')!], color: '#e00000', role: 'top' });
+    if (col('bop') !== undefined) sources.push({ name: header[col('bop')!] || 'BOP', cols: [col('bop')!], color: '#e00000', role: 'bop' });
+    for (const l of MEAN_LINES) {
+      const pair = [col(l.key), col(l.key + '2')].filter((c): c is number => c !== undefined);
+      if (pair.length) sources.push({ name: l.name, cols: pair, color: l.color, role: 'line' });
+    }
+    let extra = 0;
+    for (const c of m.series) sources.push({ name: header[c] || `Column ${c + 1}`, cols: [c], color: SERIES_COLOURS[(2 + extra++) % SERIES_COLOURS.length], role: 'line' });
+    if (!sources.length) return 'Pick the top and bottom of pipe columns, or tick a column to draw.';
     const kp: number[] = [];
-    const cols: number[][] = wanted.map(() => []);
+    const vals: number[][] = sources.map(() => []);
     for (const r of data) {
       const k = num(r[col('kp')]);
       if (!Number.isFinite(k)) continue;
       kp.push(k * kpScale);
-      wanted.forEach((c, j) => cols[j].push(num(r[c])));
+      sources.forEach((src, j) => vals[j].push(meanOf(src.cols.map((c) => num(r[c])))));
     }
     if (kp.length < 2) return 'Found fewer than two rows with a KP.';
-    const hasTop = col('top') !== undefined;
-    const hasBop = col('bop') !== undefined;
-    let extra = 0;
-    const series = wanted.map((c, j) => {
-      const role = j === 0 && hasTop ? 'top' : j === (hasTop ? 1 : 0) && hasBop ? 'bop' : 'line';
-      const color = role === 'line' ? SERIES_COLOURS[extra++ % SERIES_COLOURS.length] : '#e00000';
-      return { name: header[c] || `Column ${c + 1}`, values: new Float64Array(cols[j]), color };
-    });
-    return { ...base, kind: 'long', kp: new Float64Array(kp), series, top: hasTop ? 0 : undefined, bop: hasBop ? (hasTop ? 1 : 0) : undefined, fill: '#6b6b6b' };
+    const series = sources.map((src, j) => ({ name: src.name, values: new Float64Array(vals[j]), color: src.color }));
+    const top = sources.findIndex((x) => x.role === 'top');
+    const bop = sources.findIndex((x) => x.role === 'bop');
+    return { ...base, kind: 'long', kp: new Float64Array(kp), series, top: top >= 0 ? top : undefined, bop: bop >= 0 ? bop : undefined, fill: '#6b6b6b' };
   }
   if (target === 'trans') {
     const c = { ...VW_RAW, ...m.cols };

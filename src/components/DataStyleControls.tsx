@@ -1,5 +1,10 @@
+import { ColourBox } from './ColourBox';
 import { CP_SYMBOLS, DEFAULT_FONT, FONT_FAMILIES, newLink, type CpSymbol, type DataFont, type DataStyle, type Dataset, type EventLink, type ImportTarget, type LabelPos } from '../model/datasets';
+import { useEffect, useState } from 'react';
 import { DEFAULT_COLOURS } from '../model/importers';
+import { formatScale } from '../model/scale';
+import type { ScaleSettings } from '../model/types';
+import { useEditor } from '../state/store';
 
 /** Look of a new dataset before it is imported. */
 export function defaultStyle(target: ImportTarget): DataStyle {
@@ -68,7 +73,7 @@ export function styleOf(d: Dataset): DataStyle {
 const Colour = ({ label, value, onChange }: { label: string; value: string; onChange(v: string): void }) => (
   <label className="field colour-field">
     <span>{label}</span>
-    <input type="color" value={value} onChange={(e) => onChange(e.target.value)} />
+    <ColourBox value={value} onChange={(c) => onChange(c)} />
   </label>
 );
 
@@ -81,6 +86,59 @@ const Num = ({ label, value, step, suffix, onChange }: { label: string; value: n
     </span>
   </label>
 );
+
+/** "1:200", "1 : 2,000" or just "200": the scale denominator, or NaN. */
+export function parseScale(text: string): number {
+  const m = text.replace(/[\s,]/g, '').match(/^(?:1:)?(\d+(?:\.\d+)?)$/);
+  return m ? Number(m[1]) : NaN;
+}
+
+/** A scale typed as 1:100, 1:200... committed on Enter or when the box loses focus. */
+function ScaleInput({ label, value, onChange, hint }: { label: string; value: number; onChange(v: number): void; hint?: string }) {
+  const [text, setText] = useState(formatScale(value));
+  useEffect(() => setText(formatScale(value)), [value]);
+  const commit = () => {
+    const v = parseScale(text);
+    if (v > 0) onChange(v);
+    else setText(formatScale(value));
+  };
+  return (
+    <label className="field" title={hint}>
+      <span>{label}</span>
+      <input className="scale-input" value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} placeholder="1:200" />
+    </label>
+  );
+}
+
+/** The template's profile scales, shared by every chart, edited from the data's look settings. */
+function ProfileScales({ target }: { target: 'long' | 'trans' }) {
+  const sc = useEditor((s) => s.template?.scale);
+  if (!sc) return null;
+  const set = (patch: Partial<ScaleSettings>) => useEditor.getState().setScale(patch);
+  if (target === 'long')
+    return (
+      <>
+        <div className="style-row">
+          <ScaleInput label="Vertical scale" value={sc.verticalLong} onChange={(verticalLong) => set({ verticalLong })} hint="Depth scale of the longitudinal profile, e.g. 1:200" />
+        </div>
+        <p className="hint">Horizontal scale follows the plan view ({formatScale(sc.horizontal)}). The scale is shared by every chart.</p>
+      </>
+    );
+  const lat = sc.lateralTrans || sc.verticalTrans;
+  const ex = lat / Math.max(1, sc.verticalTrans);
+  return (
+    <>
+      <div className="style-row">
+        <ScaleInput label="Vertical scale (depth)" value={sc.verticalTrans} onChange={(verticalTrans) => set({ verticalTrans })} hint="Scale of heights in each cross profile, e.g. 1:100" />
+        <ScaleInput label="Lateral scale (scan width)" value={lat} onChange={(lateralTrans) => set({ lateralTrans })} hint="Scale of the scan width axis, e.g. 1:100" />
+      </div>
+      <p className="hint">
+        <b>Vertical exaggeration ×{ex.toFixed(ex < 10 ? 1 : 0)}</b>
+        {ex === 1 ? ' (1:1, true shape)' : ''}. The vertical scale sets the depth axis and the lateral scale sets the scan width. Use the same value for both to draw the seabed at its true shape; a smaller vertical number exaggerates the heights.
+      </p>
+    </>
+  );
+}
 
 /** Colour, width, fill, symbol and font controls for one kind of data. */
 export function StyleControls({ target, style, onChange }: { target: ImportTarget; style: DataStyle; onChange(patch: DataStyle): void }) {
@@ -100,6 +158,7 @@ export function StyleControls({ target, style, onChange }: { target: ImportTarge
           <Colour label="Pipe fill" value={s.fill!} onChange={(fill) => onChange({ fill })} />
         </div>
       )}
+      {(target === 'long' || target === 'trans') && <ProfileScales target={target} />}
       {target === 'trans' && (
         <div className="style-row">
           <Colour label="Raw points" value={s.color!} onChange={(color) => onChange({ color })} />

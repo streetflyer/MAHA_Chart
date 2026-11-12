@@ -221,7 +221,10 @@ function LongProfile({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'long
  */
 function TransProfiles({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'trans' }>; p: Panel; t: ChartTemplate; toX: (kp: number) => number; span: [number, number] }) {
   const every = d.every > 0 ? d.every : Math.max(1, t.scale.horizontal / 50);
-  const k = 1000 / Math.max(1, t.scale.verticalTrans);
+  // Two scales, as in AutoChart: the vertical scale sets heights (drawn across the
+  // panel), the lateral scale sets the scan width (drawn up it). Equal values give 1:1.
+  const kV = 1000 / Math.max(1, t.scale.verticalTrans);
+  const kL = 1000 / Math.max(1, t.scale.lateralTrans || t.scale.verticalTrans);
   const labelRoom = 9;
   const cy = p.y + labelRoom + (p.h - labelRoom - 4) / 2;
   const picks: typeof d.profiles = [];
@@ -234,11 +237,11 @@ function TransProfiles({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'tr
     if (pr && pr.kp >= span[0] && pr.kp <= span[1] && picks.every((x) => Math.abs(x.kp - pr.kp) > every / 4)) picks.push(pr);
   }
   const room = Math.max(1, Math.abs(toX(span[0] + every) - toX(span[0])) * 0.45);
-  const maxLat = (p.h - labelRoom - 4) / 2 / k;
+  const maxLat = (p.h - labelRoom - 4) / 2 / kL;
   const cap = 1.8;
   return (
     <g>
-      <DepthAxis p={p} y={(v) => cy - v * k} lo={-maxLat} hi={maxLat} step={niceGrid(maxLat * 2) / 2} />
+      <DepthAxis p={p} y={(v) => cy - v * kL} lo={-maxLat} hi={maxLat} step={niceGrid(maxLat * 2) / 2} />
       {picks.map((pr) => {
         const x0 = toX(pr.kp);
         let dots = '';
@@ -246,14 +249,14 @@ function TransProfiles({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'tr
           const lat = pr.pts[i];
           const h = pr.pts[i + 1];
           if (Math.abs(lat) > maxLat) continue;
-          const dx = h * k;
+          const dx = h * kV;
           if (Math.abs(dx) > room) continue;
-          dots += `M${(x0 + dx).toFixed(2)} ${(cy - lat * k).toFixed(2)}h0.01`;
+          dots += `M${(x0 + dx).toFixed(2)} ${(cy - lat * kL).toFixed(2)}h0.01`;
         }
         return (
           <g key={pr.kp}>
             <path d={dots} stroke={d.color} strokeWidth={0.3} strokeLinecap="round" fill="none" />
-            <circle cx={x0} cy={cy} r={Math.max(0.4, (pr.diameter / 2) * k)} fill={d.pipeFill} stroke={d.pipeColor} strokeWidth={0.15} />
+            <ellipse cx={x0} cy={cy} rx={Math.max(0.4, (pr.diameter / 2) * kV)} ry={Math.max(0.4, (pr.diameter / 2) * kL)} fill={d.pipeFill} stroke={d.pipeColor} strokeWidth={0.15} />
             <line x1={x0} y1={p.y} x2={x0} y2={p.y + 1.5} stroke="currentColor" strokeWidth={0.15} />
             <text fontSize={fontSize(cap)} transform={`translate(${x0 - fontSize(cap) * 0.35} ${p.y + 2}) rotate(90)`}>
               {kpText(pr.kp)}
