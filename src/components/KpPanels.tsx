@@ -23,10 +23,68 @@ export function kpToX(t: ChartTemplate, route: Route | null, sheetIndex: number)
     const g = chartGeometry(t, route, sheetIndex);
     if (!g) return null;
     const project = gridToPlan(g, plan);
-    return (kp) => project(...pointAt(route, kp - k0))[0];
+    const { start, end } = sheetRange(t, sheetIndex);
+    return monotonicKp(start * 1000, end * 1000, k0, k0 + route.length, (plan.w * t.scale.horizontal) / 1000, (kp) => project(...pointAt(route, kp - k0))[0]);
   }
   const { start, end } = sheetRange(t, sheetIndex);
   return (kp) => plan.x + ((kp / 1000 - start) / (end - start)) * plan.w;
+}
+
+/**
+ * KP to paper x for one chart, kept to that chart's own stretch of line so KP only
+ * ever increases across the panels. Where the line curls back through the plan view
+ * (the last chart of a short line, a tight bend) other stretches of the line also
+ * fall inside the frame; they are left out, and any doubling back inside the chart's
+ * own range is held at the furthest x reached. KPs outside the stretch map far off the panel.
+ */
+export function monotonicKp(start: number, end: number, lineStart: number, lineEnd: number, along: number, raw: (kp: number) => number): (kp: number) => number {
+  const a = Math.max(lineStart, start - along);
+  const b = Math.min(lineEnd, end + along);
+  const s0 = Math.min(Math.max(start, lineStart), lineEnd);
+  if (!(b > a)) return () => NaN;
+  const step = Math.max(0.25, (b - a) / 6000);
+  const n = Math.ceil((b - a) / step);
+  const kps = new Float64Array(n + 1);
+  const xs = new Float64Array(n + 1);
+  for (let i = 0; i <= n; i++) {
+    kps[i] = Math.min(b, a + i * step);
+    xs[i] = raw(kps[i]);
+  }
+  const i0 = Math.min(n, Math.max(0, Math.round((s0 - a) / step)));
+  const tol = 0.05; // mm: jitter of the line, not a turn back
+  // Forward from the chart's start: x never goes back; past the chart's end, stop where the line turns back.
+  let hi = n;
+  let run = xs[i0];
+  for (let i = i0 + 1; i <= n; i++) {
+    if (xs[i] < run - tol && kps[i] > end) {
+      hi = i - 1;
+      break;
+    }
+    run = Math.max(run, xs[i]);
+    xs[i] = run;
+  }
+  // Backward from the start: x never goes forward; stop where the line turns back.
+  let lo = 0;
+  run = xs[i0];
+  for (let i = i0 - 1; i >= 0; i--) {
+    if (xs[i] > run + tol) {
+      lo = i + 1;
+      break;
+    }
+    run = Math.min(run, xs[i]);
+    xs[i] = run;
+  }
+  const kLo = kps[lo];
+  const kHi = kps[hi];
+  return (kp) => {
+    if (kp < kLo - 1e-6) return -1e6;
+    if (kp > kHi + 1e-6) return 1e6;
+    const f = (kp - a) / step;
+    const i = Math.max(lo, Math.min(hi - 1, Math.floor(f)));
+    if (hi <= lo) return xs[lo];
+    const tt = Math.max(0, Math.min(1, f - i));
+    return xs[i] + (xs[i + 1] - xs[i]) * tt;
+  };
 }
 
 export function useKpToX(t: ChartTemplate, sheetIndex: number) {
@@ -295,7 +353,7 @@ function LongProfile({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'long
       />
       {band && <path d={band} fill={d.fill} stroke="none" />}
       {d.series.map((s, j) => (
-        <path key={j} d={line(s.values, a, b)} fill="none" stroke={s.color} strokeWidth={j === d.top || j === d.bop ? Math.max(0.3, o.lineWidth) : o.lineWidth} />
+        <path key={j} d={line(s.values, a, b)} fill="none" stroke={s.color} strokeWidth={s.width ?? (j === d.top || j === d.bop ? o.pipeWidth : o.lineWidth)} />
       ))}
     </g>
   );

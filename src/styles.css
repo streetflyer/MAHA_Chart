@@ -248,7 +248,7 @@ textarea {
 }
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: auto minmax(0, 1fr) 300px;
   min-height: 0;
 }
 .props-wrap {
@@ -565,7 +565,14 @@ textarea {
 @media (max-width: 800px) {
   .workspace {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr 40%;
+    grid-template-rows: auto 1fr 40%;
+  }
+  .project-panel,
+  .project-panel.collapsed {
+    width: auto;
+    max-height: 30vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
   }
   .props-wrap {
     border-left: none;
@@ -1291,4 +1298,132 @@ table.preview .used-for {
 /* Column headers are solid so scrolled rows don't show through them. */
 table.preview thead th.mapped {
   background: color-mix(in srgb, var(--accent) 14%, var(--chrome-2));
+}
+.series-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.series-row .small-num {
+  width: 60px;
+}
+.series-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Project tree, left of the sheet. */
+.project-panel {
+  width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border-right: 1px solid var(--border);
+  background: var(--chrome);
+  overflow-y: auto;
+  min-height: 0;
+}
+.project-panel.collapsed {
+  width: 28px;
+  padding: 6px 2px;
+  align-items: center;
+}
+.vertical-label {
+  writing-mode: vertical-rl;
+  color: var(--muted);
+  font-size: 12px;
+}
+.project-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.project-head h4 {
+  margin: 0;
+}
+.project-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.project-tree {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 0;
+  overflow: auto;
+  max-height: 55vh;
+  user-select: none;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 4px;
+  cursor: default;
+  white-space: nowrap;
+}
+.tree-row:hover {
+  background: var(--chrome-2);
+}
+.tree-row.selected {
+  background: var(--accent-soft);
+}
+.tree-row.active .tree-name {
+  font-weight: 700;
+  color: var(--accent);
+}
+.tree-row.over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -2px;
+}
+.tree-caret {
+  width: 16px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tree-count {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+.project-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pf-title {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.pf-badge {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.pf-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  max-height: 25vh;
+  overflow: auto;
+}
+.pf-files li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 0;
 }

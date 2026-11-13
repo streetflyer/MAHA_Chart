@@ -769,10 +769,24 @@ function DataList({ panelType }: { panelType?: string }) {
             {d.kind === 'long' && (
               <div className="checks">
                 {d.series.map((se, i) => (
-                  <label key={i} className="check">
+                  <div key={i} className="series-row">
                     <ColourBox value={se.color} onChange={(c) => sv.updateDataset(d.id, { series: d.series.map((x, j) => (j === i ? { ...x, color: c } : x)) })} />
-                    {se.name}
-                  </label>
+                    <input
+                      type="number"
+                      className="small-num"
+                      min={0.01}
+                      step={0.05}
+                      title="Line width (mm)"
+                      placeholder={String(i === d.top || i === d.bop ? (d.opts?.pipeWidth ?? 0.3) : (d.opts?.lineWidth ?? 0.2))}
+                      value={se.width ?? ''}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        sv.updateDataset(d.id, { series: d.series.map((x, j) => (j === i ? { ...x, width: v > 0 ? v : undefined } : x)) });
+                      }}
+                    />
+                    <span className="muted">mm</span>
+                    <span className="series-name">{se.name}</span>
+                  </div>
                 ))}
               </div>
             )}

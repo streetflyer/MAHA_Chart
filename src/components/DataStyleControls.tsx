@@ -227,7 +227,8 @@ function LongSetup({ opts, onChange, seriesNames }: { opts?: LongOpts; onChange(
             <option value="right">Right</option>
           </select>
         </label>
-        <Num label="Profile line width" value={o.lineWidth} step={0.05} suffix="mm" onChange={(lineWidth) => set({ lineWidth })} />
+        <Num label="Seabed line width" value={o.lineWidth} step={0.05} suffix="mm" onChange={(lineWidth) => set({ lineWidth })} />
+        <Num label="Pipe outline width" value={o.pipeWidth} step={0.05} suffix="mm" onChange={(pipeWidth) => set({ pipeWidth })} />
       </div>
       <div className="style-row">
         <label className="check">

@@ -26,6 +26,7 @@ import { makeRoute } from '../model/route';
 import { parseRlx, parseRlxp, splitAtKp0, type Runline } from '../model/runline';
 import { dropComments, fileHead, fileLines, lineSplitter, parseDelimited, readXlsx, type Table } from '../model/tables';
 import { useEditor } from '../state/store';
+import { useProject, type ImportRecipe } from '../state/project';
 import { useSurvey } from '../state/surveyData';
 import { StyleControls, LinksEditor, applyStyle, defaultStyle } from './DataStyleControls';
 import { fitInto, readImageFile } from './imageImport';
@@ -128,8 +129,16 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
   const pickFor = useRef<ImportTarget | undefined>(undefined);
   const [overRow, setOverRow] = useState<ImportTarget | null>(null);
   const [sameAsSurvey, setSameAsSurvey] = useState(false);
+  const [keyPlanUsesPlan, setKeyPlanUsesPlan] = useState(() => useSurvey.getState().datasets.some((d) => d.target === 'plan' && d.kind === 'linework' && d.both));
   const logoPanels = template.panels.filter((p) => p.type === 'logo');
   const rows = rowTargets(new Set(template.panels.map((p) => p.type)));
+
+  /** Saved import settings for a file of the project folder on the chart, if any. */
+  function recipesFor(name: string, sheets = 1): ImportRecipe[] {
+    const pr = useProject.getState();
+    if (pr.active === null) return [];
+    return pr.folder(pr.active).recipes.filter((r) => r.file === name && r.mapping.sheet < Math.max(1, sheets));
+  }
 
   async function add(files: File[], forced?: ImportTarget) {
     const hasRoute = !!useSurvey.getState().route || items.some((i) => i.target === 'route');
@@ -151,6 +160,14 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
         const t0 = got.tables?.[got.mapping?.sheet ?? 0];
         const target = !forced && t0 ? guessTarget(it.file.name, dropPanelType, hasRoute, t0.rows) : it.target;
         const mapping = target !== it.target ? { ...defaultMapping(target, t0 ?? null), sheet: got.mapping?.sheet ?? 0 } : (got.mapping ?? it.mapping);
+        // A file this project folder imported before comes back the way it was imported (every sheet of it).
+        const recipes = recipesFor(it.file.name, got.tables?.length);
+        if (recipes.length) {
+          const [first, ...rest] = recipes;
+          const copies: Item[] = rest.map((r) => ({ ...it, ...got, id: newId(), target: r.target, mapping: r.mapping, style: r.style, loading: false }));
+          setItems((xs) => [...xs.map((x) => (x.id === it.id ? { ...x, ...got, target: first.target, mapping: first.mapping, style: first.style, loading: false } : x)), ...copies]);
+          continue;
+        }
         setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, ...got, target, mapping, style: defaultStyle(target), loading: false } : x)));
       } catch (e) {
         setItems((xs) => xs.map((x) => (x.id === it.id ? { ...x, loading: false, error: (e as Error).message } : x)));
@@ -265,6 +282,9 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
         failed.push({ id: x.id, msg: `${x.file.name}: ${(e as Error).message}` });
       }
     }
+    // The key plan draws the plan view's drawings too (or stops doing so).
+    for (const d of useSurvey.getState().datasets) if (d.target === 'plan' && d.kind === 'linework' && !!d.both !== keyPlanUsesPlan) useSurvey.getState().updateDataset(d.id, { both: keyPlanUsesPlan });
+    if (keyPlanUsesPlan && !useSurvey.getState().datasets.some((d) => d.target === 'plan')) failed.push({ id: '', msg: 'Key plan: there is no plan view DXF to use. Add one in the Plan view row.' });
     if (sameAsSurvey) {
       // The runline follows the as-built survey line (the newest one loaded).
       const line = [...useSurvey.getState().datasets].reverse().find((d) => d.target === 'asbuilt' && d.kind === 'linework');
@@ -283,11 +303,20 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
       return;
     }
     if (done.length) onNotice(`Imported ${done.join('; ')}.`);
+    // Remember how this folder's files were imported, for the next time it is opened.
+    const pr = useProject.getState();
+    if (pr.active !== null) {
+      const ok = items.filter((x) => !x.error && !x.loading && x.target !== 'logo');
+      pr.recordImports(
+        pr.active,
+        ok.map((x) => ({ file: x.file.name, target: x.target, mapping: x.mapping, style: x.style })),
+      );
+    }
     onClose();
   }
 
   const ready = items.filter((x) => !x.error && !x.loading);
-  const canImport = ready.length > 0 || (sameAsSurvey && (items.some((x) => x.target === 'asbuilt') || datasets.some((d) => d.target === 'asbuilt')));
+  const canImport = ready.length > 0 || keyPlanUsesPlan !== datasets.some((d) => d.target === 'plan' && d.kind === 'linework' && d.both) || (sameAsSurvey && (items.some((x) => x.target === 'asbuilt') || datasets.some((d) => d.target === 'asbuilt')));
   const allCodes = [
     ...new Set([
       ...items.filter((x) => x.target === 'events' && x.tables).flatMap((x) => [...eventCodes(x.tables![x.mapping.sheet] ?? null, x.mapping), ...x.mapping.extra.map((e) => e.code.toUpperCase())]),
@@ -371,6 +400,12 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
                         </li>
                       ))}
                     </ul>
+                    {target === 'siteplan' && (
+                      <label className="check same-line" title="Draw the plan view DXF in the key plan as well">
+                        <input type="checkbox" checked={keyPlanUsesPlan} onChange={(e) => setKeyPlanUsesPlan(e.target.checked)} />
+                        Use the same DXF as the plan view
+                      </label>
+                    )}
                     {target === 'route' && (
                       <label className="check same-line" title="Use the As Built survey line as the runline; KP runs from 0 along it">
                         <input type="checkbox" checked={sameAsSurvey} onChange={(e) => setSameAsSurvey(e.target.checked)} />

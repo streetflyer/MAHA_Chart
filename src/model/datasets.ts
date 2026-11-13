@@ -44,6 +44,8 @@ export interface LongSeries {
   name: string;
   values: Float64Array;
   color: string;
+  /** Line width on paper, mm; unset uses the profile's line width (or the pipe outline width). */
+  width?: number;
 }
 
 export interface EventRecord {
@@ -130,6 +132,8 @@ export interface LongOpts {
   axisSide: 'left' | 'right' | 'both';
   /** Line width of the seabed lines on paper, mm. */
   lineWidth: number;
+  /** Line width of the TOP / BOP outline, mm. */
+  pipeWidth: number;
   hatchPipe: boolean;
   hatchSea: boolean;
   seaColor: string;
@@ -151,6 +155,7 @@ export const DEFAULT_LONG_OPTS: LongOpts = {
   suffix: 'm',
   axisSide: 'both',
   lineWidth: 0.2,
+  pipeWidth: 0.3,
   hatchPipe: true,
   hatchSea: false,
   seaColor: '#e6f2fb',

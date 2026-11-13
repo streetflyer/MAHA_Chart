@@ -20,6 +20,8 @@ interface SurveyData {
   updateDataset(id: string, patch: Partial<Dataset>): void;
   removeDataset(id: string): void;
   setReversed(on: boolean): void;
+  /** Drop every dataset (switching to another folder of the project). */
+  clear(): void;
 }
 
 function derive(datasets: Dataset[], reversed: boolean) {
@@ -52,4 +54,5 @@ export const useSurvey = create<SurveyData>((set, get) => ({
   updateDataset: (id, patch) => set(derive(get().datasets.map((d) => (d.id === id ? ({ ...d, ...patch } as Dataset) : d)), get().reversed)),
   removeDataset: (id) => set(derive(get().datasets.filter((d) => d.id !== id), get().reversed)),
   setReversed: (reversed) => set({ reversed, ...derive(get().datasets, reversed) }),
+  clear: () => set({ reversed: false, ...derive([], false) }),
 }));

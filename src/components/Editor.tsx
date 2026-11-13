@@ -17,6 +17,7 @@ import { chartsToDxf } from '../model/dxfExport';
 import { ThemeButton } from './ThemeButton';
 import { ImportDialog, useImport } from './ImportDialog';
 import { PropertiesPanel } from './PropertiesPanel';
+import { ProjectPanel } from './ProjectPanel';
 import { SheetView, type ContextTarget } from './SheetView';
 
 interface Menu {
@@ -390,6 +391,7 @@ export function Editor({ onExit }: { onExit(): void }) {
         </div>
       </header>
       <div className="workspace">
+        <ProjectPanel onNotice={flash} />
         <div className="sheet-col">
           <SheetView onContextMenu={openMenu} onCursor={setCursor} onNotice={flash} fitSignal={fitSignal} dark={dark} />
           <ChartTabs />
