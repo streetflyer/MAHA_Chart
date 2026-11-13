@@ -27,3 +27,28 @@ describe('DXF blocks, text and small objects', () => {
     expect(Math.abs(arc[mid + 1] - 9852000)).toBeGreaterThan(0.3);
   });
 });
+
+describe('DWG objects to DXF', () => {
+  it('writes lines, text, inserts and splines the DXF reader draws', async () => {
+    const { dwgDbToDxf } = await import('./dwgDb');
+    const { parseDxfLinework } = await import('./dxf');
+    const dxf = dwgDbToDxf({
+      entities: [
+        { type: 'LINE', layer: 'L', startPoint: { x: 0, y: 0 }, endPoint: { x: 10, y: 0 } },
+        { type: 'TEXT', layer: 'T', text: 'Branch [Relocated]', startPoint: { x: 1, y: 2 }, textHeight: 2, rotation: Math.PI / 2, halign: 0 },
+        { type: 'INSERT', layer: 'B', name: 'SYM', insertionPoint: { x: 100, y: 100 }, xScale: 2, yScale: 2, rotation: 0, attribs: [] },
+        { type: 'SPLINE', layer: 'S', degree: 3, knots: [], controlPoints: [], fitPoints: [{ x: 0, y: 0 }, { x: 5, y: 5 }, { x: 10, y: 0 }] },
+        { type: 'ARC', layer: 'A', center: { x: 0, y: 0 }, radius: 1, startAngle: 0, endAngle: Math.PI },
+      ],
+      tables: { BLOCK_RECORD: { entries: [{ name: '*Model_Space', entities: [] }, { name: 'SYM', basePoint: { x: 0, y: 0 }, entities: [{ type: 'LINE', layer: '0', startPoint: { x: 0, y: 0 }, endPoint: { x: 1, y: 0 } }] }] } },
+    });
+    const lw = parseDxfLinework(dxf, 'x.dwg')!;
+    expect(lw.texts.map((t) => t.text)).toEqual(['Branch [Relocated]']);
+    expect(lw.texts[0].rot).toBeCloseTo(90);
+    expect(lw.lines.length).toBe(4);
+    const sym = lw.lines[lw.layers.indexOf('B')];
+    expect([...sym]).toEqual([100, 100, 102, 100]);
+    const spl = lw.lines[lw.layers.indexOf('S')];
+    expect(spl.length).toBeGreaterThan(20);
+  });
+});

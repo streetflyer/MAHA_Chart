@@ -33,12 +33,35 @@ function decodeDxf(bytes: Uint8Array): string {
 
 export async function dwgToDxfText(buf: ArrayBuffer): Promise<string> {
   try {
-    return await convert(await load(), buf);
+    return convert(await load(), buf);
+  } catch {
+    // LibreDWG's DXF writer stops on some drawings it can still read. A crash
+    // leaves the wasm unusable, so read again in a fresh one and write the DXF here.
+    mod = null;
+  }
+  try {
+    return await viaObjects(await load(), buf);
   } catch (e) {
-    // A crash inside the wasm leaves it unusable: start a fresh one for the next file.
     mod = null;
     const msg = (e as Error).message;
-    throw new Error(/out of bounds|unreachable|RuntimeError/i.test(msg) ? `LibreDWG stopped on something in this drawing it doesn’t support (${msg}).` : msg);
+    throw new Error(/out of bounds|unreachable|RuntimeError|signature/i.test(msg) ? `LibreDWG stopped on something in this drawing it doesn’t support (${msg}).` : msg);
+  }
+}
+
+/** Read the DWG into JavaScript objects with LibreDWG, then write DXF text from them. */
+async function viaObjects(m: LibreDwgModule, buf: ArrayBuffer): Promise<string> {
+  const [{ LibreDwg, Dwg_File_Type }, { dwgDbToDxf }] = await Promise.all([import('@mlightcad/libredwg-web'), import('./dwgDb')]);
+  const lib = LibreDwg.createByWasmInstance(m as never);
+  const data = lib.dwg_read_data(buf, Dwg_File_Type.DWG);
+  if (!data) throw new Error('LibreDWG could not read this drawing.');
+  try {
+    return dwgDbToDxf(lib.convert(data) as never);
+  } finally {
+    try {
+      lib.dwg_free(data);
+    } catch {
+      // freed with the module
+    }
   }
 }
 
