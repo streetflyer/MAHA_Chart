@@ -32,7 +32,17 @@ function decodeDxf(bytes: Uint8Array): string {
 }
 
 export async function dwgToDxfText(buf: ArrayBuffer): Promise<string> {
-  const m = await load();
+  try {
+    return await convert(await load(), buf);
+  } catch (e) {
+    // A crash inside the wasm leaves it unusable: start a fresh one for the next file.
+    mod = null;
+    const msg = (e as Error).message;
+    throw new Error(/out of bounds|unreachable|RuntimeError/i.test(msg) ? `LibreDWG stopped on something in this drawing it doesn’t support (${msg}).` : msg);
+  }
+}
+
+function convert(m: LibreDwgModule, buf: ArrayBuffer): string {
   m.FS.writeFile('in.dwg', new Uint8Array(buf));
   try {
     const rc = m.dwg_write_dxf('in.dwg', 'out.dxf');

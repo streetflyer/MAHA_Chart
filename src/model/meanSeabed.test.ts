@@ -43,6 +43,15 @@ describe('9-point listing with a # header', () => {
     const m = defaultMapping('long', t);
     expect(m.cols).toMatchObject({ kp: 1, top: 8, bop: 6, adj: 9, adj2: 13, far: 12, far2: 16 });
   });
+  it('reads the header when it ends with a spare delimiter', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { dropComments, parseDelimited, findHeaderRow } = await import('./tables');
+    const text = readFileSync(new URL('./fixtures/9pt_trailing.csv', import.meta.url), 'utf8');
+    const t = parseDelimited(dropComments(text), '9pt.csv');
+    expect(t.rows[0][1]).toBe('Pipe - KP');
+    expect(findHeaderRow(t.rows)).toBe(0);
+    expect(defaultMapping('long', t).cols).toMatchObject({ kp: 1, top: 8, bop: 6, adj: 9, adj2: 13, far: 12, far2: 16 });
+  });
   it('still drops plain comments', async () => {
     const { dropComments } = await import('./tables');
     expect(dropComments('#unit=m\n#Type=Pipe\n1 2 3')).toBe('1 2 3');

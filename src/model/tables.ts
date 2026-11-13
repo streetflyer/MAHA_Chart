@@ -56,7 +56,8 @@ export function dropComments(text: string): string {
   const lines = text.split(/\r?\n/);
   let lead = 0;
   while (lead < lines.length && (lines[lead].startsWith('#') || !lines[lead].trim())) lead++;
-  const delims = (l: string) => [';', ',', '\t'].map((d) => l.split(d).length - 1);
+  // A trailing delimiter (e.g. "...;RightSeabedOuter - Depth;") is not another column.
+  const delims = (l: string) => [';', ',', '\t'].map((d) => l.replace(/[;,\t\s]+$/, '').split(d).length - 1);
   const firstData = lines[lead] ?? '';
   let header = -1;
   for (let i = lead - 1; i >= 0; i--) {
@@ -68,7 +69,7 @@ export function dropComments(text: string): string {
     break;
   }
   return lines
-    .map((l, i) => (i === header ? l.slice(1).trimStart() : l))
+    .map((l, i) => (i === header ? l.slice(1).trimStart().replace(/[;,\t]\s*$/, '') : l))
     .filter((l, i) => i === header || !l.startsWith('#'))
     .join('\n');
 }

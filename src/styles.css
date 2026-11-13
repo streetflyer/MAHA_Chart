@@ -1427,3 +1427,22 @@ table.preview thead th.mapped {
   white-space: nowrap;
   padding: 1px 0;
 }
+
+/* Files in the import window can be dragged to another row. */
+.row-info li.movable {
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  cursor: grab;
+}
+.row-info li.movable:active {
+  cursor: grabbing;
+}
+.drag-grip {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1;
+}
+.import-row.over {
+  outline: 2px dashed var(--accent);
+  outline-offset: -1px;
+  background: var(--accent-soft);
+}

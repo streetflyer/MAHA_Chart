@@ -192,11 +192,22 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
   const update = (id: string, patch: Partial<Item>) => setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)));
   const setMapping = (patch: Partial<Mapping>) => it && update(it.id, { mapping: { ...it.mapping, ...patch } });
 
-  function changeTarget(target: ImportTarget) {
-    if (!it) return;
-    const mapping = { ...defaultMapping(target, table), sheet: it.mapping.sheet, layer: target === 'route' && it.lw ? dxfLayers(it.lw)[0]?.layer : it.mapping.layer };
-    update(it.id, { target, mapping, style: defaultStyle(target) });
+  /** Send a file to another import row: fresh column guesses and look for that kind of data. */
+  function retarget(id: string, target: ImportTarget) {
+    const x = items.find((y) => y.id === id);
+    if (!x || x.target === target) return;
+    const t = x.tables?.[x.mapping.sheet] ?? null;
+    const mapping = { ...defaultMapping(target, t), sheet: x.mapping.sheet, layer: target === 'route' && x.lw ? dxfLayers(x.lw)[0]?.layer : x.mapping.layer };
+    update(id, { target, mapping, style: defaultStyle(target) });
+    setCurrent(id);
   }
+
+  function changeTarget(target: ImportTarget) {
+    if (it) retarget(it.id, target);
+  }
+
+  const ITEM_MIME = 'application/x-maha-import-item';
+  const draggedItem = (e: React.DragEvent) => e.dataTransfer.types.includes(ITEM_MIME);
 
   /** Another sheet of the same workbook, as its own item with its own columns. */
   function toggleSheet(sheet: number, on: boolean) {
@@ -356,23 +367,27 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
               const pending = items.filter((x) => x.target === target);
               const loaded = datasets.filter((d) => d.target === target);
               return (
-                <div key={target} className={`import-row${it?.target === target ? ' active' : ''}`}>
-                  <button
-                    type="button"
-                    className={`drop-box${overRow === target ? ' over' : ''}`}
-                    onClick={() => openPicker(target)}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setOverRow(target);
-                    }}
-                    onDragLeave={() => setOverRow(null)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setOverRow(null);
-                      void add([...e.dataTransfer.files], target);
-                    }}
-                  >
+                <div
+                  key={target}
+                  className={`import-row${it?.target === target ? ' active' : ''}${overRow === target ? ' over' : ''}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = draggedItem(e) ? 'move' : 'copy';
+                    setOverRow(target);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node)) setOverRow(null);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setOverRow(null);
+                    const moved = e.dataTransfer.getData(ITEM_MIME);
+                    if (moved) retarget(moved, target);
+                    else void add([...e.dataTransfer.files], target);
+                  }}
+                >
+                  <button type="button" className={`drop-box${overRow === target ? ' over' : ''}`} onClick={() => openPicker(target)}>
                     Drag and drop or click to open file
                   </button>
                   <div className="row-info">
@@ -386,8 +401,19 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
                         </li>
                       ))}
                       {pending.map((x) => (
-                        <li key={x.id} className={x.id === current ? 'active' : ''} onClick={() => setCurrent(x.id)}>
-                          <span className="fname" title={x.file.name}>
+                        <li
+                          key={x.id}
+                          className={`movable${x.id === current ? ' active' : ''}`}
+                          onClick={() => setCurrent(x.id)}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData(ITEM_MIME, x.id);
+                            e.dataTransfer.effectAllowed = 'move';
+                          }}
+                          title={`${x.file.name}: drag onto another row to import it there`}
+                        >
+                          <span className="drag-grip" aria-hidden>⠿</span>
+                          <span className="fname">
                             {x.file.name}
                             {x.tables && x.tables.length > 1 ? ` › ${x.tables[x.mapping.sheet]?.name}` : ''}
                           </span>
