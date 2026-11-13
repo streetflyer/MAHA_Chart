@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { profileFromRow, VW_RAW, type CrossProfile } from '../model/crossProfile';
-import { TARGETS, extOf, newLink, targetInfo, targetsFor, type DataStyle, type Dataset, type EventRecord, type ImportTarget } from '../model/datasets';
+import { TARGETS, extOf, targetInfo, targetsFor, type DataStyle, type Dataset, type EventRecord, type ImportTarget } from '../model/datasets';
 import { parseDxfLinework, type Linework } from '../model/dxf';
 import { newId } from '../model/ids';
 import {
@@ -11,9 +11,10 @@ import {
   defaultMapping,
   dxfLayers,
   fieldsFor,
-  spanCodes,
   fromPreset,
   headerOf,
+  MEAN_LINES,
+  routeFromSurveyLine,
   loadPresets,
   savePresets,
   toPreset,
@@ -23,7 +24,7 @@ import {
 } from '../model/importers';
 import { makeRoute } from '../model/route';
 import { parseRlx, parseRlxp, splitAtKp0, type Runline } from '../model/runline';
-import { fileHead, fileLines, guessColumns, lineSplitter, parseDelimited, readXlsx, type Table } from '../model/tables';
+import { dropComments, fileHead, fileLines, lineSplitter, parseDelimited, readXlsx, type Table } from '../model/tables';
 import { useEditor } from '../state/store';
 import { useSurvey } from '../state/surveyData';
 import { StyleControls, LinksEditor, applyStyle, defaultStyle } from './DataStyleControls';
@@ -106,7 +107,7 @@ async function readItem(file: File, target: ImportTarget): Promise<Partial<Item>
   }
   const big = file.size > BIG_FILE;
   const text = big ? await fileHead(file) : await file.text();
-  const table = parseDelimited(text.split(/\r?\n/).filter((l) => !l.startsWith('#')).join('\n'), file.name);
+  const table = parseDelimited(dropComments(text), file.name);
   if (!table.rows.length) return { error: 'The file is empty.' };
   return { tables: [table], big, mapping: defaultMapping(target, table) };
 }
@@ -126,6 +127,7 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
   const fileRef = useRef<HTMLInputElement>(null);
   const pickFor = useRef<ImportTarget | undefined>(undefined);
   const [overRow, setOverRow] = useState<ImportTarget | null>(null);
+  const [sameAsSurvey, setSameAsSurvey] = useState(false);
   const logoPanels = template.panels.filter((p) => p.type === 'logo');
   const rows = rowTargets(new Set(template.panels.map((p) => p.type)));
 
@@ -263,11 +265,21 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
         failed.push({ id: x.id, msg: `${x.file.name}: ${(e as Error).message}` });
       }
     }
+    if (sameAsSurvey) {
+      // The runline follows the as-built survey line (the newest one loaded).
+      const line = [...useSurvey.getState().datasets].reverse().find((d) => d.target === 'asbuilt' && d.kind === 'linework');
+      const r = line && routeFromSurveyLine(line, newId());
+      if (r && r.kind === 'route') {
+        useSurvey.getState().addDataset(r);
+        useEditor.getState().setScale({ routeLength: Math.round(r.route.length * 1000) / 1000, sheets: undefined });
+        done.push(`${line!.name} → Runline (same as the survey line)`);
+      } else failed.push({ id: '', msg: 'Runline: no As Built survey line to copy. Add one in the As Built survey line row.' });
+    }
     setBusy(null);
     if (failed.length) {
       onNotice(`Not imported: ${failed.map((f) => f.msg).join('; ')}`);
       setItems((xs) => xs.filter((x) => failed.some((f) => f.id === x.id)));
-      setCurrent(failed[0].id);
+      setCurrent(failed.find((f) => f.id)?.id ?? null);
       return;
     }
     if (done.length) onNotice(`Imported ${done.join('; ')}.`);
@@ -275,6 +287,13 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
   }
 
   const ready = items.filter((x) => !x.error && !x.loading);
+  const canImport = ready.length > 0 || (sameAsSurvey && (items.some((x) => x.target === 'asbuilt') || datasets.some((d) => d.target === 'asbuilt')));
+  const allCodes = [
+    ...new Set([
+      ...items.filter((x) => x.target === 'events' && x.tables).flatMap((x) => [...eventCodes(x.tables![x.mapping.sheet] ?? null, x.mapping), ...x.mapping.extra.map((e) => e.code.toUpperCase())]),
+      ...datasets.flatMap((d) => (d.kind === 'events' ? d.records.map((r) => r.code.toUpperCase()) : [])),
+    ]),
+  ].filter(Boolean);
 
   return (
     <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -352,6 +371,12 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
                         </li>
                       ))}
                     </ul>
+                    {target === 'route' && (
+                      <label className="check same-line" title="Use the As Built survey line as the runline; KP runs from 0 along it">
+                        <input type="checkbox" checked={sameAsSurvey} onChange={(e) => setSameAsSurvey(e.target.checked)} />
+                        Use the same line as the survey line
+                      </label>
+                    )}
                   </div>
                 </div>
               );
@@ -404,6 +429,7 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
                 changeTarget={changeTarget}
                 sheetsChosen={items.filter((x) => x.file === it.file).map((x) => x.mapping.sheet)}
                 toggleSheet={toggleSheet}
+                allCodes={allCodes}
                 savePreset={(name) => {
                   const next = [...presets.filter((p) => !(p.name === name && p.target === it.target)), toPreset(name, it.target, table, it.mapping)];
                   setPresets(next);
@@ -423,7 +449,7 @@ export function ImportDialog({ initial, dropPanelType, onClose, onNotice }: { in
           <button type="button" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="primary" disabled={!!busy || !ready.length} onClick={() => void runImport()}>
+          <button type="button" className="primary" disabled={!!busy || !canImport} onClick={() => void runImport()}>
             Import {ready.length || ''}
           </button>
         </div>
@@ -442,6 +468,7 @@ function Wizard({
   changeTarget,
   sheetsChosen,
   toggleSheet,
+  allCodes,
   savePreset,
   deletePreset,
 }: {
@@ -454,6 +481,8 @@ function Wizard({
   changeTarget(t: ImportTarget): void;
   sheetsChosen: number[];
   toggleSheet(sheet: number, on: boolean): void;
+  /** Event codes read from every events file and sheet in the window, and from loaded data. */
+  allCodes: string[];
   savePreset(name: string): void;
   deletePreset(name: string): void;
 }) {
@@ -472,7 +501,11 @@ function Wizard({
   for (const c of m.series) if (!usedFor.has(c)) usedFor.set(c, 'Seabed line');
   const mine = presets.filter((p) => p.target === it.target);
   const [presetName, setPresetName] = useState('');
-  const preview = dataRows(table, m).slice(0, 9);
+  const [shown, setShown] = useState(200);
+  const [zoom, setZoom] = useState(100);
+  const allRows = dataRows(table, m);
+  const preview = allRows.slice(0, shown);
+  const pan = useRef<{ x: number; y: number; l: number; t: number } | null>(null);
   const firstRow = m.skip + (m.header ? 1 : 0);
   function setSpan(start: string, end: string) {
     const old = m.span!;
@@ -683,20 +716,7 @@ function Wizard({
           </div>
           {it.target === 'events' && (
             <div className="span-opt">
-              <label className="check">
-                <input
-                  type="checkbox"
-                  checked={!!m.span}
-                  onChange={(e) => {
-                    const [a, b] = spanCodes(table.name);
-                    const span = e.target.checked ? { start: a, end: b } : undefined;
-                    const links = e.target.checked ? [...m.links.filter((l) => l.start !== a), newLink(a, b)] : m.links;
-                    const base = { ...m, span, links };
-                    update({ mapping: { ...base, cols: guessFor(table, base) } });
-                  }}
-                />
-                Freespan / burial data (one row per span: start KP, end KP, length, height)
-              </label>
+              {m.span && <p className="hint">This sheet lists spans (start KP, end KP, length, height per row). Each row becomes a start and an end event with these codes, drawn as a linked event.</p>}
               {m.span && (
                 <div className="row2">
                   <label className="field">
@@ -731,7 +751,50 @@ function Wizard({
           {it.target === 'trans' && <p className="hint">Defaults follow the VisualWorks Cross-Profile RAW v10.1 layout; raw points are dx, dz pairs from the first raw point column.</p>}
           {it.big && <p className="hint">Large file: showing its first lines. All of it is read when you import.</p>}
 
-          <div className="preview-wrap">
+          <div className="pz-tools">
+            <button type="button" title="Smaller text" onClick={() => setZoom((z) => Math.max(50, z - 10))}>
+              −
+            </button>
+            <span className="pz-zoom">{zoom}%</span>
+            <button type="button" title="Larger text" onClick={() => setZoom((z) => Math.min(200, z + 10))}>
+              +
+            </button>
+            <span className="hint">
+              Showing {preview.length.toLocaleString()} of {allRows.length.toLocaleString()} rows{it.big ? ' read so far' : ''}. Scroll or drag to pan; drag the corner to resize.
+            </span>
+            {preview.length < allRows.length && (
+              <button type="button" onClick={() => setShown((n) => n * 5)}>
+                Show more rows
+              </button>
+            )}
+          </div>
+          <div
+            className="preview-wrap"
+            style={{ fontSize: `${(12 * zoom) / 100}px` }}
+            onPointerDown={(e) => {
+              if (e.button !== 0 || (e.target as HTMLElement).closest('input,select,button')) return;
+              const el = e.currentTarget;
+              // Leave the resize corner alone.
+              const r = el.getBoundingClientRect();
+              if (e.clientX > r.right - 18 && e.clientY > r.bottom - 18) return;
+              pan.current = { x: e.clientX, y: e.clientY, l: el.scrollLeft, t: el.scrollTop };
+              el.classList.add('panning');
+            }}
+            onPointerMove={(e) => {
+              const p = pan.current;
+              if (!p) return;
+              e.currentTarget.scrollLeft = p.l - (e.clientX - p.x);
+              e.currentTarget.scrollTop = p.t - (e.clientY - p.y);
+            }}
+            onPointerUp={(e) => {
+              pan.current = null;
+              e.currentTarget.classList.remove('panning');
+            }}
+            onPointerLeave={(e) => {
+              pan.current = null;
+              e.currentTarget.classList.remove('panning');
+            }}
+          >
             <table className="preview">
               <thead>
                 <tr>
@@ -766,7 +829,6 @@ function Wizard({
               </tbody>
             </table>
           </div>
-          <p className="hint">{dataRows(table, m).length.toLocaleString()} data rows{it.big ? ' in the preview' : ''}.</p>
         </>
       )}
 
@@ -778,13 +840,18 @@ function Wizard({
             // A span sheet's own pair follows the codes typed for it.
             setMapping({ links });
           }}
-          codes={eventCodes(table, m)}
+          codes={[...new Set([...eventCodes(table, m), ...allCodes])].sort()}
         />
       )}
       {it.target !== 'logo' && (
         <>
           <h4>Look</h4>
-          <StyleControls target={it.target} style={it.style} onChange={(patch) => update({ style: { ...it.style, ...patch } })} />
+          <StyleControls
+            target={it.target}
+            style={it.style}
+            seriesNames={[...MEAN_LINES.filter((l) => m.cols[l.key] !== undefined).map((l) => l.name), ...m.series.map((c) => header[c] || `Column ${c + 1}`)]}
+            onChange={(patch) => update({ style: { ...it.style, ...patch } })}
+          />
           <h4>Preview</h4>
           <ImportPreview it={it} table={table} />
         </>
@@ -849,11 +916,6 @@ function ExtraEvents({ list, onChange }: { list: EventRecord[]; onChange(l: Even
   );
 }
 
-/** Columns guessed for a mapping whose field list changed (span sheets). */
-function guessFor(t: Table, m: Mapping): Mapping['cols'] {
-  const rows = t.rows.slice(m.skip);
-  return guessColumns(rows, m.header, fieldsFor('events', m));
-}
 
 /** Codes in the mapped column, for picking linked event codes. */
 function eventCodes(t: Table | null, m: Mapping): string[] {

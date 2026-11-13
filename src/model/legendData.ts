@@ -42,6 +42,7 @@ export function dataLegend(datasets: Dataset[], kpColor: string): DataLegendItem
     if (d.kind === 'cp') add({ key: 'cp', group: 'cp', symbol: 'cpStab', label: 'Cathodic Protection Reading', color: d.color, cpSymbol: d.symbol, symbolText: '-1050mV', datasetId: d.id, colorOf: 'color' });
     if (d.kind === 'events')
       d.links.forEach((l, i) => {
+        if (!l.start || !l.end) return;
         if (!out.some((x) => x.key === `link:${l.start}`))
           add({ key: `link:${l.start}`, group: 'status', symbol: 'freespan', label: l.label, color: l.color, symbolText: 'Length (m)', datasetId: d.id, colorOf: `link:${i}` });
       });

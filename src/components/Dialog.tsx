@@ -7,7 +7,8 @@ import { create } from 'zustand';
  */
 
 interface Request {
-  kind: 'text' | 'confirm';
+  kind: 'text' | 'confirm' | 'choice';
+  choices?: string[];
   title: string;
   message?: string;
   initial?: string;
@@ -24,6 +25,11 @@ export function askText(title: string, initial = '', okLabel = 'OK'): Promise<st
 
 export function askConfirm(title: string, message: string, okLabel = 'OK', danger = false): Promise<boolean> {
   return new Promise((resolve) => useDialog.setState({ req: { kind: 'confirm', title, message, okLabel, danger, resolve: (v) => resolve(v === true) } }));
+}
+
+/** A question with several answers; resolves with the index picked, or null when cancelled. */
+export function askChoice(title: string, message: string, choices: string[]): Promise<number | null> {
+  return new Promise((resolve) => useDialog.setState({ req: { kind: 'choice', title, message, choices, okLabel: '', resolve: (v) => resolve(typeof v === 'string' ? Number(v) : null) } }));
 }
 
 export function DialogHost() {
@@ -46,7 +52,8 @@ export function DialogHost() {
   const ok = () => {
     if (req.kind === 'text') {
       if (value.trim()) close(value.trim());
-    } else close(true);
+    } else if (req.kind === 'choice') close('0');
+    else close(true);
   };
 
   return (
@@ -72,9 +79,17 @@ export function DialogHost() {
           <button type="button" onClick={() => close(req.kind === 'text' ? null : false)}>
             Cancel
           </button>
-          <button ref={okRef} type="submit" className={req.danger ? 'primary danger-fill' : 'primary'} disabled={req.kind === 'text' && !value.trim()}>
-            {req.okLabel}
-          </button>
+          {req.kind === 'choice' ? (
+            req.choices!.map((c, i) => (
+              <button key={i} ref={i === 0 ? okRef : undefined} type="button" className={i === 0 ? 'primary' : undefined} onClick={() => close(String(i))}>
+                {c}
+              </button>
+            ))
+          ) : (
+            <button ref={okRef} type="submit" className={req.danger ? 'primary danger-fill' : 'primary'} disabled={req.kind === 'text' && !value.trim()}>
+              {req.okLabel}
+            </button>
+          )}
         </div>
       </form>
     </div>

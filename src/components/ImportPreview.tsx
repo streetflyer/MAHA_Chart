@@ -1,4 +1,4 @@
-import { useMemo, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import type { Dataset } from '../model/datasets';
 import { splitRanges } from '../model/events';
 import { buildDataset, DEFAULT_COLOURS, type Mapping } from '../model/importers';
@@ -8,7 +8,7 @@ import type { Table } from '../model/tables';
 import type { Linework } from '../model/dxf';
 import type { ImportTarget, DataStyle } from '../model/datasets';
 import { applyStyle } from './DataStyleControls';
-import { CpMark, fontProps } from './KpPanels';
+import { CpMark, depthSense, fontProps } from './KpPanels';
 import { useEditor } from '../state/store';
 
 const W = 600;
@@ -43,11 +43,82 @@ export function ImportPreview({ it, table }: { it: PreviewItem; table: Table | n
   else if (d.kind === 'trans') body = <TransPreview d={d} />;
   else if (d.kind === 'events') body = <EventsPreview d={d} />;
   else if (d.kind === 'cp') body = <CpPreview d={d} />;
+  return <PanZoomSvg>{body}</PanZoomSvg>;
+}
+
+type Box = [number, number, number, number];
+
+/**
+ * The preview drawing in a box that can be resized (drag its corner), zoomed
+ * (wheel, or the + / − buttons) and panned (drag). Double-click goes back to the whole drawing.
+ */
+function PanZoomSvg({ children }: { children: ReactElement | null }) {
+  const full: Box = [0, 0, W, H];
+  const [vb, setVb] = useState<Box>(full);
+  const svg = useRef<SVGSVGElement>(null);
+  const drag = useRef<{ x: number; y: number; vb: Box } | null>(null);
+  const zoomAt = (f: number, cx = 0.5, cy = 0.5) =>
+    setVb(([x, y, w, h]) => {
+      const nw = Math.min(W * 4, Math.max(W / 200, w * f));
+      const nh = (nw / w) * h;
+      return [x + (w - nw) * cx, y + (h - nh) * cy, nw, nh];
+    });
+  // Wheel zoom needs a non-passive listener so the page doesn't scroll as well.
+  useEffect(() => {
+    const el = svg.current;
+    if (!el) return;
+    const wheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const r = el.getBoundingClientRect();
+      zoomAt(e.deltaY > 0 ? 1.2 : 1 / 1.2, (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+    };
+    el.addEventListener('wheel', wheel, { passive: false });
+    return () => el.removeEventListener('wheel', wheel);
+  }, []);
+  const zoomPct = Math.round((W / vb[2]) * 100);
   return (
-    <svg className="import-preview" viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Preview of the mapped data">
-      <rect width={W} height={H} fill="#fff" />
-      {body}
-    </svg>
+    <div className="pz-wrap">
+      <div className="pz-tools">
+        <button type="button" title="Zoom out" onClick={() => zoomAt(1.25)}>
+          −
+        </button>
+        <span className="pz-zoom">{zoomPct}%</span>
+        <button type="button" title="Zoom in" onClick={() => zoomAt(0.8)}>
+          +
+        </button>
+        <button type="button" title="Show all (or double-click the drawing)" onClick={() => setVb(full)}>
+          Fit
+        </button>
+        <span className="hint">Wheel to zoom, drag to pan, drag the corner to resize</span>
+      </div>
+      <div className="pz-box">
+        <svg
+          ref={svg}
+          className="import-preview"
+          viewBox={vb.join(' ')}
+          preserveAspectRatio="xMidYMid meet"
+          role="img"
+          aria-label="Preview of the mapped data"
+          onDoubleClick={() => setVb(full)}
+          onPointerDown={(e) => {
+            (e.target as Element).setPointerCapture?.(e.pointerId);
+            drag.current = { x: e.clientX, y: e.clientY, vb };
+          }}
+          onPointerMove={(e) => {
+            const d = drag.current;
+            if (!d || !svg.current) return;
+            const r = svg.current.getBoundingClientRect();
+            const k = Math.max(d.vb[2] / r.width, d.vb[3] / r.height);
+            setVb([d.vb[0] - (e.clientX - d.x) * k, d.vb[1] - (e.clientY - d.y) * k, d.vb[2], d.vb[3]]);
+          }}
+          onPointerUp={() => (drag.current = null)}
+          onPointerCancel={() => (drag.current = null)}
+        >
+          <rect x={-W * 10} y={-H * 10} width={W * 21} height={H * 21} fill="#fff" />
+          {children}
+        </svg>
+      </div>
+    </div>
   );
 }
 
@@ -125,7 +196,8 @@ function LongPreview({ d }: { d: Extract<Dataset, { kind: 'long' }> }) {
         hi = Math.max(hi, v);
       }
     }
-  const f = fitBox(d.kp[0], d.kp[n - 1], -hi, -lo, false);
+  const sg = depthSense(d);
+  const f = fitBox(d.kp[0], d.kp[n - 1], sg > 0 ? -hi : lo, sg > 0 ? -lo : hi, false);
   const line = (vals: Float64Array, rev = false) => {
     let s = '';
     const idx = [];
@@ -133,7 +205,7 @@ function LongPreview({ d }: { d: Extract<Dataset, { kind: 'long' }> }) {
     if (rev) idx.reverse();
     for (const i of idx) {
       if (!Number.isFinite(vals[i])) continue;
-      const [x, y] = f(d.kp[i], -vals[i]);
+      const [x, y] = f(d.kp[i], -sg * vals[i]);
       s += `${s ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`;
     }
     return s;
@@ -148,8 +220,8 @@ function LongPreview({ d }: { d: Extract<Dataset, { kind: 'long' }> }) {
       ))}
       <Axis text={`KP ${(d.kp[0] / 1000).toFixed(3)}`} x={PAD} y={H - 6} />
       <Axis text={`KP ${(d.kp[n - 1] / 1000).toFixed(3)}`} x={W - PAD} y={H - 6} anchor="end" />
-      <Axis text={`${lo.toFixed(1)} m`} x={4} y={PAD} />
-      <Axis text={`${hi.toFixed(1)} m`} x={4} y={H - PAD} />
+      <Axis text={`${(sg > 0 ? lo : hi).toFixed(1)} m`} x={4} y={PAD} />
+      <Axis text={`${(sg > 0 ? hi : lo).toFixed(1)} m`} x={4} y={H - PAD} />
     </g>
   );
 }

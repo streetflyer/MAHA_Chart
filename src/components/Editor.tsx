@@ -12,7 +12,8 @@ import { useSurvey } from '../state/surveyData';
 import { fitInto, readImageFile } from './imageImport';
 import { titleInsideHeight } from './PanelContent';
 import { ContextMenu, type MenuItem } from './ContextMenu';
-import { askConfirm, askText } from './Dialog';
+import { askChoice, askConfirm, askText } from './Dialog';
+import { chartsToDxf } from '../model/dxfExport';
 import { ThemeButton } from './ThemeButton';
 import { ImportDialog, useImport } from './ImportDialog';
 import { PropertiesPanel } from './PropertiesPanel';
@@ -229,6 +230,39 @@ export function Editor({ onExit }: { onExit(): void }) {
     s().setPaper(size, template.paper.orientation, [template.paper.width, template.paper.height]);
   }
 
+  /** Chart(s) as DXF: the current one, or all of them side by side in one file. */
+  async function saveDxf() {
+    const n = sheetCount(template);
+    const cur = s().sheetIndex;
+    let sheets = [cur];
+    if (n > 1) {
+      const pick = await askChoice('Save as DXF', `Save Chart ${cur + 1} only, or all ${n} charts side by side in one file (50 mm apart)?`, [`Chart ${cur + 1}`, `All ${n} charts`]);
+      if (pick === null) return;
+      if (pick === 1) sheets = Array.from({ length: n }, (_, i) => i);
+    }
+    flash('Writing DXF…');
+    const prevSel = s().selection;
+    useEditor.setState({ selection: [] });
+    const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+    const text = await chartsToDxf(template.paper.width, template.paper.height, sheets, async (i) => {
+      s().setSheet(i);
+      await frame();
+      await frame();
+      await new Promise((r) => setTimeout(r, 60));
+      return document.querySelector<SVGSVGElement>('svg.sheet');
+    });
+    s().setSheet(cur);
+    useEditor.setState({ selection: prevSel });
+    const blob = new Blob([text], { type: 'application/dxf' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const base = (template.fields.DRAWING_NO || template.name).replace(/[^\w.-]+/g, '_');
+    a.download = sheets.length > 1 ? `${base}_all_charts.dxf` : `${base}_chart${cur + 1}.dxf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    flash(`Saved ${a.download}`);
+  }
+
   async function reset() {
     if (!(await askConfirm('Reset to template?', 'This puts the layout back the way it was when you opened it. You can undo this with Ctrl+Z.', 'Reset'))) return;
     s().resetToOrigin();
@@ -296,6 +330,9 @@ export function Editor({ onExit }: { onExit(): void }) {
           </button>
           <button onClick={() => exportTemplateFile(template)} title="Download the template as a file to share">
             Export file
+          </button>
+          <button onClick={() => void saveDxf()} title="Save the chart as an AutoCAD DXF (paper millimetres)">
+            Save as DXF…
           </button>
           <button onClick={() => useImport.getState().request()} title="Import survey data: route, plan view data, profiles, events, CP, logos, site plan">
             Import data…

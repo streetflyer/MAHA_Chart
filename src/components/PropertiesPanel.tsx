@@ -760,7 +760,12 @@ function DataList({ panelType }: { panelType?: string }) {
                 {d.target === 'plan' ? 'Also show in the key plan' : 'Also show in the plan view'}
               </label>
             )}
-            <StyleControls target={d.target} style={styleOf(d)} onChange={(patch) => sv.updateDataset(d.id, applyStyle(d, { ...styleOf(d), ...patch }))} />
+            <StyleControls
+              target={d.target}
+              style={styleOf(d)}
+              seriesNames={d.kind === 'long' ? d.series.filter((_, i) => i !== d.top && i !== d.bop).map((x) => x.name) : []}
+              onChange={(patch) => sv.updateDataset(d.id, applyStyle(d, { ...styleOf(d), ...patch }))}
+            />
             {d.kind === 'long' && (
               <div className="checks">
                 {d.series.map((se, i) => (

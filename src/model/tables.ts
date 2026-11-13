@@ -48,6 +48,31 @@ function splitLine(line: string, d: string | RegExp): string[] {
   return out;
 }
 
+/**
+ * Lines starting with # are comments, except a header written as one
+ * (EIVA / NaviModel listings: `#Pipe - Time;Pipe - KP;...`), which is kept without its #.
+ */
+export function dropComments(text: string): string {
+  const lines = text.split(/\r?\n/);
+  let lead = 0;
+  while (lead < lines.length && (lines[lead].startsWith('#') || !lines[lead].trim())) lead++;
+  const delims = (l: string) => [';', ',', '\t'].map((d) => l.split(d).length - 1);
+  const firstData = lines[lead] ?? '';
+  let header = -1;
+  for (let i = lead - 1; i >= 0; i--) {
+    if (!lines[i].startsWith('#')) continue;
+    const a = delims(lines[i].slice(1));
+    const b = delims(firstData);
+    // Same delimiter, same number of columns as the data under it: column names.
+    if (a.some((n, j) => n > 0 && n === b[j])) header = i;
+    break;
+  }
+  return lines
+    .map((l, i) => (i === header ? l.slice(1).trimStart() : l))
+    .filter((l, i) => i === header || !l.startsWith('#'))
+    .join('\n');
+}
+
 export const isNumber = (s: string | undefined) => s !== undefined && s.trim() !== '' && Number.isFinite(Number(s));
 
 /** True when the first row looks like column names rather than data. */

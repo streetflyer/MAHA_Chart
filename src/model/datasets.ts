@@ -107,6 +107,57 @@ export const CP_SYMBOLS: Record<CpSymbol, string> = {
   diamondFill: 'Diamond, filled',
 };
 
+/**
+ * Longitudinal profile setup, after AutoChart's Create Profile dialog: which way
+ * the values point, where the profile sits in the panel, the depth grid and hatching.
+ */
+export interface LongOpts {
+  /** 'depth': positive values are depths (+ down), 'level': elevations (+ up, depths negative), 'auto': by the sign of the data. */
+  zSense: 'auto' | 'depth' | 'level';
+  /** Draw every line as its offset from the top of pipe (TOP becomes the zero line). */
+  normalise: boolean;
+  placement: 'upper' | 'middle' | 'lower';
+  /** Value at the top of the depth axis; null lets the placement decide. */
+  forceTop: number | null;
+  /** Depth grid (metres; 0 = chosen from the scale). */
+  gridLine: number;
+  gridLabel: number;
+  majorTick: number;
+  minorTick: number;
+  /** Major tick length on paper, mm; minor ticks are half of it. */
+  tickLen: number;
+  suffix: string;
+  axisSide: 'left' | 'right' | 'both';
+  /** Line width of the seabed lines on paper, mm. */
+  lineWidth: number;
+  hatchPipe: boolean;
+  hatchSea: boolean;
+  seaColor: string;
+  /** Name of the line to hatch under (the seabed); '' for none. */
+  hatchBelow: string;
+  belowColor: string;
+}
+
+export const DEFAULT_LONG_OPTS: LongOpts = {
+  zSense: 'auto',
+  normalise: false,
+  placement: 'middle',
+  forceTop: null,
+  gridLine: 0,
+  gridLabel: 0,
+  majorTick: 0,
+  minorTick: 0,
+  tickLen: 1.5,
+  suffix: 'm',
+  axisSide: 'both',
+  lineWidth: 0.2,
+  hatchPipe: true,
+  hatchSea: false,
+  seaColor: '#e6f2fb',
+  hatchBelow: '',
+  belowColor: '#e8dcc0',
+};
+
 /** How DXF text is sized on paper: with the map, with the map but kept readable, or one fixed height. */
 export type TextMode = 'auto' | 'drawn' | 'fixed';
 
@@ -115,7 +166,7 @@ export type Dataset =
   | (Base & { kind: 'route'; route: Route; before?: Float64Array; width: number })
   | (Base & { kind: 'linework'; lw: Linework; width: number; textMode: TextMode; textScale: number; textHeight: number; both?: boolean })
   /** Pipe drawn between the top and bottom series; the rest are seabed lines. */
-  | (Base & { kind: 'long'; kp: Float64Array; series: LongSeries[]; top?: number; bop?: number; fill: string })
+  | (Base & { kind: 'long'; kp: Float64Array; series: LongSeries[]; top?: number; bop?: number; fill: string; opts?: LongOpts })
   /** Profiles sorted by KP; one is drawn every `every` metres (0: chosen from the scale). */
   | (Base & { kind: 'trans'; kp: Float64Array; profiles: CrossProfile[]; every: number; pipeColor: string; pipeFill: string })
   | (Base & { kind: 'events'; records: EventRecord[]; labels: boolean; font: DataFont; links: EventLink[] })
@@ -132,6 +183,7 @@ export type DataStyle = Partial<{
   links: EventLink[];
   symbol: CpSymbol;
   labels: boolean;
+  long: LongOpts;
 }>;
 
 export const SERIES_COLOURS = ['#16a34a', '#2563eb', '#9333ea', '#ea580c', '#0891b2', '#64748b'];

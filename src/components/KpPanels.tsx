@@ -1,6 +1,6 @@
 import { useMemo, type ReactElement } from 'react';
 import { nearestProfile } from '../model/crossProfile';
-import type { CpSymbol, DataFont, Dataset, LabelPos } from '../model/datasets';
+import { DEFAULT_LONG_OPTS, type CpSymbol, type DataFont, type Dataset, type LabelPos } from '../model/datasets';
 import { codeMatcher, isKpRow, rowCodes, splitRanges, type EventMark, type EventRange, type LinkedEvent } from '../model/events';
 import { kpInterval, planStyle } from '../model/planStyle';
 import { chartGeometry, gridToPlan, pointAt, type Route } from '../model/route';
@@ -134,55 +134,124 @@ function indexRange(kp: Float64Array, [lo, hi]: [number, number]): [number, numb
   return [Math.max(0, a - 1), Math.min(kp.length - 1, b + 1)];
 }
 
-/** Depth labels down both edges, with dotted guide lines, as on the reference charts. */
-function DepthAxis({ p, y, lo, hi, step, unit = 'm' }: { p: Panel; y: (v: number) => number; lo: number; hi: number; step: number; unit?: string }) {
+interface AxisOpts {
+  /** Grid line interval; labels, major and minor ticks default to it (0 = none for minor). */
+  line: number;
+  label?: number;
+  major?: number;
+  minor?: number;
+  tickLen?: number;
+  suffix?: string;
+  side?: 'left' | 'right' | 'both';
+}
+
+const onStep = (v: number, step: number) => step > 0 && Math.abs(v / step - Math.round(v / step)) < 1e-6;
+
+/** Depth labels down the edges, with dotted guide lines and ticks, as on the reference charts. */
+function DepthAxis({ p, y, lo, hi, o }: { p: Panel; y: (v: number) => number; lo: number; hi: number; o: AxisOpts }) {
   const out: ReactElement[] = [];
   const cap = 1.8;
-  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) {
+  const label = o.label || o.line;
+  const major = o.major || o.line;
+  const minor = o.minor || 0;
+  const len = o.tickLen ?? 1.5;
+  const side = o.side ?? 'both';
+  const unit = o.suffix ?? 'm';
+  const left = side !== 'right';
+  const right = side !== 'left';
+  // Walk the finest interval asked for and draw what falls on each.
+  const fine = Math.min(...[o.line, label, major, minor].filter((x) => x > 0));
+  if (!(fine > 0) || (hi - lo) / fine > 2000) return null;
+  for (let i = Math.ceil(lo / fine); i * fine <= hi + 1e-9; i++) {
+    const v = Number((i * fine).toFixed(6));
     const yy = y(v);
-    if (yy < p.y + 2 || yy > p.y + p.h - 4) continue;
-    const label = `${Number(v.toFixed(2))}${unit}`;
+    if (yy < p.y + 0.5 || yy > p.y + p.h - 0.5) continue;
+    const isLine = onStep(v, o.line);
+    const isMajor = onStep(v, major);
+    const isMinor = !isMajor && onStep(v, minor);
+    const isLabel = onStep(v, label) && yy > p.y + 2 && yy < p.y + p.h - 2;
+    const t = isMajor ? len : isMinor ? len / 2 : 0;
+    const text = `${Number(v.toFixed(2))}${unit}`;
     out.push(
       <g key={v}>
-        <line className="depth-tick" x1={p.x} y1={yy} x2={p.x + p.w} y2={yy} />
-        <line className="depth-mark" x1={p.x} y1={yy} x2={p.x + 1.5} y2={yy} />
-        <line className="depth-mark" x1={p.x + p.w - 1.5} y1={yy} x2={p.x + p.w} y2={yy} />
-        <text x={p.x + 2} y={yy + fontSize(cap) * 0.35} fontSize={fontSize(cap)} className="depth-label">
-          {label}
-        </text>
-        <text x={p.x + p.w - 2} y={yy + fontSize(cap) * 0.35} fontSize={fontSize(cap)} className="depth-label" textAnchor="end">
-          {label}
-        </text>
+        {isLine && <line className="depth-tick" x1={p.x} y1={yy} x2={p.x + p.w} y2={yy} />}
+        {t > 0 && left && <line className="depth-mark" x1={p.x} y1={yy} x2={p.x + t} y2={yy} />}
+        {t > 0 && right && <line className="depth-mark" x1={p.x + p.w - t} y1={yy} x2={p.x + p.w} y2={yy} />}
+        {isLabel && left && (
+          <text x={p.x + len + 0.5} y={yy + fontSize(cap) * 0.35} fontSize={fontSize(cap)} className="depth-label">
+            {text}
+          </text>
+        )}
+        {isLabel && right && (
+          <text x={p.x + p.w - len - 0.5} y={yy + fontSize(cap) * 0.35} fontSize={fontSize(cap)} className="depth-label" textAnchor="end">
+            {text}
+          </text>
+        )}
       </g>,
     );
   }
   return <g>{out}</g>;
 }
 
-/** The pipe as a band between top and bottom of pipe, with seabed lines, at the longitudinal vertical scale. */
+/** Positive values are depths unless the data is mostly negative (levels). */
+export function depthSense(d: Extract<Dataset, { kind: 'long' }>): 1 | -1 {
+  const o = d.opts?.zSense ?? 'auto';
+  if (o === 'depth') return 1;
+  if (o === 'level') return -1;
+  const s = d.series[d.top ?? 0] ?? d.series[0];
+  if (!s) return 1;
+  let neg = 0;
+  let pos = 0;
+  for (let i = 0; i < s.values.length; i += Math.max(1, Math.floor(s.values.length / 500))) {
+    const v = s.values[i];
+    if (v < 0) neg++;
+    else if (v > 0) pos++;
+  }
+  return neg > pos ? -1 : 1;
+}
+
+/**
+ * The pipe as a band between top and bottom of pipe, with seabed lines, at the
+ * longitudinal vertical scale, set up as in AutoChart's Create Profile: values as
+ * depths or levels, optionally normalised on the top of pipe, placed upper / middle /
+ * lower (or from a forced top value), with the depth grid and hatching chosen.
+ */
 function LongProfile({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'long' }>; p: Panel; t: ChartTemplate; toX: (kp: number) => number; span: [number, number] }) {
+  const o = { ...DEFAULT_LONG_OPTS, ...d.opts };
   const [a, b] = indexRange(d.kp, span);
-  let min = Infinity;
-  let max = -Infinity;
+  const sgn = depthSense(d);
+  const top = d.top !== undefined ? d.series[d.top] : undefined;
+  const bop = d.bop !== undefined ? d.series[d.bop] : undefined;
+  const ref = (i: number) => (o.normalise && top ? top.values[i] : 0);
+  const val = (vals: Float64Array, i: number) => vals[i] - ref(i);
+  // u runs down the page: depth, or minus the level.
+  let uMin = Infinity;
+  let uMax = -Infinity;
   for (const s of d.series)
     for (let i = a; i <= b; i++) {
-      const v = s.values[i];
+      const v = val(s.values, i);
       if (Number.isFinite(v)) {
-        min = Math.min(min, v);
-        max = Math.max(max, v);
+        uMin = Math.min(uMin, sgn * v);
+        uMax = Math.max(uMax, sgn * v);
       }
     }
-  if (!Number.isFinite(min)) return null;
+  if (!Number.isFinite(uMin)) return null;
   const k = 1000 / Math.max(1, t.scale.verticalLong);
-  const mid = (min + max) / 2;
-  const cy = p.y + (p.h - 4) / 2;
-  const y = (v: number) => cy + (v - mid) * k;
+  const inner = p.h - 4;
+  const dataH = (uMax - uMin) * k;
+  let yTop: number;
+  if (o.forceTop !== null && Number.isFinite(o.forceTop)) yTop = p.y + (uMin - sgn * o.forceTop) * k;
+  else if (o.placement === 'upper') yTop = p.y + inner * 0.1;
+  else if (o.placement === 'lower') yTop = p.y + inner * 0.9 - dataH;
+  else yTop = p.y + (inner - dataH) / 2;
+  const yU = (u: number) => yTop + (u - uMin) * k;
+  const y = (v: number) => yU(sgn * v);
   const stride = Math.max(1, Math.floor((b - a) / 4000));
   const line = (vals: Float64Array, from: number, to: number, dir = 1) => {
     let s = '';
     let pen = false;
     for (let i = dir > 0 ? from : to; dir > 0 ? i <= to : i >= from; i += dir * stride) {
-      const v = vals[i];
+      const v = val(vals, i);
       if (!Number.isFinite(v)) {
         pen = false;
         continue;
@@ -192,23 +261,41 @@ function LongProfile({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'long
     }
     return s;
   };
-  const top = d.top !== undefined ? d.series[d.top] : undefined;
-  const bop = d.bop !== undefined ? d.series[d.bop] : undefined;
   let band = '';
-  if (top && bop) {
+  if (o.hatchPipe && top && bop) {
     // Top forwards then bottom backwards, closed: the pipe body.
     const fwd = line(top.values, a, b);
     const back = line(bop.values, a, b, -1).replace(/^M/, 'L');
     band = fwd + back + 'Z';
   }
-  const half = p.h / 2 / k;
-  const step = niceGrid(half * 2) / 2;
+  // Hatch under a seabed line: down to the panel's foot (or top, for levels drawn upside down).
+  const under = o.hatchBelow ? d.series.find((s) => s.name === o.hatchBelow) : undefined;
+  let below = '';
+  if (under) {
+    const l = line(under.values, a, b);
+    const xs = [...l.matchAll(/[ML]([-\d.]+) /g)].map((m) => Number(m[1]));
+    if (xs.length > 1) below = l.replace(/M/g, 'L').replace(/^L/, 'M') + `L${xs[xs.length - 1]} ${p.y + p.h}L${xs[0]} ${p.y + p.h}Z`;
+  }
+  // The axis runs from the panel top to its foot.
+  const u0 = uMin - (yTop - p.y) / k;
+  const u1 = u0 + p.h / k;
+  const lo = Math.min(sgn * u0, sgn * u1);
+  const hi = Math.max(sgn * u0, sgn * u1);
+  const auto = niceGrid(p.h / k) / 2;
   return (
     <g>
-      <DepthAxis p={p} y={y} lo={mid - half} hi={mid + half} step={step} />
+      {o.hatchSea && <rect x={p.x} y={p.y} width={p.w} height={p.h} fill={o.seaColor} stroke="none" />}
+      {below && <path d={below} fill={o.belowColor} stroke="none" />}
+      <DepthAxis
+        p={p}
+        y={y}
+        lo={lo}
+        hi={hi}
+        o={{ line: o.gridLine || auto, label: o.gridLabel, major: o.majorTick, minor: o.minorTick, tickLen: o.tickLen, suffix: o.suffix, side: o.axisSide }}
+      />
       {band && <path d={band} fill={d.fill} stroke="none" />}
       {d.series.map((s, j) => (
-        <path key={j} d={line(s.values, a, b)} fill="none" stroke={s.color} strokeWidth={j === d.top || j === d.bop ? 0.3 : 0.2} />
+        <path key={j} d={line(s.values, a, b)} fill="none" stroke={s.color} strokeWidth={j === d.top || j === d.bop ? Math.max(0.3, o.lineWidth) : o.lineWidth} />
       ))}
     </g>
   );
@@ -241,7 +328,7 @@ function TransProfiles({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'tr
   const cap = 1.8;
   return (
     <g>
-      <DepthAxis p={p} y={(v) => cy - v * kL} lo={-maxLat} hi={maxLat} step={niceGrid(maxLat * 2) / 2} />
+      <DepthAxis p={p} y={(v) => cy - v * kL} lo={-maxLat} hi={maxLat} o={{ line: niceGrid(maxLat * 2) / 2 }} />
       {picks.map((pr) => {
         const x0 = toX(pr.kp);
         let dots = '';

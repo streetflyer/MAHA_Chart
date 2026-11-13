@@ -34,14 +34,16 @@ export function routePath(r: Route, project: Project, tol: number): string {
 }
 
 function polyPath(l: Float64Array, project: Project, tol: number): string {
+  // Fine tolerances need more decimals, or small symbols snap to a 0.01 mm grid.
+  const dp = tol < 0.01 ? 4 : 2;
   let [x, y] = project(l[0], l[1]);
-  let s = `M${x.toFixed(2)} ${y.toFixed(2)}`;
+  let s = `M${x.toFixed(dp)} ${y.toFixed(dp)}`;
   let lx = x;
   let ly = y;
   for (let i = 2; i < l.length; i += 2) {
     [x, y] = project(l[i], l[i + 1]);
     if (i < l.length - 2 && Math.abs(x - lx) < tol && Math.abs(y - ly) < tol) continue;
-    s += `L${x.toFixed(2)} ${y.toFixed(2)}`;
+    s += `L${x.toFixed(dp)} ${y.toFixed(dp)}`;
     lx = x;
     ly = y;
   }

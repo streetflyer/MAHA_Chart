@@ -7,9 +7,9 @@ import { fontSize } from './svgText';
 type LineworkSet = Extract<Dataset, { kind: 'linework' }>;
 type Project = (e: number, n: number) => [number, number];
 
-/** Texts smaller than this on paper can't be read and only cost time. */
-const MIN_TEXT_MM = 0.15;
-const MAX_TEXTS = 4000;
+/** Texts smaller than this on paper can't be seen even zoomed right in. */
+const MIN_TEXT_MM = 0.002;
+const MAX_TEXTS = 20000;
 const AUTO_MIN_MM = 1.2;
 const AUTO_MAX_MM = 3;
 
@@ -36,7 +36,8 @@ export function LineworkLayer({
   uAngle?: number;
   widthScale?: number;
 }) {
-  const paths = useMemo(() => sets.map((d) => linesPath(d.lw.lines, area, project, 0.05)), [sets, area, project]);
+  // Every vertex is kept (to 0.001 mm on paper) so small symbols keep their shape.
+  const paths = useMemo(() => sets.map((d) => linesPath(d.lw.lines, area, project, 0.001)), [sets, area, project]);
   return (
     <>
       {sets.map((d, i) => (
@@ -85,7 +86,7 @@ function Texts({ d, area, project, mmPerM, uAngle }: { d: LineworkSet; area: Bou
         fontSize={fs}
         fill={d.color}
         textAnchor={anchor}
-        transform={`rotate(${ang.toFixed(2)} ${x.toFixed(2)} ${y.toFixed(2)})`}
+        transform={`rotate(${ang.toFixed(2)} ${x.toFixed(4)} ${y.toFixed(4)})`}
       >
         {lines.length === 1
           ? t.text

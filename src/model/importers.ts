@@ -14,7 +14,7 @@ export interface FieldSpec {
   pair?: { names2: string[]; hint: string };
 }
 
-const KP_NAMES = ['KP', 'GRIDKP', 'CHAINAGE'];
+const KP_NAMES = ['KP', 'GRIDKP', 'PIPEKP', 'CHAINAGE'];
 const EN = (): FieldSpec[] => [
   { key: 'e', label: 'Easting', names: ['EAST', 'E', 'X'], required: true },
   { key: 'n', label: 'Northing', names: ['NORTH', 'N', 'Y'], required: true },
@@ -27,10 +27,10 @@ export const FIELDS: Partial<Record<ImportTarget, FieldSpec[]>> = {
   plan: EN(),
   long: [
     { key: 'kp', label: 'KP', names: KP_NAMES, required: true },
-    { key: 'top', label: 'Top of pipe (TOP)', names: ['TOP'] },
-    { key: 'bop', label: 'Bottom of pipe (BOP)', names: ['BOP'] },
-    { key: 'adj', label: 'Mean adjacent seabed', names: ['PORTADJ', 'PTADJ'], pair: { names2: ['STBADJ', 'STBDADJ', 'STARBOARDADJ', 'SBADJ'], hint: 'Pick two columns (port and starboard adjacent); they are averaged.' } },
-    { key: 'far', label: 'Mean far seabed', names: ['PORTMSBL', 'PORTFAR', 'PTMSBL'], pair: { names2: ['STBDMSBL', 'STBMSBL', 'STBDFAR', 'STBFAR', 'SBMSBL'], hint: 'Pick two columns (port and starboard far seabed); they are averaged.' } },
+    { key: 'top', label: 'Top of pipe (TOP)', names: ['TOP', 'PIPETOP', 'PIPEDEPTH'] },
+    { key: 'bop', label: 'Bottom of pipe (BOP)', names: ['BOP', 'BOTTOMOFPIPE', 'PIPEBOTTOM'] },
+    { key: 'adj', label: 'Mean adjacent seabed', names: ['PORTADJ', 'PTADJ', 'LEFTSEABEDINNER', 'LEFTADJ'], pair: { names2: ['STBADJ', 'STBDADJ', 'STARBOARDADJ', 'SBADJ', 'RIGHTSEABEDINNER', 'RIGHTADJ'], hint: 'Pick two columns (port and starboard adjacent); they are averaged.' } },
+    { key: 'far', label: 'Mean far seabed', names: ['PORTMSBL', 'PORTFAR', 'PTMSBL', 'LEFTSEABEDOUTER', 'LEFTFAR'], pair: { names2: ['STBDMSBL', 'STBMSBL', 'STBDFAR', 'STBFAR', 'SBMSBL', 'RIGHTSEABEDOUTER', 'RIGHTFAR'], hint: 'Pick two columns (port and starboard far seabed); they are averaged.' } },
   ],
   trans: [
     { key: 'kp', label: 'KP', names: KP_NAMES, required: true },
@@ -210,7 +210,8 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
       work = { name, lines: [line], layers: ['0'], texts: [], bounds: boundsOf(line) };
     }
     const width = target === 'asbuilt' ? 0.35 : 0.18;
-    return { ...base, kind: 'linework', lw: work, width, textMode: 'auto', textScale: 100, textHeight: 1.5 };
+    // Plan view drawings keep their text at the size drawn (zoom in to read it); the key plan, seen whole, keeps it readable.
+    return { ...base, kind: 'linework', lw: work, width, textMode: target === 'siteplan' ? 'auto' : 'drawn', textScale: 100, textHeight: 1.5 };
   }
   if (target === 'long') {
     const header = headerOf(t, m);
@@ -303,6 +304,14 @@ function eastNorth(data: string[][], ce: number, cn: number): number[] {
     if (Number.isFinite(e) && Number.isFinite(n)) en.push(e, n);
   }
   return en;
+}
+
+/** A runline made from the as-built survey line: its longest polyline, KP from 0 along it. */
+export function routeFromSurveyLine(d: Dataset, id: string): Dataset | null {
+  if (d.kind !== 'linework' || !d.lw.lines.length) return null;
+  const longest = d.lw.lines.reduce((a, b) => (polyLength(b) > polyLength(a) ? b : a));
+  if (longest.length < 4) return null;
+  return { id, name: `${d.name} (survey line as runline)`, target: 'route', visible: true, color: DEFAULT_COLOURS.route!, kind: 'route', route: makeRoute(d.name, Array.from(longest)), width: 0.35 };
 }
 
 function polyLength(l: Float64Array): number {

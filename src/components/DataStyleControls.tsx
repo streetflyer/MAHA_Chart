@@ -1,5 +1,5 @@
 import { ColourBox } from './ColourBox';
-import { CP_SYMBOLS, DEFAULT_FONT, FONT_FAMILIES, newLink, type CpSymbol, type DataFont, type DataStyle, type Dataset, type EventLink, type ImportTarget, type LabelPos } from '../model/datasets';
+import { CP_SYMBOLS, DEFAULT_FONT, DEFAULT_LONG_OPTS, type LongOpts, FONT_FAMILIES, newLink, type CpSymbol, type DataFont, type DataStyle, type Dataset, type EventLink, type ImportTarget, type LabelPos } from '../model/datasets';
 import { useEffect, useState } from 'react';
 import { DEFAULT_COLOURS } from '../model/importers';
 import { formatScale } from '../model/scale';
@@ -40,6 +40,7 @@ export function applyStyle(d: Dataset, s: DataStyle): Dataset {
       return {
         ...d,
         fill: s.fill ?? d.fill,
+        opts: s.long ?? d.opts,
         series: d.series.map((x, i) => (i === d.top || i === d.bop ? { ...x, color: s.color ?? x.color } : x)),
       };
     case 'trans':
@@ -59,7 +60,7 @@ export function styleOf(d: Dataset): DataStyle {
       return { color: d.color, width: d.width };
     case 'long': {
       const pipe = d.top !== undefined ? d.series[d.top] : undefined;
-      return { color: pipe?.color ?? '#e00000', fill: d.fill };
+      return { color: pipe?.color ?? '#e00000', fill: d.fill, long: d.opts };
     }
     case 'trans':
       return { color: d.color, pipeColor: d.pipeColor, pipeFill: d.pipeFill };
@@ -110,20 +111,43 @@ function ScaleInput({ label, value, onChange, hint }: { label: string; value: nu
   );
 }
 
+/** Vertical exaggeration typed as a plain number (×25). */
+function ExInput({ value, onChange }: { value: number; onChange(v: number): void }) {
+  const show = (v: number) => String(Number(v.toFixed(v < 10 ? 2 : 1)));
+  const [text, setText] = useState(show(value));
+  useEffect(() => setText(show(value)), [value]);
+  const commit = () => {
+    const v = Number(text.replace(/^[x×]/i, ''));
+    if (v > 0) onChange(v);
+    else setText(show(value));
+  };
+  return (
+    <label className="field" title="Horizontal scale ÷ vertical scale">
+      <span>Vertical exaggeration ×</span>
+      <input className="scale-input" value={text} onChange={(e) => setText(e.target.value)} onBlur={commit} onKeyDown={(e) => e.key === 'Enter' && commit()} />
+    </label>
+  );
+}
+
 /** The template's profile scales, shared by every chart, edited from the data's look settings. */
 function ProfileScales({ target }: { target: 'long' | 'trans' }) {
   const sc = useEditor((s) => s.template?.scale);
   if (!sc) return null;
   const set = (patch: Partial<ScaleSettings>) => useEditor.getState().setScale(patch);
-  if (target === 'long')
+  if (target === 'long') {
+    const ex = sc.horizontal / Math.max(1, sc.verticalLong);
     return (
       <>
         <div className="style-row">
           <ScaleInput label="Vertical scale" value={sc.verticalLong} onChange={(verticalLong) => set({ verticalLong })} hint="Depth scale of the longitudinal profile, e.g. 1:200" />
+          <ExInput value={ex} onChange={(x) => set({ verticalLong: Math.round((sc.horizontal / x) * 1000) / 1000 })} />
         </div>
-        <p className="hint">Horizontal scale follows the plan view ({formatScale(sc.horizontal)}). The scale is shared by every chart.</p>
+        <p className="hint">
+          As in AutoChart, exaggeration = horizontal scale ÷ vertical scale ({formatScale(sc.horizontal)} ÷ {formatScale(sc.verticalLong)}). Set either one. Shared by every chart.
+        </p>
       </>
     );
+  }
   const lat = sc.lateralTrans || sc.verticalTrans;
   const ex = lat / Math.max(1, sc.verticalTrans);
   return (
@@ -140,8 +164,102 @@ function ProfileScales({ target }: { target: 'long' | 'trans' }) {
   );
 }
 
+/** AutoChart's Create Profile settings for the longitudinal profile. */
+function LongSetup({ opts, onChange, seriesNames }: { opts?: LongOpts; onChange(o: LongOpts): void; seriesNames: string[] }) {
+  const o = { ...DEFAULT_LONG_OPTS, ...opts };
+  const set = (patch: Partial<LongOpts>) => onChange({ ...o, ...patch });
+  const num = (label: string, key: 'gridLine' | 'gridLabel' | 'majorTick' | 'minorTick', hint: string) => (
+    <label className="field" title={hint}>
+      <span>{label}</span>
+      <span className="with-suffix">
+        <input type="number" min={0} step={0.5} value={o[key] || ''} placeholder="auto" onChange={(e) => set({ [key]: Math.max(0, Number(e.target.value) || 0) })} />
+        <span className="suffix">m</span>
+      </span>
+    </label>
+  );
+  return (
+    <div className="long-setup">
+      <div className="style-row">
+        <label className="field">
+          <span>Values in the file are</span>
+          <select value={o.zSense} onChange={(e) => set({ zSense: e.target.value as LongOpts['zSense'] })}>
+            <option value="auto">Found from the data</option>
+            <option value="depth">Depths (positive down)</option>
+            <option value="level">Levels (positive up, depths negative)</option>
+          </select>
+        </label>
+        <label className="field">
+          <span>Profile placement</span>
+          <select value={o.placement} disabled={o.forceTop !== null} onChange={(e) => set({ placement: e.target.value as LongOpts['placement'] })}>
+            <option value="upper">Upper</option>
+            <option value="middle">Middle</option>
+            <option value="lower">Lower</option>
+          </select>
+        </label>
+        <label className="field">
+          <span>
+            <input type="checkbox" checked={o.forceTop !== null} onChange={(e) => set({ forceTop: e.target.checked ? 0 : null })} /> Force grid start value
+          </span>
+          <input type="number" step={1} disabled={o.forceTop === null} value={o.forceTop ?? ''} onChange={(e) => set({ forceTop: Number(e.target.value) || 0 })} title="Value at the top of the depth axis" />
+        </label>
+      </div>
+      <label className="check">
+        <input type="checkbox" checked={o.normalise} onChange={(e) => set({ normalise: e.target.checked })} />
+        Normalise profile on top of pipe (TOP is the zero line; seabed drawn as its offset from the pipe)
+      </label>
+      <div className="style-row">
+        {num('Grid line every', 'gridLine', 'Depth interval of the dotted grid lines')}
+        {num('Label every', 'gridLabel', 'Depth interval of the axis labels')}
+        {num('Major tick every', 'majorTick', 'Depth interval of the major ticks')}
+        {num('Minor tick every', 'minorTick', 'Depth interval of the minor ticks (half the major length)')}
+      </div>
+      <div className="style-row">
+        <Num label="Major tick length" value={o.tickLen} step={0.5} suffix="mm" onChange={(tickLen) => set({ tickLen })} />
+        <label className="field">
+          <span>Label suffix</span>
+          <input value={o.suffix} onChange={(e) => set({ suffix: e.target.value })} style={{ width: 60 }} />
+        </label>
+        <label className="field">
+          <span>Depth axis on</span>
+          <select value={o.axisSide} onChange={(e) => set({ axisSide: e.target.value as LongOpts['axisSide'] })}>
+            <option value="both">Both sides</option>
+            <option value="left">Left</option>
+            <option value="right">Right</option>
+          </select>
+        </label>
+        <Num label="Profile line width" value={o.lineWidth} step={0.05} suffix="mm" onChange={(lineWidth) => set({ lineWidth })} />
+      </div>
+      <div className="style-row">
+        <label className="check">
+          <input type="checkbox" checked={o.hatchPipe} onChange={(e) => set({ hatchPipe: e.target.checked })} />
+          Hatch pipe (between TOP and BOP)
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={o.hatchSea} onChange={(e) => set({ hatchSea: e.target.checked })} />
+          Hatch background (sea)
+        </label>
+        {o.hatchSea && <ColourBox value={o.seaColor} title="Sea colour" onChange={(seaColor) => set({ seaColor })} />}
+      </div>
+      <div className="style-row">
+        <label className="field">
+          <span>Hatch below profile</span>
+          <select value={o.hatchBelow} onChange={(e) => set({ hatchBelow: e.target.value })}>
+            <option value="">None</option>
+            {[...new Set([...seriesNames, ...(o.hatchBelow ? [o.hatchBelow] : [])])].map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        {o.hatchBelow && <Colour label="Seabed hatch colour" value={o.belowColor} onChange={(belowColor) => set({ belowColor })} />}
+      </div>
+    </div>
+  );
+}
+
 /** Colour, width, fill, symbol and font controls for one kind of data. */
-export function StyleControls({ target, style, onChange }: { target: ImportTarget; style: DataStyle; onChange(patch: DataStyle): void }) {
+export function StyleControls({ target, style, onChange, seriesNames = [] }: { target: ImportTarget; style: DataStyle; onChange(patch: DataStyle): void; seriesNames?: string[] }) {
   const s = { ...defaultStyle(target), ...style };
   const lineish = target === 'route' || target === 'asbuilt' || target === 'plan' || target === 'siteplan';
   return (
@@ -158,6 +276,7 @@ export function StyleControls({ target, style, onChange }: { target: ImportTarge
           <Colour label="Pipe fill" value={s.fill!} onChange={(fill) => onChange({ fill })} />
         </div>
       )}
+      {target === 'long' && <LongSetup opts={s.long} seriesNames={seriesNames} onChange={(long) => onChange({ long })} />}
       {(target === 'long' || target === 'trans') && <ProfileScales target={target} />}
       {target === 'trans' && (
         <div className="style-row">
@@ -225,27 +344,34 @@ const POS: Record<LabelPos, string> = { top: 'Above the bar', bottom: 'Below the
 /** Start/end code pairs drawn as linked events (freespans, burial). */
 export function LinksEditor({ links, onChange, codes }: { links: EventLink[]; onChange(l: EventLink[]): void; codes?: string[] }) {
   const set = (i: number, patch: Partial<EventLink>) => onChange(links.map((l, j) => (j === i ? { ...l, ...patch } : l)));
-  const listId = 'event-codes-list';
+  // A code typed earlier (or a span sheet's own code) stays selectable even if the file lacks it.
+  const options = (cur: string) => [...new Set([...(codes ?? []), ...(cur ? [cur] : [])])].sort();
+  const codeSelect = (value: string, onPick: (v: string) => void) => (
+    <select value={value} onChange={(e) => onPick(e.target.value)}>
+      <option value="">— pick a code —</option>
+      {options(value).map((c) => (
+        <option key={c} value={c}>
+          {c}
+        </option>
+      ))}
+    </select>
+  );
   return (
     <div className="links-editor">
       <h4>Linked events</h4>
-      <p className="hint">A start code joined to its end code, e.g. FS.FS → FS.FE for a freespan: drawn as a bar with the length and height.</p>
-      {codes && (
-        <datalist id={listId}>
-          {codes.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
-      )}
+      <p className="hint">
+        A start code joined to its end code, e.g. FS.FS → FS.FE for a freespan: drawn as a bar with the length and height.
+        {codes?.length ? ` ${codes.length} codes read from the event code columns.` : ' Pick the event code column to list its codes.'}
+      </p>
       {links.map((l, i) => (
         <div key={i} className="link-row">
           <label className="field">
             <span>Start code</span>
-            <input list={listId} value={l.start} onChange={(e) => set(i, { start: e.target.value.toUpperCase() })} />
+            {codeSelect(l.start, (start) => set(i, { start }))}
           </label>
           <label className="field">
             <span>End code</span>
-            <input list={listId} value={l.end} onChange={(e) => set(i, { end: e.target.value.toUpperCase() })} />
+            {codeSelect(l.end, (end) => set(i, { end }))}
           </label>
           <Colour label="Colour" value={l.color} onChange={(color) => set(i, { color })} />
           <label className="field">
@@ -277,8 +403,8 @@ export function LinksEditor({ links, onChange, codes }: { links: EventLink[]; on
           </button>
         </div>
       ))}
-      <button type="button" onClick={() => onChange([...links, newLink()])}>
-        + Add linked events
+      <button type="button" onClick={() => onChange([...links, newLink('', '')])}>
+        + Add pair
       </button>
     </div>
   );

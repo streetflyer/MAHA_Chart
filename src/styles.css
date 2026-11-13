@@ -749,15 +749,21 @@ button.danger-fill {
   border-color: var(--accent);
   color: #fff;
 }
+.dialog-backdrop:has(.import-dialog) {
+  padding: 8px;
+}
+/* The import window takes the whole browser window: more room for the table and previews. */
 .dialog.import-dialog {
-  width: min(1240px, 100%);
-  max-height: calc(100vh - 32px);
+  width: 100%;
+  height: 100%;
+  max-height: none;
 }
 .import-body {
+  flex: 1;
   display: grid;
-  grid-template-columns: 430px minmax(0, 1fr);
+  grid-template-columns: 400px minmax(0, 1fr);
   gap: 16px;
-  min-height: 420px;
+  min-height: 0;
   overflow: hidden;
 }
 @media (max-width: 820px) {
@@ -924,13 +930,27 @@ table.preview td.rownum {
 }
 .preview-wrap {
   overflow: auto;
-  max-height: 240px;
+  flex: none;
+  height: 340px;
+  min-height: 120px;
+  resize: vertical;
   border: 1px solid var(--border);
   border-radius: 6px;
+  font-size: 12px;
+  cursor: grab;
+}
+.preview-wrap.panning {
+  cursor: grabbing;
+  user-select: none;
+}
+table.preview thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 table.preview {
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: inherit;
   font-variant-numeric: tabular-nums;
 }
 table.preview th,
@@ -941,8 +961,6 @@ table.preview td {
   text-align: left;
 }
 table.preview th {
-  position: sticky;
-  top: 0;
   background: var(--chrome-2);
 }
 table.preview .mapped {
@@ -1065,28 +1083,63 @@ table.preview .mapped {
   gap: 6px;
 }
 svg.import-preview {
+  display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+svg.import-preview:active {
+  cursor: grabbing;
+}
+.pz-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pz-box {
+  height: 300px;
+  min-height: 120px;
+  resize: vertical;
+  overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 6px;
+  background: #fff;
+}
+.pz-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.pz-tools button {
+  min-width: 28px;
+  padding: 2px 8px;
+}
+.pz-zoom {
+  min-width: 42px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Column names and their use, under the column numbers in the mapping preview. */
+/* One line each, cut short with … (full name on hover), so the header stays two rows tall. */
 table.preview tr.head-names th {
-  top: 23px;
   font-weight: 600;
   color: var(--text);
-  vertical-align: top;
-  max-width: 140px;
-  white-space: normal;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   line-height: 1.25;
 }
 table.preview .used-for {
   display: block;
-  margin-top: 2px;
   font-weight: 500;
-  font-size: 10.5px;
+  font-size: 0.85em;
   color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Two columns averaged into one line (mean adjacent / far seabed). */
@@ -1222,4 +1275,20 @@ table.preview .used-for {
 .colour-field > .colour-box {
   align-self: flex-start;
   width: auto;
+}
+
+/* The import window: the body takes what is left between the title and the buttons; each side scrolls. */
+.dialog.import-dialog {
+  overflow: hidden;
+}
+.import-body {
+  grid-template-rows: minmax(0, 1fr);
+}
+.import-map,
+.import-rows {
+  min-height: 0;
+}
+/* Column headers are solid so scrolled rows don't show through them. */
+table.preview thead th.mapped {
+  background: color-mix(in srgb, var(--accent) 14%, var(--chrome-2));
 }
