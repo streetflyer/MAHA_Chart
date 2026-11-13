@@ -1,3 +1,4 @@
+import { dwgToDxfText } from '../model/dwg';
 import { useEffect, useRef, useState } from 'react';
 import { create } from 'zustand';
 import { profileFromRow, VW_RAW, type CrossProfile } from '../model/crossProfile';
@@ -86,10 +87,16 @@ function guessTarget(name: string, panelType: string | undefined, hasRoute: bool
 async function readItem(file: File, target: ImportTarget): Promise<Partial<Item>> {
   const ext = extOf(file.name);
   if (IMAGE_EXT.includes(ext)) return {};
-  if (ext === 'dwg')
-    return { error: 'DWG drawings can’t be read in the browser yet. In AutoCAD use Save As → DXF (any version) and import the .dxf.' };
-  if (ext === 'dxf') {
-    const lw = parseDxfLinework(await file.text(), file.name);
+  if (ext === 'dxf' || ext === 'dwg') {
+    let text: string;
+    if (ext === 'dwg') {
+      try {
+        text = await dwgToDxfText(await file.arrayBuffer());
+      } catch (e) {
+        return { error: `Couldn’t read this DWG: ${(e as Error).message} Try Save As → DXF in AutoCAD instead.` };
+      }
+    } else text = await file.text();
+    const lw = parseDxfLinework(text, file.name);
     if (!lw) return { error: 'No lines, polylines, arcs or text found (binary DXF is not supported; save as ASCII DXF).' };
     const layer = target === 'route' ? dxfLayers(lw)[0]?.layer : undefined;
     return { lw, mapping: { ...defaultMapping(target, null), layer } };

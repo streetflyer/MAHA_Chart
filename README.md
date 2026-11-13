@@ -25,3 +25,9 @@ npm run build
 ```
 
 All geometry is in millimetres on paper (origin top-left). Text can use `{TOKENS}` such as `{H_SCALE}`, `{V_SCALE_LONG}`, `{KP_START}`, `{KP_END}` or any template field.
+
+## DWG drawings
+
+DWG files are read in the browser with [LibreDWG](https://www.gnu.org/software/libredwg/)
+(via `@mlightcad/libredwg-web`), which is licensed under the GNU GPL v3. The wasm is
+built into the app, so a build that includes it is distributed under GPL-3.0 terms.

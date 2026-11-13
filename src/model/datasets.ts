@@ -24,7 +24,7 @@ export const TARGETS: TargetInfo[] = [
   { key: 'cp', label: 'Cathodic Protection', exts: ['csv', 'txt', 'xlsx', 'xls'], panelType: 'cp', hint: 'KP and CP reading (mV) columns.' },
   { key: 'siteplan', label: 'Key Plan', exts: ['dxf', 'dwg'], panelType: 'keyplan', hint: 'Site plan drawing behind the key plan.' },
   { key: 'asbuilt', label: 'As Built survey line', exts: ['dxf', 'dwg', 'dig', 'csv', 'txt', 'xyz'], panelType: 'plan', hint: 'Surveyed pipe position, drawn in the plan view.' },
-  { key: 'route', label: 'Runline', exts: ['rlx', 'rlxp', 'dxf'], panelType: 'plan', hint: 'Sets KP 0 and the KP blocks, and the number of charts.' },
+  { key: 'route', label: 'Runline', exts: ['rlx', 'rlxp', 'dxf', 'dwg'], panelType: 'plan', hint: 'Sets KP 0 and the KP blocks, and the number of charts.' },
   { key: 'logo', label: 'Logo image', exts: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'], panelType: 'logo', hint: 'Company, contractor or data acquired by.' },
 ];
 
