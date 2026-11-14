@@ -13,6 +13,9 @@ import { useSurvey } from '../state/surveyData';
 import { useImport } from './ImportDialog';
 import { PanelContent, TITLE_CAP, titleInsideHeight, titleLineHeight, titleLines } from './PanelContent';
 import { approxTextWidth, fontSize } from './svgText';
+import { useDrawingEdit } from '../state/drawingEdit';
+import { moveGroups, rotateGroups } from '../model/drawingOps';
+import { pickInBox, pickObject, planSets, rotateHandle, toGrid } from './drawingEditing';
 
 const clamp01 = (v: number) => Math.min(0.98, Math.max(0.02, v));
 
@@ -46,7 +49,10 @@ type Drag =
   | { type: 'rotate'; index: number; centre: [number, number]; startAngle: number; startRot: number; toGrid: (p: Pt) => [number, number] }
   | { type: 'edge'; start: Pt; panelId: string; edges: Edge[]; origin: Record<Edge, number> }
   | { type: 'pan'; startClient: Pt; startView: ViewBox }
-  | { type: 'marquee'; start: Pt; cur: Pt; additive: boolean };
+  | { type: 'marquee'; start: Pt; cur: Pt; additive: boolean }
+  | { type: 'drawMove'; start: Pt; moved: boolean }
+  | { type: 'drawRotate'; cE: number; cN: number; startAngle: number }
+  | { type: 'drawBox'; start: Pt; shift: boolean };
 
 interface Pt {
   x: number;
@@ -162,6 +168,16 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       return;
     }
     if (e.button !== 0) return;
+    // Editing the drawing: clicks inside the plan view choose and move its objects; anywhere else leaves edit mode.
+    const de = useDrawingEdit.getState();
+    if (de.active) {
+      const pp = planPanel(template);
+      if (pp && de.ctx && at.x >= pp.x && at.x <= pp.x + pp.w && at.y >= pp.y && at.y <= pp.y + pp.h) {
+        svgRef.current!.setPointerCapture(e.pointerId);
+        return drawingDown(e, at);
+      }
+      de.exit();
+    }
     const el = e.target as Element;
     const edgeEl = el.closest('[data-edge]');
     const itemEl = el.closest('[data-item]');
@@ -257,9 +273,57 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     setDrag({ type: 'marquee', start: at, cur: at, additive: e.shiftKey });
   }
 
+  /** Pointer down inside the plan view while editing its drawing. */
+  function drawingDown(e: React.PointerEvent, at: Pt) {
+    const de = useDrawingEdit.getState();
+    const ctx = de.ctx!;
+    const grid = toGrid(ctx, planSets());
+    const h = rotateHandle(ctx, de.selected);
+    if (h && Math.hypot(at.x - h.x, at.y - h.y) <= Math.max(2.2, 9 / pxPerMm())) {
+      const g = grid(at.x, at.y);
+      setDrag({ type: 'drawRotate', cE: h.cE, cN: h.cN, startAngle: Math.atan2(g[1] - h.cN, g[0] - h.cE) });
+      return;
+    }
+    const pick = pickObject(ctx, at.x, at.y, 6 / pxPerMm());
+    if (pick) {
+      const cur = de.selected[pick.id] ?? [];
+      const isSel = cur.includes(pick.group);
+      if (e.shiftKey) {
+        // Shift+click adds an object to the choice, or takes it out.
+        const next = isSel ? cur.filter((g) => g !== pick.group) : [...cur, pick.group];
+        de.select({ ...de.selected, [pick.id]: next });
+        return;
+      }
+      if (!isSel) de.select({ [pick.id]: [pick.group] });
+      setDrag({ type: 'drawMove', start: at, moved: false });
+      return;
+    }
+    setDrag({ type: 'drawBox', start: at, shift: e.shiftKey });
+  }
+
   function onPointerMove(e: React.PointerEvent) {
     const at = toMm(e.clientX, e.clientY);
     onCursor(at);
+    if (drag && (drag.type === 'drawMove' || drag.type === 'drawRotate' || drag.type === 'drawBox')) {
+      const de = useDrawingEdit.getState();
+      const ctx = de.ctx;
+      if (!ctx) return;
+      const grid = toGrid(ctx, planSets());
+      if (drag.type === 'drawBox') de.setPreview({ kind: 'box', x0: drag.start.x, y0: drag.start.y, x1: at.x, y1: at.y });
+      else if (drag.type === 'drawMove') {
+        if (!drag.moved && Math.hypot(at.x - drag.start.x, at.y - drag.start.y) * pxPerMm() < 3) return;
+        if (!drag.moved) setDrag({ ...drag, moved: true });
+        const g0 = grid(drag.start.x, drag.start.y);
+        const g1 = grid(at.x, at.y);
+        de.setPreview({ kind: 'move', dE: g1[0] - g0[0], dN: g1[1] - g0[1] });
+      } else {
+        const g = grid(at.x, at.y);
+        let angle = Math.atan2(g[1] - drag.cN, g[0] - drag.cE) - drag.startAngle;
+        if (e.shiftKey) angle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+        de.setPreview({ kind: 'rotate', cE: drag.cE, cN: drag.cN, angle });
+      }
+      return;
+    }
     if (!drag) {
       const edgeEl = (e.target as Element).closest('[data-edge]');
       setHoverEdge(edgeEl ? `${edgeEl.getAttribute('data-panel')}:${edgeEl.getAttribute('data-edge')}` : null);
@@ -382,9 +446,36 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     }
   }
 
+  function drawingUp(e: React.PointerEvent, d: Extract<Drag, { type: 'drawMove' | 'drawRotate' | 'drawBox' }>) {
+    const de = useDrawingEdit.getState();
+    const pv = de.preview;
+    de.setPreview(null);
+    const ids = Object.keys(de.selected).filter((id) => de.selected[id].length);
+    if (d.type === 'drawMove' && pv?.kind === 'move') de.change(ids, (lw, id) => moveGroups(lw, new Set(de.selected[id]), pv.dE, pv.dN));
+    else if (d.type === 'drawRotate' && pv?.kind === 'rotate' && Math.abs(pv.angle) > 1e-6) de.change(ids, (lw, id) => rotateGroups(lw, new Set(de.selected[id]), pv.cE, pv.cN, pv.angle));
+    else if (d.type === 'drawBox') {
+      const at = toMm(e.clientX, e.clientY);
+      if (Math.hypot(at.x - d.start.x, at.y - d.start.y) * pxPerMm() < 3) {
+        if (!d.shift) de.select({});
+      } else if (de.ctx) {
+        const hit = pickInBox(de.ctx, d.start.x, d.start.y, at.x, at.y, at.x < d.start.x);
+        if (d.shift) {
+          const merged: Record<string, number[]> = { ...de.selected };
+          for (const [id, g] of Object.entries(hit)) merged[id] = [...new Set([...(merged[id] ?? []), ...g])];
+          de.select(merged);
+        } else de.select(hit);
+      }
+    }
+  }
+
   function onPointerUp(e: React.PointerEvent) {
     if (!drag) return;
     svgRef.current!.releasePointerCapture?.(e.pointerId);
+    if (drag.type === 'drawMove' || drag.type === 'drawRotate' || drag.type === 'drawBox') {
+      drawingUp(e, drag);
+      setDrag(null);
+      return;
+    }
     if (drag.type === 'move') {
       store().endGesture();
       if (drag.toggle) {
@@ -441,6 +532,16 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     // Resize grips drawn on the selection sit over cells at the panel edge, so look beneath them.
     const el = document.elementsFromPoint(e.clientX, e.clientY).find((x) => !x.closest('[data-edge],[data-img-handle]')) ?? (e.target as Element);
     const itemEl = el.closest('[data-item]');
+    // Double-click in a plan view that has a drawing switches to editing the drawing's objects.
+    const pp = planPanel(template);
+    const dblAt = toMm(e.clientX, e.clientY);
+    if (pp && dblAt.x >= pp.x && dblAt.x <= pp.x + pp.w && dblAt.y >= pp.y && dblAt.y <= pp.y + pp.h && !el.closest('[data-north]') && planSets().length) {
+      if (!useDrawingEdit.getState().active) {
+        useDrawingEdit.getState().enter(pp.id);
+        store().select({ kind: 'panel', id: pp.id });
+      }
+      return;
+    }
     // Double-click anywhere without text to edit zooms to fit, like a CAD viewport.
     if (!itemEl) return fit();
     const kind = itemEl.getAttribute('data-kind');

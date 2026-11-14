@@ -19,6 +19,8 @@ import { ImportDialog, useImport } from './ImportDialog';
 import { PropertiesPanel } from './PropertiesPanel';
 import { ProjectPanel } from './ProjectPanel';
 import { SheetView, type ContextTarget } from './SheetView';
+import { useDrawingEdit } from '../state/drawingEdit';
+import { drawingKey } from './drawingEditing';
 
 interface Menu {
   x: number;
@@ -90,6 +92,11 @@ export function Editor({ onExit }: { onExit(): void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || s().editing) return;
+      // Editing the drawing in the plan view takes the keys first (Delete removes drawing objects, not panels).
+      if (useDrawingEdit.getState().active && drawingKey(e)) {
+        e.preventDefault();
+        return;
+      }
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
       const sel = s().selection;

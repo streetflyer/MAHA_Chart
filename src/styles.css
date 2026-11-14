@@ -1446,3 +1446,48 @@ table.preview thead th.mapped {
   outline-offset: -1px;
   background: var(--accent-soft);
 }
+
+/* Data entries fold; drawings list their layers. */
+.data-entry .caret {
+  width: 16px;
+  padding: 0;
+  text-align: center;
+}
+.layer-list {
+  margin: 6px 0;
+}
+.layer-list summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+}
+.layer-list ul {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  max-height: 260px;
+  overflow: auto;
+}
+.layer-list li {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 2px 0;
+  font-size: 12px;
+}
+.layer-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.layer-tools {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0;
+}
+.layer-tools input {
+  flex: 1;
+  min-width: 0;
+}

@@ -1,6 +1,6 @@
 import { type CrossProfile, VW_RAW, profileFromRow } from './crossProfile';
-import { DEFAULT_FONT, SERIES_COLOURS, newLink, type Dataset, type EventLink, type EventRecord, type ImportTarget } from './datasets';
-import type { Linework } from './dxf';
+import { DEFAULT_FONT, DEFAULT_LINEWORK_LOOK, SERIES_COLOURS, newLink, type Dataset, type EventLink, type EventRecord, type ImportTarget } from './datasets';
+import { plainLinework, type Linework } from './dxf';
 import { newId } from './ids';
 import { makeRoute } from './route';
 import { findHeaderRow, guessColumns, isNumber, type Table } from './tables';
@@ -207,11 +207,11 @@ export function buildDataset(target: ImportTarget, name: string, t: Table | null
       const en = eastNorth(data, col('e'), col('n'));
       if (en.length < 4) return 'Found fewer than two points with easting and northing.';
       const line = new Float64Array(en);
-      work = { name, lines: [line], layers: ['0'], texts: [], bounds: boundsOf(line) };
+      work = plainLinework(name, [line], boundsOf(line));
     }
     const width = target === 'asbuilt' ? 0.35 : 0.18;
     // Plan view drawings keep their text at the size drawn (zoom in to read it); the key plan, seen whole, keeps it readable.
-    return { ...base, kind: 'linework', lw: work, width, textMode: target === 'siteplan' ? 'auto' : 'drawn', textScale: 100, textHeight: 1.5 };
+    return { ...base, kind: 'linework', lw: work, width, textMode: target === 'siteplan' ? 'auto' : 'drawn', textScale: 100, textHeight: 1.5, ...DEFAULT_LINEWORK_LOOK };
   }
   if (target === 'long') {
     const header = headerOf(t, m);

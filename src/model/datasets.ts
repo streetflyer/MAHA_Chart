@@ -163,13 +163,49 @@ export const DEFAULT_LONG_OPTS: LongOpts = {
   belowColor: '#e8dcc0',
 };
 
+/** Per-layer choices of a drawing in the plan view: colour and on/off. */
+export interface LayerOverride {
+  /** Own colour instead of the drawing's. */
+  color?: string;
+  /** true: hidden; false: shown even if the drawing has the layer off; unset: as the drawing. */
+  hidden?: boolean;
+}
+
+/** How a drawing (DXF / DWG) is shown: its own colours, layers on and off, and its text look. */
+export interface LineworkLook {
+  /** Keep the colours of the drawing; off draws everything in the data colour. */
+  drawingColours: boolean;
+  layers: Record<string, LayerOverride>;
+  /** Text font; '' keeps the sheet font. */
+  textFamily: string;
+  textBold: boolean;
+  textItalic: boolean;
+  /** One colour for all text; '' keeps each text's own colour. */
+  textColor: string;
+  /** Turn added to every text, degrees anticlockwise. */
+  textRotation: number;
+  /** Turn text that would read upside down on paper the right way up. */
+  textUpright: boolean;
+}
+
+export const DEFAULT_LINEWORK_LOOK: LineworkLook = {
+  drawingColours: true,
+  layers: {},
+  textFamily: '',
+  textBold: false,
+  textItalic: false,
+  textColor: '',
+  textRotation: 0,
+  textUpright: true,
+};
+
 /** How DXF text is sized on paper: with the map, with the map but kept readable, or one fixed height. */
 export type TextMode = 'auto' | 'drawn' | 'fixed';
 
 export type Dataset =
   /** `before`: any part of the runline before KP 0, drawn but not charted. */
   | (Base & { kind: 'route'; route: Route; before?: Float64Array; width: number })
-  | (Base & { kind: 'linework'; lw: Linework; width: number; textMode: TextMode; textScale: number; textHeight: number; both?: boolean })
+  | (Base & { kind: 'linework'; lw: Linework; width: number; textMode: TextMode; textScale: number; textHeight: number; both?: boolean } & LineworkLook)
   /** Pipe drawn between the top and bottom series; the rest are seabed lines. */
   | (Base & { kind: 'long'; kp: Float64Array; series: LongSeries[]; top?: number; bop?: number; fill: string; opts?: LongOpts })
   /** Profiles sorted by KP; one is drawn every `every` metres (0: chosen from the scale). */

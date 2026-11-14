@@ -35,7 +35,16 @@ function derive(datasets: Dataset[], reversed: boolean) {
       extend(b, d.lw.bounds.minE, d.lw.bounds.minN);
       extend(b, d.lw.bounds.maxE, d.lw.bounds.maxN);
     }
-    background = { name: site.map((d) => d.name).join(', '), lines: site.flatMap((d) => d.lw.lines), layers: site.flatMap((d) => d.lw.layers), texts: site.flatMap((d) => d.lw.texts), bounds: b };
+    background = {
+      name: site.map((d) => d.name).join(', '),
+      lines: site.flatMap((d) => d.lw.lines),
+      layers: site.flatMap((d) => d.lw.layers),
+      colors: site.flatMap((d) => d.lw.colors),
+      groups: site.flatMap((d) => d.lw.groups),
+      texts: site.flatMap((d) => d.lw.texts),
+      layerInfo: [],
+      bounds: b,
+    };
   }
   return { datasets, source, route: source && reversed ? reverseRoute(source) : source, background };
 }

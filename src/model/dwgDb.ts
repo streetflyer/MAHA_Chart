@@ -12,7 +12,10 @@ type E = Record<string, any> & { type: string; layer?: string };
 
 export interface DwgDb {
   entities: E[];
-  tables: { BLOCK_RECORD?: { entries: { name: string; basePoint?: P; entities?: E[] }[] } };
+  tables: {
+    BLOCK_RECORD?: { entries: { name: string; basePoint?: P; entities?: E[] }[] };
+    LAYER?: { entries: { name: string; colorIndex?: number; off?: boolean; frozen?: boolean }[] };
+  };
 }
 
 const DEG = 180 / Math.PI;
@@ -119,6 +122,17 @@ function writeText(o: Out, type: 'TEXT' | 'ATTRIB', t: any, layer: string, mirro
 }
 
 function writeEntity(o: Out, e: E) {
+  const start = o.rows.length;
+  writeEntityBody(o, e);
+  // Own colour (an index; 256 = by layer, 0 = by block) goes after the layer.
+  const ci = e.colorIndex;
+  if (typeof ci === 'number' && ci !== 256 && o.rows.length > start) {
+    const at = o.rows.findIndex((v, i) => i >= start && i % 2 === 0 && v === '8');
+    if (at >= 0) o.rows.splice(at + 2, 0, '62', String(Math.abs(ci)));
+  }
+}
+
+function writeEntityBody(o: Out, e: E) {
   const layer = e.layer || '0';
   if (e.isVisible === false || e.isInPaperSpace) return;
   const mirror = n(e.extrusionDirection?.z, 1) < 0;
@@ -252,6 +266,23 @@ function writeEntity(o: Out, e: E) {
 /** Write the drawing as an ASCII DXF the DXF reader understands. */
 export function dwgDbToDxf(db: DwgDb): string {
   const o = new Out();
+  const layers = db.tables.LAYER?.entries ?? [];
+  if (layers.length) {
+    o.g(0, 'SECTION');
+    o.g(2, 'TABLES');
+    o.g(0, 'TABLE');
+    o.g(2, 'LAYER');
+    o.g(70, layers.length);
+    for (const l of layers) {
+      o.g(0, 'LAYER');
+      o.g(2, l.name);
+      o.g(70, l.frozen ? 1 : 0);
+      o.g(62, (l.off ? -1 : 1) * (Math.abs(n(l.colorIndex, 7)) || 7));
+      o.g(6, 'CONTINUOUS');
+    }
+    o.g(0, 'ENDTAB');
+    o.g(0, 'ENDSEC');
+  }
   o.g(0, 'SECTION');
   o.g(2, 'BLOCKS');
   for (const b of db.tables.BLOCK_RECORD?.entries ?? []) {

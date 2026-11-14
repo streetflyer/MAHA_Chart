@@ -1,8 +1,10 @@
-import { useMemo, type ReactElement } from 'react';
+import { useEffect, useMemo, type ReactElement } from 'react';
 import { chartGeometry, gridToPlan, pointAt, type Bounds, type ChartGeometry } from '../model/route';
 import type { ChartTemplate, Panel, PlanStyle } from '../model/types';
 import { DEFAULT_PLAN, kpInterval, planStyle } from '../model/planStyle';
 import { useSurvey } from '../state/surveyData';
+import { useDrawingEdit } from '../state/drawingEdit';
+import { DrawingEditOverlay } from './DrawingEditOverlay';
 
 export { DEFAULT_PLAN, planStyle };
 import { niceGrid } from './Keyplan';
@@ -46,6 +48,19 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
     [view, before],
   );
 
+  // Drawing-edit mode: tell the editor how the plan view is drawn, and draw the chosen objects on top.
+  const editOn = useDrawingEdit((x) => x.active && x.panelId === p.id);
+  const selected = useDrawingEdit((x) => x.selected);
+  const preview = useDrawingEdit((x) => x.preview);
+  const mmPerM = 1000 / template.scale.horizontal;
+  const uAngle = geo ? (Math.atan2(geo.u[1], geo.u[0]) * 180) / Math.PI : 0;
+  const ctx = useMemo(() => (view && editOn ? { panelId: p.id, project: view.project, mmPerM, uAngle, rect } : null), [view, editOn, p.id, mmPerM, uAngle, rect]);
+  useEffect(() => {
+    useDrawingEdit.getState().setContext(ctx);
+    return () => useDrawingEdit.getState().setContext(null);
+  }, [ctx]);
+  const skip = useMemo(() => (editOn ? new Map(Object.entries(selected).map(([id, g]) => [id, new Set(g)])) : undefined), [editOn, selected]);
+
   if (!geo || !view) return null;
   const project = view.project;
   // The runline's own colour and width, set on import or in its data list entry.
@@ -60,12 +75,13 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
         </clipPath>
       </defs>
       <g clipPath={`url(#${clipId})`}>
-        <LineworkLayer sets={sets} area={view.area} project={project} mmPerM={1000 / template.scale.horizontal} uAngle={(Math.atan2(geo.u[1], geo.u[0]) * 180) / Math.PI} />
+        <LineworkLayer sets={sets} area={view.area} project={project} mmPerM={mmPerM} uAngle={uAngle} skip={skip} />
         {st.showGrid && <PlanGrid geo={geo} rect={rect} st={st} />}
         {beforeD && <path d={beforeD} fill="none" stroke={routeColor} strokeWidth={routeWidth} strokeDasharray="2 1" />}
         {routeD && <path d={routeD} fill="none" stroke={routeColor} strokeWidth={routeWidth} strokeLinejoin="round" />}
         {route && st.showKp && <KpBlocks template={template} project={project} rect={rect} st={st} />}
       </g>
+      {ctx && <DrawingEditOverlay p={p} clipId={clipId} sets={sets} ctx={ctx} selected={selected} preview={preview} />}
       {st.showNorth && <PlanNorth p={p} project={project} st={st} />}
       {!route && (
         <>
