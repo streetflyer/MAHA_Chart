@@ -24,21 +24,29 @@ export const ACI: [number, number, number][] = (() => {
     };
     let rgb = [f(5), f(3), f(1)];
     if (v % 2 === 1) rgb = rgb.map((c) => c + (1 - c) * 0.5);
-    t.push(rgb.map((c) => Math.round(c * 255 * levels[v])) as [number, number, number]);
+    t.push(
+      rgb.map((c) => Math.round(c * 255 * levels[v])) as [
+        number,
+        number,
+        number,
+      ],
+    );
   }
   for (const g of [51, 80, 105, 130, 190, 255]) t.push([g, g, g]);
   return t;
 })();
 
-const hex2 = (n: number) => n.toString(16).padStart(2, '0');
-export const rgbHex = (r: number, g: number, b: number) => '#' + hex2(r) + hex2(g) + hex2(b);
+const hex2 = (n: number) => n.toString(16).padStart(2, "0");
+export const rgbHex = (r: number, g: number, b: number) =>
+  "#" + hex2(r) + hex2(g) + hex2(b);
 
 /** '#rrggbb' of an ACI number. 7 (white/black) is black: sheets are white. */
 export function aciHex(i: number): string {
-  if (i === 7) return '#000000';
+  if (i === 7) return "#000000";
   const c = ACI[i];
-  return c ? rgbHex(c[0], c[1], c[2]) : '';
+  return c ? rgbHex(c[0], c[1], c[2]) : "";
 }
 
 /** '#rrggbb' of a 24-bit true colour (DXF group 420: 0xRRGGBB). */
-export const trueHex = (v: number) => rgbHex((v >> 16) & 255, (v >> 8) & 255, v & 255);
+export const trueHex = (v: number) =>
+  rgbHex((v >> 16) & 255, (v >> 8) & 255, v & 255);

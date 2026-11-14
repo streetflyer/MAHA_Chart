@@ -1,11 +1,12 @@
+import { Cp } from "./CpPanel";
 import { useMemo, type ReactElement } from "react";
 import { nearestProfile } from "../model/crossProfile";
 import {
-  DEFAULT_CP_LOOK,
   DEFAULT_EVENT_LAYOUT,
   DEFAULT_FONT,
   DEFAULT_LONG_OPTS,
   type CpSymbol,
+  type LongSeries,
   type DataFont,
   type Dataset,
   type EventLayout,
@@ -277,7 +278,11 @@ export const fontProps = (f: DataFont) => ({
   fontFamily: `${f.family}, Arial, Helvetica, sans-serif`,
   fontWeight: f.bold ? 700 : undefined,
   fontStyle: f.italic ? "italic" : undefined,
-  fill: f.color,
+  // The sheet's stylesheet paints text in the ink colour (so a dark sheet works), which beats a fill attribute:
+  // a colour the user chose has to go in the style. Black stays "ink".
+  style: /^#(000|111|000000|111111)$/i.test(f.color)
+    ? undefined
+    : { fill: f.color },
 });
 
 function KpLabels({ ticks, y }: { ticks: [number, number][]; y: number }) {
@@ -310,6 +315,8 @@ function indexRange(
 }
 
 interface AxisOpts {
+  /** Leave out the label at either end of the axis. */
+  omitEnds?: boolean;
   /** Grid line interval; labels, major and minor ticks default to it (0 = none for minor). */
   line: number;
   label?: number;
@@ -357,7 +364,9 @@ function DepthAxis({
     const isLine = onStep(v, o.line);
     const isMajor = onStep(v, major);
     const isMinor = !isMajor && onStep(v, minor);
-    const isLabel = onStep(v, label) && yy > p.y + 2 && yy < p.y + p.h - 2;
+    const endGap = o.omitEnds ? 4.5 : 2;
+    const isLabel =
+      onStep(v, label) && yy > p.y + endGap && yy < p.y + p.h - endGap;
     const t = isMajor ? len : isMinor ? len / 2 : 0;
     const text = `${Number(v.toFixed(2))}${unit}`;
     out.push(
@@ -432,10 +441,11 @@ export function depthSense(d: Extract<Dataset, { kind: "long" }>): 1 | -1 {
 }
 
 /**
- * The pipe as a band between top and bottom of pipe, with seabed lines, at the
- * longitudinal vertical scale, set up as in AutoChart's Create Profile: values as
- * depths or levels, optionally normalised on the top of pipe, placed upper / middle /
- * lower (or from a forced top value), with the depth grid and hatching chosen.
+ * Longitudinal profile after AutoChart's Create Profile: values pointing down or up,
+ * placed upper / middle / lower (or from a forced top), the depth grid and hatching.
+ * With "cut" the panel is divided wherever the profile would leave it: each part has
+ * its own depth window, moved by a whole number of depth steps, so a large vertical
+ * exaggeration still shows the pipe big and readable.
  */
 function LongProfile({
   d,
@@ -458,111 +468,235 @@ function LongProfile({
   const ref = (i: number) => (o.normalise && top ? top.values[i] : 0);
   const val = (vals: Float64Array, i: number) => vals[i] - ref(i);
   // u runs down the page: depth, or minus the level.
-  let uMin = Infinity;
-  let uMax = -Infinity;
-  for (const s of d.series)
-    for (let i = a; i <= b; i++) {
-      const v = val(s.values, i);
-      if (Number.isFinite(v)) {
-        uMin = Math.min(uMin, sgn * v);
-        uMax = Math.max(uMax, sgn * v);
+  const uRange = (
+    from: number,
+    to: number,
+    which: LongSeries[] = d.series,
+  ): [number, number] => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const s of which)
+      for (let i = from; i <= to; i++) {
+        const v = val(s.values, i);
+        if (Number.isFinite(v)) {
+          lo = Math.min(lo, sgn * v);
+          hi = Math.max(hi, sgn * v);
+        }
       }
-    }
+    return [lo, hi];
+  };
+  const [uMin, uMax] = uRange(a, b);
   if (!Number.isFinite(uMin)) return null;
   const k = 1000 / Math.max(1, t.scale.verticalLong);
   const inner = p.h - 4;
-  const dataH = (uMax - uMin) * k;
-  let yTop: number;
-  if (o.forceTop !== null && Number.isFinite(o.forceTop))
-    yTop = p.y + (uMin - sgn * o.forceTop) * k;
-  else if (o.placement === "upper") yTop = p.y + inner * 0.1;
-  else if (o.placement === "lower") yTop = p.y + inner * 0.9 - dataH;
-  else yTop = p.y + (inner - dataH) / 2;
-  const yU = (u: number) => yTop + (u - uMin) * k;
-  const y = (v: number) => yU(sgn * v);
   const stride = Math.max(1, Math.floor((b - a) / 4000));
-  const line = (vals: Float64Array, from: number, to: number, dir = 1) => {
-    let s = "";
-    let pen = false;
-    for (
-      let i = dir > 0 ? from : to;
-      dir > 0 ? i <= to : i >= from;
-      i += dir * stride
-    ) {
-      const v = val(vals, i);
-      if (!Number.isFinite(v)) {
-        pen = false;
-        continue;
+
+  /** One depth window: the lines, hatches and axis for points from..to, with u0 at the panel top. */
+  const section = (
+    from: number,
+    to: number,
+    u0: number,
+    xa: number,
+    xb: number,
+    clipId?: string,
+  ) => {
+    const yU = (u: number) => p.y + (u - u0) * k;
+    const y = (v: number) => yU(sgn * v);
+    const line = (vals: Float64Array, dir = 1) => {
+      let s = "";
+      let pen = false;
+      for (
+        let i = dir > 0 ? from : to;
+        dir > 0 ? i <= to : i >= from;
+        i += dir * stride
+      ) {
+        const v = val(vals, i);
+        if (!Number.isFinite(v)) {
+          pen = false;
+          continue;
+        }
+        s += `${pen ? "L" : "M"}${toX(d.kp[i]).toFixed(2)} ${y(v).toFixed(2)}`;
+        pen = true;
       }
-      s += `${pen ? "L" : "M"}${toX(d.kp[i]).toFixed(2)} ${y(v).toFixed(2)}`;
-      pen = true;
+      return s;
+    };
+    let band = "";
+    if (o.hatchPipe && top && bop)
+      band = line(top.values) + line(bop.values, -1).replace(/^M/, "L") + "Z";
+    const under = o.hatchBelow
+      ? d.series.find((s) => s.name === o.hatchBelow)
+      : undefined;
+    let below = "";
+    if (under) {
+      const l = line(under.values);
+      const xs = [...l.matchAll(/[ML]([-\d.]+) /g)].map((m) => Number(m[1]));
+      if (xs.length > 1)
+        below =
+          l.replace(/M/g, "L").replace(/^L/, "M") +
+          `L${xs[xs.length - 1]} ${p.y + p.h}L${xs[0]} ${p.y + p.h}Z`;
     }
-    return s;
+    const u1 = u0 + p.h / k;
+    const lo = Math.min(sgn * u0, sgn * u1);
+    const hi = Math.max(sgn * u0, sgn * u1);
+    const auto = niceGrid(p.h / k) / 2;
+    const part = { ...p, x: xa, w: xb - xa };
+    return (
+      <g
+        key={clipId ?? "all"}
+        clipPath={clipId ? `url(#${clipId})` : undefined}
+      >
+        {clipId && (
+          <defs>
+            <clipPath id={clipId}>
+              <rect x={xa} y={p.y} width={xb - xa} height={p.h} />
+            </clipPath>
+          </defs>
+        )}
+        {o.hatchSea && (
+          <rect
+            x={xa}
+            y={p.y}
+            width={xb - xa}
+            height={p.h}
+            fill={o.seaColor}
+            stroke="none"
+          />
+        )}
+        {below && <path d={below} fill={o.belowColor} stroke="none" />}
+        <DepthAxis
+          p={part}
+          y={y}
+          lo={lo}
+          hi={hi}
+          o={{
+            line: o.gridLine || auto,
+            label: o.gridLabel,
+            major: o.majorTick,
+            minor: o.minorTick,
+            tickLen: o.tickLen,
+            suffix: o.suffix,
+            side: o.axisSide,
+            omitEnds: o.omitEndLabels,
+          }}
+        />
+        {band && <path d={band} fill={d.fill} stroke="none" />}
+        {d.series.map((s, j) => (
+          <path
+            key={j}
+            d={line(s.values)}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={
+              s.width ??
+              (j === d.top || j === d.bop ? o.pipeWidth : o.lineWidth)
+            }
+          />
+        ))}
+      </g>
+    );
   };
-  let band = "";
-  if (o.hatchPipe && top && bop) {
-    // Top forwards then bottom backwards, closed: the pipe body.
-    const fwd = line(top.values, a, b);
-    const back = line(bop.values, a, b, -1).replace(/^M/, "L");
-    band = fwd + back + "Z";
+
+  if (!o.cut) {
+    const dataH = (uMax - uMin) * k;
+    let yTop: number;
+    if (o.forceTop !== null && Number.isFinite(o.forceTop))
+      yTop = p.y + (uMin - sgn * o.forceTop) * k;
+    else if (o.placement === "upper") yTop = p.y + inner * 0.1;
+    else if (o.placement === "lower") yTop = p.y + inner * 0.9 - dataH;
+    else yTop = p.y + (inner - dataH) / 2;
+    return <g>{section(a, b, uMin - (yTop - p.y) / k, p.x, p.x + p.w)}</g>;
   }
-  // Hatch under a seabed line: down to the panel's foot (or top, for levels drawn upside down).
-  const under = o.hatchBelow
-    ? d.series.find((s) => s.name === o.hatchBelow)
-    : undefined;
-  let below = "";
-  if (under) {
-    const l = line(under.values, a, b);
-    const xs = [...l.matchAll(/[ML]([-\d.]+) /g)].map((m) => Number(m[1]));
-    if (xs.length > 1)
-      below =
-        l.replace(/M/g, "L").replace(/^L/, "M") +
-        `L${xs[xs.length - 1]} ${p.y + p.h}L${xs[0]} ${p.y + p.h}Z`;
+
+  // Cut and divide: windows as tall as the panel, moved by whole depth steps.
+  const W = p.h / k;
+  const step = Math.max(0.01, o.cutStep);
+  // The pipe decides where to cut; noisy seabed lines are simply clipped.
+  const decide = top && bop ? [top, bop] : d.series;
+  const fits = (i: number, u0: number) => {
+    for (const s of decide) {
+      const v = val(s.values, i);
+      if (!Number.isFinite(v)) continue;
+      const u = sgn * v;
+      if (u < u0 || u > u0 + W) return false;
+    }
+    return true;
+  };
+  /**
+   * How many points from `i` stay inside the window starting at u0. A spike of a few
+   * points (a bad ping) does not count as leaving: only a longer excursion cuts the panel.
+   */
+  const run = (i: number, u0: number) => {
+    let n = 0;
+    let bad = 0;
+    while (i + n <= b) {
+      if (fits(i + n, u0)) bad = 0;
+      else if (++bad > 3) return n - 3;
+      n++;
+    }
+    return n;
+  };
+  const pieces: { from: number; to: number; u0: number }[] = [];
+  let i = a;
+  let u0 = Math.floor((uMin - (W - (uMax - uMin)) / 2) / step) * step;
+  if (uMax - uMin > W)
+    u0 =
+      Math.floor((uMin + uMax) / 2 / step) * step -
+      Math.round(W / 2 / step) * step;
+  while (i <= b && pieces.length < 200) {
+    // Best window here: the one that keeps the profile inside the longest.
+    let bestN = run(i, u0);
+    let best = u0;
+    const all = uRange(a, b, decide);
+    // The asked-for depth step first; when no such window keeps the pipe in for long
+    // (the pipe is thicker than the room left), move by finer steps.
+    for (const g of [step, step / 2, step / 5, step / 10]) {
+      if (bestN >= 20 || i + bestN > b) break;
+      const lowN = Math.floor((all[0] - W - u0) / g);
+      const highN = Math.ceil((all[1] - u0) / g);
+      for (let n = Math.max(lowN, -400); n <= Math.min(highN, 400); n++) {
+        const cand = u0 + n * g;
+        const r = run(i, cand);
+        if (
+          r > bestN ||
+          (r === bestN && Math.abs(cand - u0) < Math.abs(best - u0))
+        ) {
+          bestN = r;
+          best = cand;
+        }
+      }
+    }
+    u0 = best;
+    const to = Math.min(b, i + Math.max(1, bestN) - 1);
+    // The next part starts on the point that left, so the line runs on across the cut.
+    pieces.push({ from: i, to: Math.min(b, to + 1), u0 });
+    if (to >= b) break;
+    i = to + 1;
   }
-  // The axis runs from the panel top to its foot.
-  const u0 = uMin - (yTop - p.y) / k;
-  const u1 = u0 + p.h / k;
-  const lo = Math.min(sgn * u0, sgn * u1);
-  const hi = Math.max(sgn * u0, sgn * u1);
-  const auto = niceGrid(p.h / k) / 2;
+  const xs = pieces.map((q, n) => ({
+    xa: n === 0 ? p.x : toX(d.kp[q.from]),
+    xb: n === pieces.length - 1 ? p.x + p.w : toX(d.kp[pieces[n + 1].from]),
+  }));
   return (
     <g>
-      {o.hatchSea && (
-        <rect
-          x={p.x}
-          y={p.y}
-          width={p.w}
-          height={p.h}
-          fill={o.seaColor}
-          stroke="none"
-        />
+      {pieces.map((q, n) =>
+        section(
+          q.from,
+          q.to,
+          q.u0,
+          xs[n].xa,
+          xs[n].xb,
+          `lp-${p.id}-${d.id}-${n}`,
+        ),
       )}
-      {below && <path d={below} fill={o.belowColor} stroke="none" />}
-      <DepthAxis
-        p={p}
-        y={y}
-        lo={lo}
-        hi={hi}
-        o={{
-          line: o.gridLine || auto,
-          label: o.gridLabel,
-          major: o.majorTick,
-          minor: o.minorTick,
-          tickLen: o.tickLen,
-          suffix: o.suffix,
-          side: o.axisSide,
-        }}
-      />
-      {band && <path d={band} fill={d.fill} stroke="none" />}
-      {d.series.map((s, j) => (
-        <path
-          key={j}
-          d={line(s.values, a, b)}
-          fill="none"
-          stroke={s.color}
-          strokeWidth={
-            s.width ?? (j === d.top || j === d.bop ? o.pipeWidth : o.lineWidth)
-          }
+      {xs.slice(1).map((c, n) => (
+        <line
+          key={`cut${n}`}
+          x1={c.xa}
+          x2={c.xa}
+          y1={p.y}
+          y2={p.y + p.h}
+          stroke="currentColor"
+          strokeWidth={0.25}
         />
       ))}
     </g>
@@ -975,7 +1109,7 @@ function LinkedEvents({
         const xb = toX(e.end);
         const mid = (xa + xb) / 2;
         const c = l.color;
-        const t = { ...fontProps(font), fill: c };
+        const t = { ...fontProps(font), style: { fill: c } };
         const gap = l.textGap ?? 0.6;
         // The bar sits where the user put it (the middle by default); the end lines are centred on it.
         const centre = y0 + rh * (l.barPos ?? 0.5);
@@ -1087,110 +1221,5 @@ export function CpMark({
       d={`M${x} ${y - r}L${x + r} ${y}L${x} ${y + r}L${x - r} ${y}Z`}
       {...st}
     />
-  );
-}
-
-/** CP readings: ticks with the reading, like engineering events, or a gradient line. */
-function Cp({
-  d,
-  p,
-  toX,
-  span,
-}: {
-  d: Extract<Dataset, { kind: "cp" }>;
-  p: Panel;
-  toX: (kp: number) => number;
-  span: [number, number];
-}) {
-  const [a, b] = indexRange(d.kp, span);
-  if (b < a) return null;
-  if (d.style === "ticks") {
-    const look = { ...DEFAULT_CP_LOOK, ...d.look };
-    const foot = p.y + p.h;
-    const cy = p.y + p.h * look.posY;
-    const fs = fontSize(Math.min(d.font.size, p.h / 3));
-    const r = Math.max(0.2, look.symbolSize / 2);
-    const top = d.symbol === "tick" ? 0 : r;
-    const out: ReactElement[] = [];
-    let path = "";
-    let lastX = -Infinity;
-    const rot = look.textRotation;
-    const horizontal = Math.abs(Math.sin((rot * Math.PI) / 180)) < 0.5;
-    for (let i = a; i <= b; i++) {
-      if (!(d.kp[i] >= span[0] && d.kp[i] <= span[1])) continue;
-      const x = toX(d.kp[i]);
-      if (d.symbol === "tick")
-        path += `M${x.toFixed(2)} ${(cy + r).toFixed(2)}V${(cy - r).toFixed(2)}`;
-      else if (look.stem)
-        path += `M${x.toFixed(2)} ${foot.toFixed(2)}V${cy.toFixed(2)}`;
-      out.push(
-        <CpMark
-          key={`m${i}`}
-          symbol={d.symbol}
-          x={x}
-          y={cy}
-          r={r}
-          color={d.color}
-        />,
-      );
-      if (!look.showText) continue;
-      const label = `${Math.round(d.mv[i])}${look.suffix}`;
-      const need = horizontal ? label.length * fs * 0.6 + 0.5 : fs * 1.15;
-      if (x - lastX > need) {
-        const gx = horizontal ? 0 : fs * 0.35;
-        out.push(
-          <text
-            key={i}
-            fontSize={fs}
-            {...fontProps(d.font)}
-            textAnchor={horizontal ? "middle" : "start"}
-            transform={`translate(${(x + gx).toFixed(2)} ${(cy - top - look.textGap).toFixed(2)}) rotate(${-rot})`}
-          >
-            {label}
-          </text>,
-        );
-        lastX = x;
-      }
-    }
-    return (
-      <g>
-        <path d={path} stroke={d.color} strokeWidth={0.15} fill="none" />
-        {out}
-      </g>
-    );
-  }
-  let min = Infinity;
-  let max = -Infinity;
-  for (let i = a; i <= b; i++) {
-    min = Math.min(min, d.mv[i]);
-    max = Math.max(max, d.mv[i]);
-  }
-  const pad = Math.max(10, (max - min) * 0.15);
-  const lo = min - pad;
-  const hi = max + pad;
-  const y = (v: number) => p.y + p.h - ((v - lo) / (hi - lo)) * p.h;
-  let path = "";
-  for (let i = a; i <= b; i++)
-    path += `${i === a ? "M" : "L"}${toX(d.kp[i]).toFixed(2)} ${y(d.mv[i]).toFixed(2)}`;
-  return (
-    <g>
-      <text
-        x={p.x + 1}
-        y={p.y + 3}
-        fontSize={fontSize(1.4)}
-        className="depth-label"
-      >
-        {Math.round(hi)} mV
-      </text>
-      <text
-        x={p.x + 1}
-        y={p.y + p.h - 1}
-        fontSize={fontSize(1.4)}
-        className="depth-label"
-      >
-        {Math.round(lo)} mV
-      </text>
-      <path d={path} fill="none" stroke={d.color} strokeWidth={0.3} />
-    </g>
   );
 }

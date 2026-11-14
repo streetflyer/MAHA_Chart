@@ -1,4 +1,4 @@
-import type { ChartTemplate } from './types';
+import type { ChartTemplate } from "./types";
 
 interface Rect {
   x: number;
@@ -11,7 +11,9 @@ const GAP = 3;
 const STEP = 2;
 
 function hits(a: Rect, b: Rect): boolean {
-  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  return (
+    a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h
+  );
 }
 
 /**
@@ -20,21 +22,39 @@ function hits(a: Rect, b: Rect): boolean {
  * preferred point (where the user right-clicked) wins when the panel fits there.
  * `headroom` reserves space above the panel for a title drawn above it.
  */
-export function findFreeSpot(t: ChartTemplate, w: number, h: number, at?: { x: number; y: number }, headroom = 0): Rect {
+export function findFreeSpot(
+  t: ChartTemplate,
+  w: number,
+  h: number,
+  at?: { x: number; y: number },
+  headroom = 0,
+): Rect {
   const inset = t.paper.frameInset + GAP;
-  const bounds = { x0: inset, y0: inset, x1: t.paper.width - inset, y1: t.paper.height - inset };
+  const bounds = {
+    x0: inset,
+    y0: inset,
+    x1: t.paper.width - inset,
+    y1: t.paper.height - inset,
+  };
   const obstacles: Rect[] = t.panels
     .filter((p) => !p.parentId)
     .map((p) => {
-      const above = p.titlePosition === 'above' ? 7 : 0;
-      return { x: p.x - GAP, y: p.y - above - GAP, w: p.w + 2 * GAP, h: p.h + above + 2 * GAP };
+      const above = p.titlePosition === "above" ? 7 : 0;
+      return {
+        x: p.x - GAP,
+        y: p.y - above - GAP,
+        w: p.w + 2 * GAP,
+        h: p.h + above + 2 * GAP,
+      };
     });
   const free = (r: Rect) =>
     r.x >= bounds.x0 &&
     r.y - headroom >= bounds.y0 &&
     r.x + r.w <= bounds.x1 &&
     r.y + r.h <= bounds.y1 &&
-    !obstacles.some((o) => hits({ x: r.x, y: r.y - headroom, w: r.w, h: r.h + headroom }, o));
+    !obstacles.some((o) =>
+      hits({ x: r.x, y: r.y - headroom, w: r.w, h: r.h + headroom }, o),
+    );
 
   let cw = w;
   let ch = h;
@@ -53,5 +73,10 @@ export function findFreeSpot(t: ChartTemplate, w: number, h: number, at?: { x: n
     ch = Math.max(12, ch * 0.75);
   }
   // The sheet is full: place it offset from the centre so it is visible and can be moved.
-  return { x: (t.paper.width - w) / 2 + 10, y: (t.paper.height - h) / 2 + 10, w, h };
+  return {
+    x: (t.paper.width - w) / 2 + 10,
+    y: (t.paper.height - h) / 2 + 10,
+    w,
+    h,
+  };
 }

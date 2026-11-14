@@ -1,5 +1,5 @@
-import { aciHex, trueHex } from './aci';
-import { robustBounds, type Bounds } from './route';
+import { aciHex, trueHex } from "./aci";
+import { robustBounds, type Bounds } from "./route";
 
 /** Linework read from a DXF for use as a background (key plan, plan view). */
 export interface Linework {
@@ -37,7 +37,7 @@ export interface DxfText {
   /** Degrees anticlockwise. */
   rot: number;
   text: string;
-  align: 'start' | 'middle' | 'end';
+  align: "start" | "middle" | "end";
   layer: string;
   /** Colour in the drawing ('#rrggbb'; '' = none given). */
   color: string;
@@ -50,15 +50,20 @@ export interface DxfText {
 }
 
 /** A Linework from plain polylines (survey lines read from a listing). */
-export function plainLinework(name: string, lines: Float64Array[], bounds: Bounds, layer = '0'): Linework {
+export function plainLinework(
+  name: string,
+  lines: Float64Array[],
+  bounds: Bounds,
+  layer = "0",
+): Linework {
   return {
     name,
     lines,
     layers: lines.map(() => layer),
-    colors: lines.map(() => ''),
+    colors: lines.map(() => ""),
     groups: lines.map((_, i) => i),
     texts: [],
-    layerInfo: [{ name: layer, color: '', count: lines.length, off: false }],
+    layerInfo: [{ name: layer, color: "", count: lines.length, off: false }],
     bounds,
   };
 }
@@ -66,13 +71,13 @@ export function plainLinework(name: string, lines: Float64Array[], bounds: Bound
 /** MTEXT keeps formatting codes inline; keep only the words. */
 function plainMtext(s: string): string {
   return s
-    .replace(/\\P/g, '\n')
-    .replace(/\\[A-Za-z][^;\\]*;/g, '')
-    .replace(/\\[A-Za-z]/g, '')
-    .replace(/[{}]/g, '')
-    .replace(/%%[dD]/g, '°')
-    .replace(/%%[pP]/g, '±')
-    .replace(/%%[cC]/g, 'Ø');
+    .replace(/\\P/g, "\n")
+    .replace(/\\[A-Za-z][^;\\]*;/g, "")
+    .replace(/\\[A-Za-z]/g, "")
+    .replace(/[{}]/g, "")
+    .replace(/%%[dD]/g, "°")
+    .replace(/%%[pP]/g, "±")
+    .replace(/%%[cC]/g, "Ø");
 }
 
 interface Ent {
@@ -86,7 +91,10 @@ interface Ent {
 /** 2D affine map: x' = a·x + c·y + e, y' = b·x + d·y + f. */
 type Xf = [number, number, number, number, number, number];
 const IDENT: Xf = [1, 0, 0, 1, 0, 0];
-const apply = (m: Xf, x: number, y: number): [number, number] => [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+const apply = (m: Xf, x: number, y: number): [number, number] => [
+  m[0] * x + m[2] * y + m[4],
+  m[1] * x + m[3] * y + m[5],
+];
 const mul = (m: Xf, n: Xf): Xf => [
   m[0] * n[0] + m[2] * n[1],
   m[1] * n[0] + m[3] * n[1],
@@ -103,7 +111,14 @@ const num = (e: Ent, code: number, dflt = NaN) => {
 const str = (e: Ent, code: number) => e.g.find((p) => p[0] === code)?.[1];
 
 /** Points of an arc from a polyline bulge (tan of a quarter of the included angle). */
-function bulgePts(x1: number, y1: number, x2: number, y2: number, b: number, out: number[]) {
+function bulgePts(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  b: number,
+  out: number[],
+) {
   const th = 4 * Math.atan(b);
   const d = Math.hypot(x2 - x1, y2 - y1);
   if (!d || Math.abs(th) < 1e-9) return;
@@ -142,36 +157,56 @@ interface LayerDef {
 }
 
 /** Read the group pairs of the BLOCKS and ENTITIES sections into entities, and the layer table. */
-function readEntities(text: string): { entities: Ent[]; blocks: Map<string, { base: [number, number]; ents: Ent[] }>; layerDefs: Map<string, LayerDef> } {
+function readEntities(text: string): {
+  entities: Ent[];
+  blocks: Map<string, { base: [number, number]; ents: Ent[] }>;
+  layerDefs: Map<string, LayerDef>;
+} {
   const rows = text.split(/\r?\n/);
   const entities: Ent[] = [];
   const blocks = new Map<string, { base: [number, number]; ents: Ent[] }>();
   const layerDefs = new Map<string, LayerDef>();
-  let section = '';
-  let block: { name: string; base: [number, number]; ents: Ent[] } | null = null;
+  let section = "";
+  let block: { name: string; base: [number, number]; ents: Ent[] } | null =
+    null;
   let cur: Ent | null = null;
   let parent: Ent | null = null;
   const close = () => {
     if (!cur) return;
     const t = cur.type;
-    if (section === 'TABLES' && t === 'LAYER') {
+    if (section === "TABLES" && t === "LAYER") {
       const c = num(cur, 62, 7);
       const tc = num(cur, 420);
-      layerDefs.set(str(cur, 2) ?? '0', { color: Number.isFinite(tc) ? trueHex(tc) : aciHex(Math.abs(c) || 7), off: c < 0 || (num(cur, 70, 0) & 1) === 1 });
-    } else if (section === 'BLOCKS' && t === 'BLOCK') {
-      block = { name: str(cur, 2) ?? '', base: [num(cur, 10, 0), num(cur, 20, 0)], ents: [] };
-    } else if (section === 'BLOCKS' && t === 'ENDBLK') {
+      layerDefs.set(str(cur, 2) ?? "0", {
+        color: Number.isFinite(tc) ? trueHex(tc) : aciHex(Math.abs(c) || 7),
+        off: c < 0 || (num(cur, 70, 0) & 1) === 1,
+      });
+    } else if (section === "BLOCKS" && t === "BLOCK") {
+      block = {
+        name: str(cur, 2) ?? "",
+        base: [num(cur, 10, 0), num(cur, 20, 0)],
+        ents: [],
+      };
+    } else if (section === "BLOCKS" && t === "ENDBLK") {
       if (block) blocks.set(block.name, { base: block.base, ents: block.ents });
       block = null;
-    } else if (t === 'VERTEX' || t === 'ATTRIB') {
+    } else if (t === "VERTEX" || t === "ATTRIB") {
       parent?.kids.push(cur);
-    } else if (t === 'SEQEND') {
+    } else if (t === "SEQEND") {
       parent = null;
     } else {
-      const list = section === 'BLOCKS' ? block?.ents : section === 'ENTITIES' ? entities : undefined;
+      const list =
+        section === "BLOCKS"
+          ? block?.ents
+          : section === "ENTITIES"
+            ? entities
+            : undefined;
       list?.push(cur);
       // POLYLINE vertices and INSERT attributes follow their owner until SEQEND.
-      parent = t === 'POLYLINE' || (t === 'INSERT' && num(cur, 66, 0) === 1) ? cur : null;
+      parent =
+        t === "POLYLINE" || (t === "INSERT" && num(cur, 66, 0) === 1)
+          ? cur
+          : null;
     }
     cur = null;
   };
@@ -180,17 +215,22 @@ function readEntities(text: string): { entities: Ent[]; blocks: Map<string, { ba
     const value = rows[i + 1].trim();
     if (code === 0) {
       close();
-      if (value === 'SECTION') {
-        section = rows[i + 3]?.trim() ?? '';
+      if (value === "SECTION") {
+        section = rows[i + 3]?.trim() ?? "";
         i += 2;
         continue;
       }
-      if (value === 'ENDSEC') {
-        section = '';
+      if (value === "ENDSEC") {
+        section = "";
         continue;
       }
-      if (value === 'EOF') break;
-      if (section === 'BLOCKS' || section === 'ENTITIES' || (section === 'TABLES' && value === 'LAYER')) cur = { type: value, g: [], kids: [] };
+      if (value === "EOF") break;
+      if (
+        section === "BLOCKS" ||
+        section === "ENTITIES" ||
+        (section === "TABLES" && value === "LAYER")
+      )
+        cur = { type: value, g: [], kids: [] };
       continue;
     }
     if (cur && Number.isFinite(code)) cur.g.push([code, value]);
@@ -216,7 +256,7 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
   // The drawing object being read: every line and text of it carries this number.
   let group = 0;
 
-  const layerColor = (layer: string) => layerDefs.get(layer)?.color ?? '';
+  const layerColor = (layer: string) => layerDefs.get(layer)?.color ?? "";
   /** Colour of an entity: its own (index or true colour), its layer's, or its block insert's. */
   const colorOf = (e: Ent, layer: string, inherit: string): string => {
     const tc = num(e, 420);
@@ -240,20 +280,27 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
     colors.push(color);
     groups.push(group);
   };
-  const scaleOf = (m: Xf) => Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2])) || 1;
+  const scaleOf = (m: Xf) =>
+    Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2])) || 1;
   const angleOf = (m: Xf) => (Math.atan2(m[1], m[0]) * 180) / Math.PI;
 
   const addText = (e: Ent, m: Xf, layer: string, color: string) => {
     const t = e.type;
-    let s = t === 'MTEXT' ? e.g.filter((p) => p[0] === 3 || p[0] === 1).map((p) => p[1]).join('') : (str(e, 1) ?? '');
+    let s =
+      t === "MTEXT"
+        ? e.g
+            .filter((p) => p[0] === 3 || p[0] === 1)
+            .map((p) => p[1])
+            .join("")
+        : (str(e, 1) ?? "");
     if (!s.trim()) return;
-    if (t === 'ATTRIB' && (num(e, 70, 0) & 1) === 1) return; // invisible attribute
+    if (t === "ATTRIB" && (num(e, 70, 0) & 1) === 1) return; // invisible attribute
     let x0 = num(e, 10, 0);
     let y0 = num(e, 20, 0);
-    let align: DxfText['align'] = 'start';
-    if (t === 'MTEXT') {
+    let align: DxfText["align"] = "start";
+    if (t === "MTEXT") {
       const col = ((num(e, 71, 1) || 1) - 1) % 3;
-      align = col === 1 ? 'middle' : col === 2 ? 'end' : 'start';
+      align = col === 1 ? "middle" : col === 2 ? "end" : "start";
       s = plainMtext(s);
     } else {
       const h72 = num(e, 72, 0);
@@ -261,23 +308,51 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
         x0 = num(e, 11);
         y0 = num(e, 21);
       }
-      align = h72 === 1 || h72 === 4 ? 'middle' : h72 === 2 ? 'end' : 'start';
-      s = s.replace(/%%[dD]/g, '°').replace(/%%[pP]/g, '±').replace(/%%[cC]/g, 'Ø').replace(/%%[uUoO]/g, '');
+      align = h72 === 1 || h72 === 4 ? "middle" : h72 === 2 ? "end" : "start";
+      s = s
+        .replace(/%%[dD]/g, "°")
+        .replace(/%%[pP]/g, "±")
+        .replace(/%%[cC]/g, "Ø")
+        .replace(/%%[uUoO]/g, "");
     }
-    const rot = t === 'MTEXT' && Number.isFinite(num(e, 11)) ? (Math.atan2(num(e, 21, 0), num(e, 11)) * 180) / Math.PI : num(e, 50, 0);
+    const rot =
+      t === "MTEXT" && Number.isFinite(num(e, 11))
+        ? (Math.atan2(num(e, 21, 0), num(e, 11)) * 180) / Math.PI
+        : num(e, 50, 0);
     const [x, y] = apply(m, x0, y0);
-    texts.push({ x, y, h: num(e, 40, 1) * scaleOf(m), rot: rot + angleOf(m), text: s, align, layer, color, group });
+    texts.push({
+      x,
+      y,
+      h: num(e, 40, 1) * scaleOf(m),
+      rot: rot + angleOf(m),
+      text: s,
+      align,
+      layer,
+      color,
+      group,
+    });
   };
 
-  const draw = (e: Ent, m: Xf, inherit: string, depth: number, inheritColor: string) => {
-    const own = str(e, 8) ?? '0';
-    const layer = own === '0' && inherit ? inherit : own;
+  const draw = (
+    e: Ent,
+    m: Xf,
+    inherit: string,
+    depth: number,
+    inheritColor: string,
+  ) => {
+    const own = str(e, 8) ?? "0";
+    const layer = own === "0" && inherit ? inherit : own;
     const color = colorOf(e, layer, inheritColor);
     switch (e.type) {
-      case 'LINE':
-        pushPts([num(e, 10, 0), num(e, 20, 0), num(e, 11, 0), num(e, 21, 0)], m, layer, color);
+      case "LINE":
+        pushPts(
+          [num(e, 10, 0), num(e, 20, 0), num(e, 11, 0), num(e, 21, 0)],
+          m,
+          layer,
+          color,
+        );
         break;
-      case 'LWPOLYLINE': {
+      case "LWPOLYLINE": {
         const vs: [number, number, number][] = [];
         for (const [c, v] of e.g) {
           if (c === 10) vs.push([parseFloat(v), 0, 0]);
@@ -287,30 +362,40 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
         pushPts(bulged(vs, (num(e, 70, 0) & 1) === 1), m, layer, color);
         break;
       }
-      case 'POLYLINE': {
+      case "POLYLINE": {
         const flags = num(e, 70, 0);
         if (flags & (16 | 64)) break; // polygon meshes and polyface meshes
-        const vs = e.kids.filter((k) => k.type === 'VERTEX').map((k): [number, number, number] => [num(k, 10, 0), num(k, 20, 0), num(k, 42, 0)]);
+        const vs = e.kids
+          .filter((k) => k.type === "VERTEX")
+          .map((k): [number, number, number] => [
+            num(k, 10, 0),
+            num(k, 20, 0),
+            num(k, 42, 0),
+          ]);
         pushPts(bulged(vs, (flags & 1) === 1), m, layer, color);
         break;
       }
-      case 'CIRCLE':
-      case 'ARC': {
+      case "CIRCLE":
+      case "ARC": {
         const r = num(e, 40, 0);
         if (!(r > 0)) break;
-        const a0 = e.type === 'ARC' ? (num(e, 50, 0) * Math.PI) / 180 : 0;
-        let a1 = e.type === 'ARC' ? (num(e, 51, 0) * Math.PI) / 180 : Math.PI * 2;
+        const a0 = e.type === "ARC" ? (num(e, 50, 0) * Math.PI) / 180 : 0;
+        let a1 =
+          e.type === "ARC" ? (num(e, 51, 0) * Math.PI) / 180 : Math.PI * 2;
         if (a1 <= a0) a1 += Math.PI * 2;
         const n = Math.max(8, Math.ceil(((a1 - a0) / (Math.PI * 2)) * 72));
         const p: number[] = [];
         for (let k = 0; k <= n; k++) {
           const a = a0 + ((a1 - a0) * k) / n;
-          p.push(num(e, 10, 0) + r * Math.cos(a), num(e, 20, 0) + r * Math.sin(a));
+          p.push(
+            num(e, 10, 0) + r * Math.cos(a),
+            num(e, 20, 0) + r * Math.sin(a),
+          );
         }
         pushPts(p, m, layer, color);
         break;
       }
-      case 'ELLIPSE': {
+      case "ELLIPSE": {
         const cx = num(e, 10, 0);
         const cy = num(e, 20, 0);
         const mx = num(e, 11, 0);
@@ -330,7 +415,7 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
         pushPts(p, m, layer, color);
         break;
       }
-      case 'SPLINE': {
+      case "SPLINE": {
         // Fit points when there are any (the curve passes through them), else the control frame.
         const fit: number[] = [];
         const ctl: number[] = [];
@@ -348,7 +433,7 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
         pushPts(fit.length >= 4 ? fit : ctl, m, layer, color);
         break;
       }
-      case 'LEADER': {
+      case "LEADER": {
         const p: number[] = [];
         let pend = NaN;
         for (const [c, v] of e.g) {
@@ -361,31 +446,36 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
         pushPts(p, m, layer, color);
         break;
       }
-      case 'SOLID':
-      case 'TRACE':
-      case '3DFACE': {
-        const c = [10, 11, 12, 13].map((k) => [num(e, k, NaN), num(e, k + 10, NaN)]).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+      case "SOLID":
+      case "TRACE":
+      case "3DFACE": {
+        const c = [10, 11, 12, 13]
+          .map((k) => [num(e, k, NaN), num(e, k + 10, NaN)])
+          .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
         // SOLID corners run 1-2-4-3.
-        const order = e.type === '3DFACE' ? c : [c[0], c[1], c[3] ?? c[2], c[2]].filter(Boolean);
+        const order =
+          e.type === "3DFACE"
+            ? c
+            : [c[0], c[1], c[3] ?? c[2], c[2]].filter(Boolean);
         pushPts([...order.flat(), ...order[0]], m, layer, color);
         break;
       }
-      case 'TEXT':
-      case 'MTEXT':
-      case 'ATTRIB':
+      case "TEXT":
+      case "MTEXT":
+      case "ATTRIB":
         addText(e, m, layer, color);
         break;
-      case 'INSERT':
-      case 'DIMENSION': {
-        const b = blocks.get(str(e, 2) ?? '');
+      case "INSERT":
+      case "DIMENSION": {
+        const b = blocks.get(str(e, 2) ?? "");
         if (b && depth < 8) {
-          const sx = e.type === 'INSERT' ? num(e, 41, 1) : 1;
-          const sy = e.type === 'INSERT' ? num(e, 42, sx) : 1;
-          const r = e.type === 'INSERT' ? (num(e, 50, 0) * Math.PI) / 180 : 0;
-          const ix = e.type === 'INSERT' ? num(e, 10, 0) : 0;
-          const iy = e.type === 'INSERT' ? num(e, 20, 0) : 0;
-          const cols = e.type === 'INSERT' ? Math.max(1, num(e, 70, 1)) : 1;
-          const rws = e.type === 'INSERT' ? Math.max(1, num(e, 71, 1)) : 1;
+          const sx = e.type === "INSERT" ? num(e, 41, 1) : 1;
+          const sy = e.type === "INSERT" ? num(e, 42, sx) : 1;
+          const r = e.type === "INSERT" ? (num(e, 50, 0) * Math.PI) / 180 : 0;
+          const ix = e.type === "INSERT" ? num(e, 10, 0) : 0;
+          const iy = e.type === "INSERT" ? num(e, 20, 0) : 0;
+          const cols = e.type === "INSERT" ? Math.max(1, num(e, 70, 1)) : 1;
+          const rws = e.type === "INSERT" ? Math.max(1, num(e, 71, 1)) : 1;
           for (let ci = 0; ci < Math.min(cols, 50); ci++)
             for (let ri = 0; ri < Math.min(rws, 50); ri++) {
               const ox = ci * num(e, 44, 0);
@@ -393,30 +483,66 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
               const cos = Math.cos(r);
               const sin = Math.sin(r);
               // Block base point to origin, scale, array offset, rotate, then to the insertion point.
-              const local: Xf = [sx * cos, sx * sin, -sy * sin, sy * cos, ix + ox * cos - oy * sin - (b.base[0] * sx * cos - b.base[1] * sy * sin), iy + ox * sin + oy * cos - (b.base[0] * sx * sin + b.base[1] * sy * cos)];
+              const local: Xf = [
+                sx * cos,
+                sx * sin,
+                -sy * sin,
+                sy * cos,
+                ix +
+                  ox * cos -
+                  oy * sin -
+                  (b.base[0] * sx * cos - b.base[1] * sy * sin),
+                iy +
+                  ox * sin +
+                  oy * cos -
+                  (b.base[0] * sx * sin + b.base[1] * sy * cos),
+              ];
               const mm = mul(m, local);
               for (const k of b.ents) draw(k, mm, layer, depth + 1, color);
             }
         }
         // Attributes are already placed in drawing coordinates.
-        for (const k of e.kids) if (k.type === 'ATTRIB') addText(k, m, str(k, 8) ?? layer, colorOf(k, str(k, 8) ?? layer, color));
+        for (const k of e.kids)
+          if (k.type === "ATTRIB")
+            addText(
+              k,
+              m,
+              str(k, 8) ?? layer,
+              colorOf(k, str(k, 8) ?? layer, color),
+            );
         break;
       }
     }
   };
 
   for (const e of entities) {
-    draw(e, IDENT, '', 0, '');
+    draw(e, IDENT, "", 0, "");
     group++;
   }
   if (!lines.length && !texts.length) return null;
-  const extent = lines.length ? lines : [new Float64Array(texts.flatMap((t) => [t.x, t.y]))];
+  const extent = lines.length
+    ? lines
+    : [new Float64Array(texts.flatMap((t) => [t.x, t.y]))];
   // Every layer that has something on it, plus the drawing's own empty ones left out.
   const count = new Map<string, number>();
   for (const l of layers) count.set(l, (count.get(l) ?? 0) + 1);
   for (const t of texts) count.set(t.layer, (count.get(t.layer) ?? 0) + 1);
   const layerInfo: LayerInfo[] = [...count.entries()]
-    .map(([n, c]) => ({ name: n, color: layerColor(n), count: c, off: layerDefs.get(n)?.off ?? false }))
+    .map(([n, c]) => ({
+      name: n,
+      color: layerColor(n),
+      count: c,
+      off: layerDefs.get(n)?.off ?? false,
+    }))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-  return { name, lines, layers, colors, groups, texts, layerInfo, bounds: robustBounds(extent) };
+  return {
+    name,
+    lines,
+    layers,
+    colors,
+    groups,
+    texts,
+    layerInfo,
+    bounds: robustBounds(extent),
+  };
 }

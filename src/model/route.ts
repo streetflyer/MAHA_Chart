@@ -1,5 +1,11 @@
-import { planPanel, sheetCount, sheetFrame, sheetRange, sheetRotation } from './scale';
-import type { ChartTemplate, SheetFrame } from './types';
+import {
+  planPanel,
+  sheetCount,
+  sheetFrame,
+  sheetRange,
+  sheetRotation,
+} from "./scale";
+import type { ChartTemplate, SheetFrame } from "./types";
 
 /** A survey line in grid coordinates (metres), with running chainage along it. */
 export interface Route {
@@ -30,12 +36,16 @@ export function parseRoute(text: string, name: string): Route | null {
   const en: number[] = [];
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
-    if (!line || line.startsWith('#')) continue;
+    if (!line || line.startsWith("#")) continue;
     const cells = line.split(/[,;\t ]+/);
     if (!cells.every((c) => NUM.test(c))) {
       const up = cells.map((c) => c.toUpperCase());
-      const e = up.findIndex((c) => c.startsWith('EAST') || c === 'E' || c === 'X');
-      const n = up.findIndex((c) => c.startsWith('NORTH') || c === 'N' || c === 'Y');
+      const e = up.findIndex(
+        (c) => c.startsWith("EAST") || c === "E" || c === "X",
+      );
+      const n = up.findIndex(
+        (c) => c.startsWith("NORTH") || c === "N" || c === "Y",
+      );
       if (e >= 0 && n >= 0) {
         ei = e;
         ni = n;
@@ -54,7 +64,9 @@ export function makeRoute(name: string, en: number[]): Route {
   const pts = new Float64Array(en);
   const chain = new Float64Array(pts.length / 2);
   for (let i = 1; i < chain.length; i++) {
-    chain[i] = chain[i - 1] + Math.hypot(pts[2 * i] - pts[2 * i - 2], pts[2 * i + 1] - pts[2 * i - 1]);
+    chain[i] =
+      chain[i - 1] +
+      Math.hypot(pts[2 * i] - pts[2 * i - 2], pts[2 * i + 1] - pts[2 * i - 1]);
   }
   return { name, en: pts, chain, length: chain[chain.length - 1] };
 }
@@ -69,7 +81,10 @@ export function pointAt(r: Route, m: number): [number, number] {
   }
   if (m >= r.length) {
     const [ux, uy] = legDirection(r, n - 2);
-    return [r.en[2 * n - 2] + ux * (m - r.length), r.en[2 * n - 1] + uy * (m - r.length)];
+    return [
+      r.en[2 * n - 2] + ux * (m - r.length),
+      r.en[2 * n - 1] + uy * (m - r.length),
+    ];
   }
   let lo = 0;
   let hi = n - 1;
@@ -79,7 +94,10 @@ export function pointAt(r: Route, m: number): [number, number] {
     else hi = mid;
   }
   const f = (m - r.chain[lo]) / (r.chain[hi] - r.chain[lo] || 1);
-  return [r.en[2 * lo] + f * (r.en[2 * hi] - r.en[2 * lo]), r.en[2 * lo + 1] + f * (r.en[2 * hi + 1] - r.en[2 * lo + 1])];
+  return [
+    r.en[2 * lo] + f * (r.en[2 * hi] - r.en[2 * lo]),
+    r.en[2 * lo + 1] + f * (r.en[2 * hi + 1] - r.en[2 * lo + 1]),
+  ];
 }
 
 export function routeBounds(r: Route): Bounds {
@@ -128,7 +146,10 @@ export function nearestChainage(r: Route, e: number, n: number): number {
     const dx = r.en[2 * i + 2] - ax;
     const dy = r.en[2 * i + 3] - ay;
     const l2 = dx * dx + dy * dy;
-    const f = l2 > 0 ? Math.min(1, Math.max(0, ((e - ax) * dx + (n - ay) * dy) / l2)) : 0;
+    const f =
+      l2 > 0
+        ? Math.min(1, Math.max(0, ((e - ax) * dx + (n - ay) * dy) / l2))
+        : 0;
     const d = (ax + f * dx - e) ** 2 + (ay + f * dy - n) ** 2;
     if (d < best) {
       best = d;
@@ -159,37 +180,59 @@ export interface ChartGeometry {
   northUp: boolean;
 }
 
-export function chartGeometry(t: ChartTemplate, r: Route, i: number): ChartGeometry | null {
+export function chartGeometry(
+  t: ChartTemplate,
+  r: Route,
+  i: number,
+): ChartGeometry | null {
   const plan = planPanel(t);
   if (!plan) return null;
   const along = (plan.w * t.scale.horizontal) / 1000;
   const across = (plan.h * t.scale.horizontal) / 1000;
-  const k0 = (parseFloat(t.fields.START_KP ?? '0') || 0) * 1000;
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
   const { start, end } = sheetRange(t, i);
   const s0 = start * 1000 - k0;
   const s1 = end * 1000 - k0;
   const a = pointAt(r, s0);
   const b = pointAt(r, s1);
   let u: [number, number] = [1, 0];
-  if (t.kind !== 'northUp') {
+  if (t.kind !== "northUp") {
     const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
     if (d > 1e-6) u = [(b[0] - a[0]) / d, (b[1] - a[1]) / d];
   }
   const rot = (sheetRotation(t, i) * Math.PI) / 180;
-  if (rot) u = [u[0] * Math.cos(rot) - u[1] * Math.sin(rot), u[0] * Math.sin(rot) + u[1] * Math.cos(rot)];
+  if (rot)
+    u = [
+      u[0] * Math.cos(rot) - u[1] * Math.sin(rot),
+      u[0] * Math.sin(rot) + u[1] * Math.cos(rot),
+    ];
   // Centre the chart's stretch of line in the frame, both along and across, then apply any pan.
   const ext = extents(r, s0, s1, a, u);
   const f = sheetFrame(t, i);
   const uc = (ext.uMin + ext.uMax) / 2 + (f?.panU ?? 0);
   const vc = (ext.vMin + ext.vMax) / 2 + (f?.panV ?? 0);
   const v: [number, number] = [-u[1], u[0]];
-  const origin: [number, number] = [a[0] + u[0] * (uc - along / 2) + v[0] * vc, a[1] + u[1] * (uc - along / 2) + v[1] * vc];
-  return { origin, u, along, across, northUp: t.kind === 'northUp' };
+  const origin: [number, number] = [
+    a[0] + u[0] * (uc - along / 2) + v[0] * vc,
+    a[1] + u[1] * (uc - along / 2) + v[1] * vc,
+  ];
+  return { origin, u, along, across, northUp: t.kind === "northUp" };
 }
 
 /** Extent of the line between two chainages, measured along u and across it from point a. */
-function extents(r: Route, s0: number, s1: number, a: [number, number], u: [number, number]) {
-  const out = { uMin: Infinity, uMax: -Infinity, vMin: Infinity, vMax: -Infinity };
+function extents(
+  r: Route,
+  s0: number,
+  s1: number,
+  a: [number, number],
+  u: [number, number],
+) {
+  const out = {
+    uMin: Infinity,
+    uMax: -Infinity,
+    vMin: Infinity,
+    vMax: -Infinity,
+  };
   const add = (e: number, n: number) => {
     const de = e - a[0];
     const dn = n - a[1];
@@ -205,7 +248,8 @@ function extents(r: Route, s0: number, s1: number, a: [number, number], u: [numb
   const i0 = indexAt(r, Math.max(0, s0));
   const i1 = indexAt(r, Math.min(r.length, s1));
   const stride = Math.max(1, Math.floor((i1 - i0) / 1500));
-  for (let i = i0; i <= i1; i += stride) if (r.chain[i] > s0 && r.chain[i] < s1) add(r.en[2 * i], r.en[2 * i + 1]);
+  for (let i = i0; i <= i1; i += stride)
+    if (r.chain[i] > s0 && r.chain[i] < s1) add(r.en[2 * i], r.en[2 * i + 1]);
   return out;
 }
 
@@ -226,18 +270,21 @@ function indexAt(r: Route, m: number): number {
  * bends too much for a full-length chart, that chart is cut short at the bend and
  * the next one starts there, turned to follow the new direction.
  */
-export function autoSheets(t: ChartTemplate, r: Route): SheetFrame[] | undefined {
+export function autoSheets(
+  t: ChartTemplate,
+  r: Route,
+): SheetFrame[] | undefined {
   const plan = planPanel(t);
   if (!plan || !(t.scale.kpPerSheet > 0)) return undefined;
   const L = t.scale.kpPerSheet;
   const W = (plan.h * t.scale.horizontal) / 1000;
   const ov = Math.min(t.scale.overlap, L * 0.5);
-  const k0 = (parseFloat(t.fields.START_KP ?? '0') || 0) * 1000;
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
   const fits = (s0: number, s1: number) => {
     const a = pointAt(r, s0);
     const b = pointAt(r, s1);
     let u: [number, number] = [1, 0];
-    if (t.kind !== 'northUp') {
+    if (t.kind !== "northUp") {
       const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
       if (d > 1e-6) u = [(b[0] - a[0]) / d, (b[1] - a[1]) / d];
     }
@@ -260,16 +307,20 @@ export function autoSheets(t: ChartTemplate, r: Route): SheetFrame[] | undefined
       }
       e = lo;
     }
-    out.push(e < s + L - 1e-6 ? { start: k0 + s, end: k0 + e } : { start: k0 + s });
+    out.push(
+      e < s + L - 1e-6 ? { start: k0 + s, end: k0 + e } : { start: k0 + s },
+    );
     if (e >= r.length) break;
     s = Math.max(s + L * 0.1, e - ov);
   }
   return out;
 }
 
-
 /** Grid metres to paper millimetres inside the plan view for one chart. */
-export function gridToPlan(g: ChartGeometry, plan: { x: number; y: number; w: number; h: number }) {
+export function gridToPlan(
+  g: ChartGeometry,
+  plan: { x: number; y: number; w: number; h: number },
+) {
   const s = plan.w / g.along;
   const [ux, uy] = g.u;
   const [ox, oy] = g.origin;
@@ -322,6 +373,12 @@ export function robustBounds(lines: Float64Array[]): Bounds {
   if (!es.length) return emptyBounds();
   es.sort((a, b) => a - b);
   ns.sort((a, b) => a - b);
-  const q = (v: number[], f: number) => v[Math.min(v.length - 1, Math.max(0, Math.round(f * (v.length - 1))))];
-  return { minE: q(es, 0.01), maxE: q(es, 0.99), minN: q(ns, 0.01), maxN: q(ns, 0.99) };
+  const q = (v: number[], f: number) =>
+    v[Math.min(v.length - 1, Math.max(0, Math.round(f * (v.length - 1))))];
+  return {
+    minE: q(es, 0.01),
+    maxE: q(es, 0.99),
+    minN: q(ns, 0.01),
+    maxN: q(ns, 0.99),
+  };
 }

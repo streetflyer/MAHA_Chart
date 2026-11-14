@@ -36,6 +36,8 @@ import { ProjectPanel } from "./ProjectPanel";
 import { SheetView, type ContextTarget } from "./SheetView";
 import { useDrawingEdit } from "../state/drawingEdit";
 import { drawingKey } from "./drawingEditing";
+import { useCpEdit } from "../state/cpEdit";
+import { cpKey, cpMenu } from "./cpEditing";
 
 interface Menu {
   x: number;
@@ -140,6 +142,10 @@ export function Editor({ onExit }: { onExit(): void }) {
         e.preventDefault();
         return;
       }
+      if (useCpEdit.getState().active && cpKey(e)) {
+        e.preventDefault();
+        return;
+      }
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
       const sel = s().selection;
@@ -210,6 +216,10 @@ export function Editor({ onExit }: { onExit(): void }) {
     at: { x: number; y: number },
     target: ContextTarget,
   ) {
+    if (target.kind === "cp") {
+      setMenu({ x: clientX, y: clientY, items: cpMenu(at) });
+      return;
+    }
     if (target.kind === "drawing") {
       setMenu({ x: clientX, y: clientY, items: drawingMenu(at) });
       return;

@@ -1,11 +1,15 @@
-import { useMemo } from 'react';
-import { DEFAULT_LINEWORK_LOOK, type Dataset, type LineworkLook } from '../model/datasets';
-import type { DxfText } from '../model/dxf';
-import type { Bounds } from '../model/route';
-import { linesPath } from './linework';
-import { fontSize } from './svgText';
+import { useMemo } from "react";
+import {
+  DEFAULT_LINEWORK_LOOK,
+  type Dataset,
+  type LineworkLook,
+} from "../model/datasets";
+import type { DxfText } from "../model/dxf";
+import type { Bounds } from "../model/route";
+import { linesPath } from "./linework";
+import { fontSize } from "./svgText";
 
-export type LineworkSet = Extract<Dataset, { kind: 'linework' }>;
+export type LineworkSet = Extract<Dataset, { kind: "linework" }>;
 type Project = (e: number, n: number) => [number, number];
 
 /** Texts smaller than this on paper can't be seen even zoomed right in. */
@@ -15,7 +19,11 @@ const AUTO_MIN_MM = 1.2;
 const AUTO_MAX_MM = 3;
 
 /** A drawing's look settings with defaults filled in. */
-export const lookOf = (d: LineworkSet): LineworkLook => ({ ...DEFAULT_LINEWORK_LOOK, ...d, layers: d.layers ?? {} });
+export const lookOf = (d: LineworkSet): LineworkLook => ({
+  ...DEFAULT_LINEWORK_LOOK,
+  ...d,
+  layers: d.layers ?? {},
+});
 
 /** Is this layer drawn? The user's choice wins; otherwise the drawing's own on/off. */
 export function layerShown(d: LineworkSet, layer: string): boolean {
@@ -49,7 +57,12 @@ export function textColour(d: LineworkSet, t: DxfText): string {
 }
 
 /** Polylines of a drawing grouped by colour, as one path per colour; `skip` leaves out whole objects. */
-export function colourPaths(d: LineworkSet, area: Bounds, project: Project, skip?: Set<number>): { color: string; d: string }[] {
+export function colourPaths(
+  d: LineworkSet,
+  area: Bounds,
+  project: Project,
+  skip?: Set<number>,
+): { color: string; d: string }[] {
   const byColour = new Map<string, Float64Array[]>();
   const lines = d.lw.lines;
   for (let i = 0; i < lines.length; i++) {
@@ -95,15 +108,32 @@ export function LineworkLayer({
   /** Objects being edited (drawn elsewhere), by dataset id. */
   skip?: Map<string, Set<number>>;
 }) {
-  const paths = useMemo(() => sets.map((d) => colourPaths(d, area, project, skip?.get(d.id))), [sets, area, project, skip]);
+  const paths = useMemo(
+    () => sets.map((d) => colourPaths(d, area, project, skip?.get(d.id))),
+    [sets, area, project, skip],
+  );
   return (
     <>
       {sets.map((d, i) => (
         <g key={d.id}>
           {paths[i].map((p) => (
-            <path key={p.color} d={p.d} fill="none" stroke={p.color} strokeWidth={d.width * widthScale} strokeLinejoin="round" />
+            <path
+              key={p.color}
+              d={p.d}
+              fill="none"
+              stroke={p.color}
+              strokeWidth={d.width * widthScale}
+              strokeLinejoin="round"
+            />
           ))}
-          <Texts d={d} area={area} project={project} mmPerM={mmPerM} uAngle={uAngle} skip={skip?.get(d.id)} />
+          <Texts
+            d={d}
+            area={area}
+            project={project}
+            mmPerM={mmPerM}
+            uAngle={uAngle}
+            skip={skip?.get(d.id)}
+          />
         </g>
       ))}
     </>
@@ -111,38 +141,73 @@ export function LineworkLayer({
 }
 
 /** Paper cap height of a DXF text. */
-export function textHeightMm(d: LineworkSet, h: number, mmPerM: number): number {
-  if (d.textMode === 'fixed') return d.textHeight;
+export function textHeightMm(
+  d: LineworkSet,
+  h: number,
+  mmPerM: number,
+): number {
+  if (d.textMode === "fixed") return d.textHeight;
   const drawn = (h || 2.5) * mmPerM;
   // Auto: follow the map scale, but never so small it can't be read or so big it swamps the chart.
   // Text far too small for this scale (a site plan seen whole) is left out rather than blown up.
-  if (d.textMode === 'auto' && drawn < AUTO_MIN_MM / 4) return 0;
-  const size = d.textMode === 'auto' ? Math.min(AUTO_MAX_MM, Math.max(AUTO_MIN_MM, drawn)) : drawn;
+  if (d.textMode === "auto" && drawn < AUTO_MIN_MM / 4) return 0;
+  const size =
+    d.textMode === "auto"
+      ? Math.min(AUTO_MAX_MM, Math.max(AUTO_MIN_MM, drawn))
+      : drawn;
   return size * (d.textScale / 100);
 }
 
 /** Where and how one text is drawn on paper; null when it is hidden or too small. */
-export function placeText(d: LineworkSet, t: DxfText, project: Project, mmPerM: number, uAngle: number) {
+export function placeText(
+  d: LineworkSet,
+  t: DxfText,
+  project: Project,
+  mmPerM: number,
+  uAngle: number,
+) {
   if (!layerShown(d, t.layer)) return null;
   const cap = textHeightMm(d, t.h, mmPerM);
   if (cap < MIN_TEXT_MM) return null;
   const [x, y] = project(t.x, t.y);
   // Paper turns clockwise as the grid turns anticlockwise; the user's turn is anticlockwise on paper.
-  let ang = (((uAngle - t.rot - (d.textRotation ?? 0)) % 360) + 540) % 360 - 180;
+  let ang =
+    ((((uAngle - t.rot - (d.textRotation ?? 0)) % 360) + 540) % 360) - 180;
   let anchor = t.align;
   // Keep text readable: turn anything that would read upside down on paper the right way up.
   if (d.textUpright !== false && (ang > 90 || ang < -90)) {
     ang += ang > 0 ? -180 : 180;
-    anchor = t.align === 'start' ? 'end' : t.align === 'end' ? 'start' : 'middle';
+    anchor =
+      t.align === "start" ? "end" : t.align === "end" ? "start" : "middle";
   }
   return { x, y, cap, ang, anchor };
 }
 
-function Texts({ d, area, project, mmPerM, uAngle, skip }: { d: LineworkSet; area: Bounds; project: Project; mmPerM: number; uAngle: number; skip?: Set<number> }) {
+function Texts({
+  d,
+  area,
+  project,
+  mmPerM,
+  uAngle,
+  skip,
+}: {
+  d: LineworkSet;
+  area: Bounds;
+  project: Project;
+  mmPerM: number;
+  uAngle: number;
+  skip?: Set<number>;
+}) {
   const out = [];
   for (const t of d.lw.texts) {
     if (out.length >= MAX_TEXTS) break;
-    if (t.x < area.minE || t.x > area.maxE || t.y < area.minN || t.y > area.maxN) continue;
+    if (
+      t.x < area.minE ||
+      t.x > area.maxE ||
+      t.y < area.minN ||
+      t.y > area.maxN
+    )
+      continue;
     if (skip?.has(t.group)) continue;
     const pl = placeText(d, t, project, mmPerM, uAngle);
     if (!pl) continue;
@@ -152,9 +217,17 @@ function Texts({ d, area, project, mmPerM, uAngle, skip }: { d: LineworkSet; are
 }
 
 /** One drawing text, in the data's text look (or its own, if it was edited). */
-export function TextNode({ d, t, pl }: { d: LineworkSet; t: DxfText; pl: NonNullable<ReturnType<typeof placeText>> }) {
+export function TextNode({
+  d,
+  t,
+  pl,
+}: {
+  d: LineworkSet;
+  t: DxfText;
+  pl: NonNullable<ReturnType<typeof placeText>>;
+}) {
   const { x, y, ang, anchor } = pl;
-  const lines = t.text.split('\n');
+  const lines = t.text.split("\n");
   const fs = fontSize(pl.cap);
   const family = t.font || d.textFamily;
   const bold = t.bold ?? d.textBold;
@@ -168,7 +241,7 @@ export function TextNode({ d, t, pl }: { d: LineworkSet; t: DxfText; pl: NonNull
       textAnchor={anchor}
       fontFamily={family ? `${family}, Arial, sans-serif` : undefined}
       fontWeight={bold ? 700 : undefined}
-      fontStyle={italic ? 'italic' : undefined}
+      fontStyle={italic ? "italic" : undefined}
       transform={`rotate(${ang.toFixed(2)} ${x.toFixed(4)} ${y.toFixed(4)})`}
     >
       {lines.length === 1

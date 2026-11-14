@@ -639,13 +639,13 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
   const headCap = ls.headSize;
   const textFont = {
     fontFamily: `${ls.family}, Arial, sans-serif`,
-    fill: ls.color,
+    style: { fill: ls.color },
     fontWeight: ls.bold ? 700 : undefined,
     fontStyle: ls.italic ? "italic" : undefined,
   };
   const headFont = {
     fontFamily: `${ls.family}, Arial, sans-serif`,
-    fill: ls.headColor,
+    style: { fill: ls.headColor },
   };
 
   function column(groups: LegendGroup[], x: number, y0: number) {

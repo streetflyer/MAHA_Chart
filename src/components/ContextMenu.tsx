@@ -1,8 +1,15 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 export type MenuItem =
-  | { label: string; shortcut?: string; disabled?: boolean; checked?: boolean; action?: () => void; submenu?: MenuItem[] }
-  | 'separator';
+  | {
+      label: string;
+      shortcut?: string;
+      disabled?: boolean;
+      checked?: boolean;
+      action?: () => void;
+      submenu?: MenuItem[];
+    }
+  | "separator";
 
 interface Props {
   x: number;
@@ -31,20 +38,25 @@ export function ContextMenu({ x, y, items, onClose }: Props) {
       if (!ref.current?.contains(e.target as Node)) onClose();
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === "Escape") onClose();
     };
-    window.addEventListener('pointerdown', onDown, true);
-    window.addEventListener('keydown', onKey, true);
-    window.addEventListener('blur', onClose);
+    window.addEventListener("pointerdown", onDown, true);
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("blur", onClose);
     return () => {
-      window.removeEventListener('pointerdown', onDown, true);
-      window.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('blur', onClose);
+      window.removeEventListener("pointerdown", onDown, true);
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("blur", onClose);
     };
   }, [onClose]);
 
   return (
-    <div ref={ref} className="context-menu" style={{ left: pos.x, top: pos.y }} onContextMenu={(e) => e.preventDefault()}>
+    <div
+      ref={ref}
+      className="context-menu"
+      style={{ left: pos.x, top: pos.y }}
+      onContextMenu={(e) => e.preventDefault()}
+    >
       <MenuList items={items} onClose={onClose} />
     </div>
   );
@@ -55,14 +67,14 @@ function MenuList({ items, onClose }: { items: MenuItem[]; onClose(): void }) {
   return (
     <ul role="menu">
       {items.map((it, i) =>
-        it === 'separator' ? (
+        it === "separator" ? (
           <li key={i} className="sep" role="separator" />
         ) : (
           <li
             key={i}
             role="menuitem"
             aria-disabled={it.disabled}
-            className={`${it.disabled ? 'disabled' : ''}${it.submenu ? ' has-sub' : ''}${open === i ? ' open' : ''}`}
+            className={`${it.disabled ? "disabled" : ""}${it.submenu ? " has-sub" : ""}${open === i ? " open" : ""}`}
             onPointerEnter={() => setOpen(it.submenu ? i : null)}
             onClick={() => {
               if (it.disabled || it.submenu) return;
@@ -70,9 +82,11 @@ function MenuList({ items, onClose }: { items: MenuItem[]; onClose(): void }) {
               it.action?.();
             }}
           >
-            <span className="check">{it.checked ? '✓' : ''}</span>
+            <span className="check">{it.checked ? "✓" : ""}</span>
             <span className="label">{it.label}</span>
-            <span className="shortcut">{it.shortcut ?? (it.submenu ? '›' : '')}</span>
+            <span className="shortcut">
+              {it.shortcut ?? (it.submenu ? "›" : "")}
+            </span>
             {it.submenu && open === i && (
               <div className="context-menu sub">
                 <MenuList items={it.submenu} onClose={onClose} />

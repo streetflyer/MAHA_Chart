@@ -291,7 +291,11 @@ function Matchlines({
           strokeWidth={st.width}
           strokeDasharray={st.dash.trim() || undefined}
         />
-        {label(matchLabel(st, m.chart), m.side, "l")}
+        {label(
+          matchLabel(st, m.chart, template.fields.DRAWING_NO ?? ""),
+          m.side,
+          "l",
+        )}
         {st.extra.trim() && label(st.extra, -m.side, "x")}
       </g>,
     );

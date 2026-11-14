@@ -7,16 +7,22 @@ export interface Table {
 }
 
 /** Split a CSV / TXT listing. Picks the delimiter that gives the most consistent columns. */
-export function parseDelimited(text: string, name = ''): Table {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '');
+export function parseDelimited(text: string, name = ""): Table {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
   const sample = lines.slice(0, 50);
-  const candidates: (string | RegExp)[] = [',', '\t', ';', /\s+/];
-  let best: string | RegExp = ',';
+  const candidates: (string | RegExp)[] = [",", "\t", ";", /\s+/];
+  let best: string | RegExp = ",";
   let bestScore = -1;
   for (const d of candidates) {
     const counts = sample.map((l) => splitLine(l, d).length);
-    const mode = counts.sort((a, b) => counts.filter((c) => c === b).length - counts.filter((c) => c === a).length)[0] ?? 1;
-    const score = mode > 1 ? counts.filter((c) => c === mode).length * 100 + mode : 0;
+    const mode =
+      counts.sort(
+        (a, b) =>
+          counts.filter((c) => c === b).length -
+          counts.filter((c) => c === a).length,
+      )[0] ?? 1;
+    const score =
+      mode > 1 ? counts.filter((c) => c === mode).length * 100 + mode : 0;
     if (score > bestScore) {
       bestScore = score;
       best = d;
@@ -28,7 +34,7 @@ export function parseDelimited(text: string, name = ''): Table {
 function splitLine(line: string, d: string | RegExp): string[] {
   if (d instanceof RegExp) return line.trim().split(d);
   const out: string[] = [];
-  let cur = '';
+  let cur = "";
   let quoted = false;
   for (let i = 0; i < line.length; i++) {
     const ch = line[i];
@@ -38,10 +44,10 @@ function splitLine(line: string, d: string | RegExp): string[] {
         i++;
       } else if (ch === '"') quoted = false;
       else cur += ch;
-    } else if (ch === '"' && cur === '') quoted = true;
+    } else if (ch === '"' && cur === "") quoted = true;
     else if (ch === d) {
       out.push(cur.trim());
-      cur = '';
+      cur = "";
     } else cur += ch;
   }
   out.push(cur.trim());
@@ -55,13 +61,20 @@ function splitLine(line: string, d: string | RegExp): string[] {
 export function dropComments(text: string): string {
   const lines = text.split(/\r?\n/);
   let lead = 0;
-  while (lead < lines.length && (lines[lead].startsWith('#') || !lines[lead].trim())) lead++;
+  while (
+    lead < lines.length &&
+    (lines[lead].startsWith("#") || !lines[lead].trim())
+  )
+    lead++;
   // A trailing delimiter (e.g. "...;RightSeabedOuter - Depth;") is not another column.
-  const delims = (l: string) => [';', ',', '\t'].map((d) => l.replace(/[;,\t\s]+$/, '').split(d).length - 1);
-  const firstData = lines[lead] ?? '';
+  const delims = (l: string) =>
+    [";", ",", "\t"].map(
+      (d) => l.replace(/[;,\t\s]+$/, "").split(d).length - 1,
+    );
+  const firstData = lines[lead] ?? "";
   let header = -1;
   for (let i = lead - 1; i >= 0; i--) {
-    if (!lines[i].startsWith('#')) continue;
+    if (!lines[i].startsWith("#")) continue;
     const a = delims(lines[i].slice(1));
     const b = delims(firstData);
     // Same delimiter, same number of columns as the data under it: column names.
@@ -69,18 +82,26 @@ export function dropComments(text: string): string {
     break;
   }
   return lines
-    .map((l, i) => (i === header ? l.slice(1).trimStart().replace(/[;,\t]\s*$/, '') : l))
-    .filter((l, i) => i === header || !l.startsWith('#'))
-    .join('\n');
+    .map((l, i) =>
+      i === header
+        ? l
+            .slice(1)
+            .trimStart()
+            .replace(/[;,\t]\s*$/, "")
+        : l,
+    )
+    .filter((l, i) => i === header || !l.startsWith("#"))
+    .join("\n");
 }
 
-export const isNumber = (s: string | undefined) => s !== undefined && s.trim() !== '' && Number.isFinite(Number(s));
+export const isNumber = (s: string | undefined) =>
+  s !== undefined && s.trim() !== "" && Number.isFinite(Number(s));
 
 /** True when the first row looks like column names rather than data. */
 export function hasHeader(rows: string[][]): boolean {
   if (rows.length < 2) return false;
-  const first = rows[0].filter((c) => c !== '');
-  const second = rows[1].filter((c) => c !== '');
+  const first = rows[0].filter((c) => c !== "");
+  const second = rows[1].filter((c) => c !== "");
   return first.filter(isNumber).length < second.filter(isNumber).length;
 }
 
@@ -89,7 +110,7 @@ export function hasHeader(rows: string[][]): boolean {
  * them. Returns the row index of the header, or -1 when the data has none.
  */
 export function findHeaderRow(rows: string[][]): number {
-  const filled = (r: string[] | undefined) => (r ?? []).filter((c) => c !== '');
+  const filled = (r: string[] | undefined) => (r ?? []).filter((c) => c !== "");
   for (let i = 0; i < Math.min(12, rows.length - 1); i++) {
     const cur = filled(rows[i]);
     if (!cur.length) continue;
@@ -99,7 +120,12 @@ export function findHeaderRow(rows: string[][]): number {
     // Names: mostly text, about as wide as the data under them, which has numbers.
     // A row with any number in it is data (CODE,KP,VALUE listings start straight away).
     if (cur.some(isNumber)) return -1;
-    if (cur.length >= 2 && cur.length >= next.length * 0.6 && next.some(isNumber)) return i;
+    if (
+      cur.length >= 2 &&
+      cur.length >= next.length * 0.6 &&
+      next.some(isNumber)
+    )
+      return i;
   }
   return hasHeader(rows) ? 0 : -1;
 }
@@ -110,49 +136,61 @@ export function findHeaderRow(rows: string[][]): number {
  */
 export async function* fileLines(file: Blob): AsyncGenerator<string> {
   const reader = file.stream().pipeThrough(new TextDecoderStream()).getReader();
-  let rest = '';
+  let rest = "";
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
     const parts = (rest + value).split(/\r?\n/);
-    rest = parts.pop() ?? '';
+    rest = parts.pop() ?? "";
     for (const l of parts) yield l;
   }
   if (rest) yield rest;
 }
 
 /** The first part of a big text file, cut at a line end, for previews. */
-export async function fileHead(file: Blob, bytes = 256 * 1024): Promise<string> {
+export async function fileHead(
+  file: Blob,
+  bytes = 256 * 1024,
+): Promise<string> {
   const text = await file.slice(0, bytes).text();
-  return file.size > bytes ? text.slice(0, text.lastIndexOf('\n') + 1) : text;
+  return file.size > bytes ? text.slice(0, text.lastIndexOf("\n") + 1) : text;
 }
 
 /** The delimiter parseDelimited settled on, for splitting further lines the same way. */
 export function lineSplitter(sample: string): (line: string) => string[] {
-  const t = parseDelimited(sample.split(/\r?\n/).slice(0, 50).join('\n'));
+  const t = parseDelimited(sample.split(/\r?\n/).slice(0, 50).join("\n"));
   const n = t.rows[0]?.length ?? 1;
-  for (const d of [',', '\t', ';', /\s+/] as (string | RegExp)[]) {
+  for (const d of [",", "\t", ";", /\s+/] as (string | RegExp)[]) {
     const first = sample.split(/\r?\n/).find((l) => l.trim());
-    if (first && splitLine(first, d).length === n) return (l) => splitLine(l, d);
+    if (first && splitLine(first, d).length === n)
+      return (l) => splitLine(l, d);
   }
-  return (l) => splitLine(l, ',');
+  return (l) => splitLine(l, ",");
 }
 
 /**
  * Guess which column holds each wanted field from header names (KP, EASTING, ...)
  * or, without a header, from the order of numeric columns.
  */
-export function guessColumns(rows: string[][], header: boolean, fields: { key: string; names: string[]; pair?: { names2: string[] } }[]): Record<string, number> {
+export function guessColumns(
+  rows: string[][],
+  header: boolean,
+  fields: { key: string; names: string[]; pair?: { names2: string[] } }[],
+): Record<string, number> {
   const out: Record<string, number> = {};
   if (header && rows[0]) {
-    const h = rows[0].map((c) => c.toUpperCase().replace(/[^A-Z0-9]/g, ''));
+    const h = rows[0].map((c) => c.toUpperCase().replace(/[^A-Z0-9]/g, ""));
     const pick = (key: string, names: string[]) => {
-      const i = h.findIndex((c, j) => !Object.values(out).includes(j) && names.some((n) => c === n || c.startsWith(n)));
+      const i = h.findIndex(
+        (c, j) =>
+          !Object.values(out).includes(j) &&
+          names.some((n) => c === n || c.startsWith(n)),
+      );
       if (i >= 0) out[key] = i;
     };
     for (const f of fields) {
       pick(f.key, f.names);
-      if (f.pair) pick(f.key + '2', f.pair.names2);
+      if (f.pair) pick(f.key + "2", f.pair.names2);
     }
   }
   return out;
@@ -163,22 +201,36 @@ export function guessColumns(rows: string[][], header: boolean, fields: { key: s
 /** Read every sheet of an .xlsx workbook. Uses the browser's own deflate, so no library is needed. */
 export async function readXlsx(data: ArrayBuffer): Promise<Table[]> {
   const files = await unzip(data);
-  const text = (p: string) => (files.has(p) ? new TextDecoder().decode(files.get(p)) : '');
+  const text = (p: string) =>
+    files.has(p) ? new TextDecoder().decode(files.get(p)) : "";
   const shared: string[] = [];
-  for (const si of text('xl/sharedStrings.xml').matchAll(/<si>([\s\S]*?)<\/si>/g)) {
-    shared.push([...si[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((m) => xmlText(m[1])).join(''));
+  for (const si of text("xl/sharedStrings.xml").matchAll(
+    /<si>([\s\S]*?)<\/si>/g,
+  )) {
+    shared.push(
+      [...si[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)]
+        .map((m) => xmlText(m[1]))
+        .join(""),
+    );
   }
   const rels = new Map<string, string>();
-  for (const m of text('xl/_rels/workbook.xml.rels').matchAll(/<Relationship\b[^>]*>/g)) {
-    const id = attr(m[0], 'Id');
-    const target = attr(m[0], 'Target');
-    if (id && target) rels.set(id, target.replace(/^\/?xl\//, '').replace(/^\//, ''));
+  for (const m of text("xl/_rels/workbook.xml.rels").matchAll(
+    /<Relationship\b[^>]*>/g,
+  )) {
+    const id = attr(m[0], "Id");
+    const target = attr(m[0], "Target");
+    if (id && target)
+      rels.set(id, target.replace(/^\/?xl\//, "").replace(/^\//, ""));
   }
   const tables: Table[] = [];
-  for (const m of text('xl/workbook.xml').matchAll(/<sheet\b[^>]*>/g)) {
-    const name = xmlText(attr(m[0], 'name') ?? 'Sheet');
-    const rid = attr(m[0], 'r:id');
-    const path = 'xl/' + (rid && rels.get(rid) ? rels.get(rid) : `worksheets/sheet${tables.length + 1}.xml`);
+  for (const m of text("xl/workbook.xml").matchAll(/<sheet\b[^>]*>/g)) {
+    const name = xmlText(attr(m[0], "name") ?? "Sheet");
+    const rid = attr(m[0], "r:id");
+    const path =
+      "xl/" +
+      (rid && rels.get(rid)
+        ? rels.get(rid)
+        : `worksheets/sheet${tables.length + 1}.xml`);
     tables.push({ name, rows: sheetRows(text(path), shared) });
   }
   return tables;
@@ -186,57 +238,73 @@ export async function readXlsx(data: ArrayBuffer): Promise<Table[]> {
 
 function sheetRows(xml: string, shared: string[]): string[][] {
   const rows: string[][] = [];
-  for (const r of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>|<row\b[^>]*\/>/g)) {
+  for (const r of xml.matchAll(
+    /<row\b[^>]*>([\s\S]*?)<\/row>|<row\b[^>]*\/>/g,
+  )) {
     const row: string[] = [];
-    for (const c of (r[1] ?? '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-      const ref = attr(c[1], 'r');
+    for (const c of (r[1] ?? "").matchAll(
+      /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g,
+    )) {
+      const ref = attr(c[1], "r");
       const col = ref ? colIndex(ref) : row.length;
-      const type = attr(c[1], 't');
-      const body = c[2] ?? '';
+      const type = attr(c[1], "t");
+      const body = c[2] ?? "";
       const v = body.match(/<v>([\s\S]*?)<\/v>/)?.[1];
-      let value = '';
-      if (type === 's' && v !== undefined) value = shared[Number(v)] ?? '';
-      else if (type === 'inlineStr') value = [...body.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((m) => xmlText(m[1])).join('');
+      let value = "";
+      if (type === "s" && v !== undefined) value = shared[Number(v)] ?? "";
+      else if (type === "inlineStr")
+        value = [...body.matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)]
+          .map((m) => xmlText(m[1]))
+          .join("");
       else if (v !== undefined) value = xmlText(v);
-      while (row.length < col) row.push('');
+      while (row.length < col) row.push("");
       row[col] = value;
     }
     rows.push(row);
   }
-  while (rows.length && rows[rows.length - 1].every((c) => c === '')) rows.pop();
+  while (rows.length && rows[rows.length - 1].every((c) => c === ""))
+    rows.pop();
   return rows;
 }
 
 function colIndex(ref: string): number {
   let n = 0;
-  for (const ch of ref.replace(/\d+$/, '')) n = n * 26 + (ch.charCodeAt(0) - 64);
+  for (const ch of ref.replace(/\d+$/, ""))
+    n = n * 26 + (ch.charCodeAt(0) - 64);
   return n - 1;
 }
 
 function attr(tag: string, name: string): string | undefined {
-  return tag.match(new RegExp(`\\s${name.replace(':', '\\:')}="([^"]*)"`))?.[1];
+  return tag.match(new RegExp(`\\s${name.replace(":", "\\:")}="([^"]*)"`))?.[1];
 }
 
 function xmlText(s: string): string {
   return s
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
     .replace(/&#(\d+);/g, (_, d) => String.fromCharCode(Number(d)))
-    .replace(/&amp;/g, '&');
+    .replace(/&amp;/g, "&");
 }
 
 async function unzip(data: ArrayBuffer): Promise<Map<string, Uint8Array>> {
   const v = new DataView(data);
   let eocd = -1;
-  for (let i = data.byteLength - 22; i >= Math.max(0, data.byteLength - 65557); i--) {
+  for (
+    let i = data.byteLength - 22;
+    i >= Math.max(0, data.byteLength - 65557);
+    i--
+  ) {
     if (v.getUint32(i, true) === 0x06054b50) {
       eocd = i;
       break;
     }
   }
-  if (eocd < 0) throw new Error('Not an .xlsx file (no zip directory found). Older .xls files: save as .xlsx or .csv first.');
+  if (eocd < 0)
+    throw new Error(
+      "Not an .xlsx file (no zip directory found). Older .xls files: save as .xlsx or .csv first.",
+    );
   const count = v.getUint16(eocd + 10, true);
   let p = v.getUint32(eocd + 16, true);
   const out = new Map<string, Uint8Array>();
@@ -247,9 +315,15 @@ async function unzip(data: ArrayBuffer): Promise<Map<string, Uint8Array>> {
     const extraLen = v.getUint16(p + 30, true);
     const commentLen = v.getUint16(p + 32, true);
     const local = v.getUint32(p + 42, true);
-    const name = new TextDecoder().decode(new Uint8Array(data, p + 46, nameLen));
+    const name = new TextDecoder().decode(
+      new Uint8Array(data, p + 46, nameLen),
+    );
     p += 46 + nameLen + extraLen + commentLen;
-    const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
+    const start =
+      local +
+      30 +
+      v.getUint16(local + 26, true) +
+      v.getUint16(local + 28, true);
     const raw = new Uint8Array(data, start, size);
     if (method === 0) out.set(name, raw);
     else if (method === 8) out.set(name, await inflate(raw));
@@ -258,6 +332,8 @@ async function unzip(data: ArrayBuffer): Promise<Map<string, Uint8Array>> {
 }
 
 async function inflate(raw: Uint8Array): Promise<Uint8Array> {
-  const stream = new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  const stream = new Blob([raw])
+    .stream()
+    .pipeThrough(new DecompressionStream("deflate-raw"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }

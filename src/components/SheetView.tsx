@@ -39,6 +39,8 @@ import {
 } from "./PanelContent";
 import { approxTextWidth, fontSize } from "./svgText";
 import { useDrawingEdit } from "../state/drawingEdit";
+import { useCpEdit } from "../state/cpEdit";
+import { cpDatasetFor, pickCp, pickCpInBox, moveChosen } from "./cpEditing";
 import { moveGroups, rotateGroups } from "../model/drawingOps";
 import {
   pickInBox,
@@ -51,7 +53,7 @@ import {
 const clamp01 = (v: number) => Math.min(0.98, Math.max(0.02, v));
 
 export interface ContextTarget {
-  kind: "panel" | "text" | "image" | "row" | "sheet" | "drawing";
+  kind: "panel" | "text" | "image" | "row" | "sheet" | "drawing" | "cp";
   id?: string;
   rowId?: string;
 }
@@ -133,7 +135,9 @@ type Drag =
   | { type: "marquee"; start: Pt; cur: Pt; additive: boolean }
   | { type: "drawMove"; start: Pt; moved: boolean }
   | { type: "drawRotate"; cE: number; cN: number; startAngle: number }
-  | { type: "drawBox"; start: Pt; shift: boolean };
+  | { type: "drawBox"; start: Pt; shift: boolean }
+  | { type: "cpMove"; start: Pt; moved: boolean }
+  | { type: "cpBox"; start: Pt; shift: boolean };
 
 interface Pt {
   x: number;
@@ -299,6 +303,41 @@ export function SheetView({
       return;
     }
     if (e.button !== 0) return;
+    // Editing the CP panel: clicks inside it choose and move readings; anywhere else leaves edit mode.
+    const ce = useCpEdit.getState();
+    if (ce.active) {
+      const r = ce.ctx?.rect;
+      if (
+        r &&
+        at.x >= r.x &&
+        at.x <= r.x + r.w &&
+        at.y >= r.y &&
+        at.y <= r.y + r.h
+      ) {
+        svgRef.current!.setPointerCapture(e.pointerId);
+        const hit = pickCp(at.x, at.y, 6 / pxPerMm());
+        if (hit) {
+          const have = hit.kind === "pt" ? ce.selPts : ce.selNotes;
+          if (e.shiftKey) {
+            const flip = (a: number[]) =>
+              a.includes(hit.i) ? a.filter((v) => v !== hit.i) : [...a, hit.i];
+            ce.select(
+              hit.kind === "pt" ? flip(ce.selPts) : ce.selPts,
+              hit.kind === "note" ? flip(ce.selNotes) : ce.selNotes,
+            );
+            return;
+          }
+          if (!have.includes(hit.i))
+            ce.select(
+              hit.kind === "pt" ? [hit.i] : [],
+              hit.kind === "note" ? [hit.i] : [],
+            );
+          return setDrag({ type: "cpMove", start: at, moved: false });
+        }
+        return setDrag({ type: "cpBox", start: at, shift: e.shiftKey });
+      }
+      ce.exit();
+    }
     // Editing the drawing: clicks inside the plan view choose and move its objects; anywhere else leaves edit mode.
     const de = useDrawingEdit.getState();
     if (de.active) {
@@ -546,6 +585,20 @@ export function SheetView({
       }
       return;
     }
+    if (drag && (drag.type === "cpMove" || drag.type === "cpBox")) {
+      if (drag.type === "cpMove") {
+        if (
+          !drag.moved &&
+          Math.hypot(at.x - drag.start.x, at.y - drag.start.y) * pxPerMm() < 3
+        )
+          return;
+        if (!drag.moved) setDrag({ ...drag, moved: true });
+        useCpEdit
+          .getState()
+          .setPreview({ dx: at.x - drag.start.x, dy: at.y - drag.start.y });
+      }
+      return;
+    }
     if (!drag) {
       const edgeEl = (e.target as Element).closest("[data-edge]");
       setHoverEdge(
@@ -769,6 +822,31 @@ export function SheetView({
   function onPointerUp(e: React.PointerEvent) {
     if (!drag) return;
     svgRef.current!.releasePointerCapture?.(e.pointerId);
+    if (drag.type === "cpMove" || drag.type === "cpBox") {
+      const ce = useCpEdit.getState();
+      const at = toMm(e.clientX, e.clientY);
+      const pv = ce.preview;
+      ce.setPreview(null);
+      if (drag.type === "cpMove" && pv) moveChosen(pv.dx, pv.dy);
+      else if (drag.type === "cpBox") {
+        if (
+          Math.hypot(at.x - drag.start.x, at.y - drag.start.y) * pxPerMm() <
+          3
+        ) {
+          if (!drag.shift) ce.select([], []);
+        } else {
+          const hit = pickCpInBox(drag.start.x, drag.start.y, at.x, at.y);
+          ce.select(
+            drag.shift ? [...new Set([...ce.selPts, ...hit.pts])] : hit.pts,
+            drag.shift
+              ? [...new Set([...ce.selNotes, ...hit.notes])]
+              : hit.notes,
+          );
+        }
+      }
+      setDrag(null);
+      return;
+    }
     if (
       drag.type === "drawMove" ||
       drag.type === "drawRotate" ||
@@ -871,6 +949,23 @@ export function SheetView({
       }
       return;
     }
+    // Double-click in a CP panel that has readings switches to editing them.
+    const cpPanel = template.panels.find(
+      (q) =>
+        q.type === "cp" &&
+        dblAt.x >= q.x &&
+        dblAt.x <= q.x + q.w &&
+        dblAt.y >= q.y &&
+        dblAt.y <= q.y + q.h,
+    );
+    const cpData = cpPanel && cpDatasetFor(cpPanel.id);
+    if (cpPanel && cpData) {
+      if (!useCpEdit.getState().active) {
+        useCpEdit.getState().enter(cpPanel.id, cpData.id);
+        store().select({ kind: "panel", id: cpPanel.id });
+      }
+      return;
+    }
     // Double-click anywhere without text to edit zooms to fit, like a CAD viewport.
     if (!itemEl) return fit();
     const kind = itemEl.getAttribute("data-kind");
@@ -953,6 +1048,23 @@ export function SheetView({
     e.preventDefault();
     clearRenameTimer();
     const at = toMm(e.clientX, e.clientY);
+    const cs = useCpEdit.getState();
+    if (
+      cs.active &&
+      cs.ctx &&
+      at.x >= cs.ctx.rect.x &&
+      at.x <= cs.ctx.rect.x + cs.ctx.rect.w &&
+      at.y >= cs.ctx.rect.y &&
+      at.y <= cs.ctx.rect.y + cs.ctx.rect.h
+    ) {
+      const hit = pickCp(at.x, at.y, 6 / pxPerMm());
+      if (hit && !(hit.kind === "pt" ? cs.selPts : cs.selNotes).includes(hit.i))
+        cs.select(
+          hit.kind === "pt" ? [hit.i] : [],
+          hit.kind === "note" ? [hit.i] : [],
+        );
+      return onContextMenu(e.clientX, e.clientY, at, { kind: "cp" });
+    }
     // Editing the drawing: the menu works on the objects, texts and their look.
     const de = useDrawingEdit.getState();
     if (

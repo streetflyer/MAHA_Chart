@@ -3,13 +3,13 @@ import type { MatchlineStyle } from "./types";
 export const DEFAULT_MATCHLINES: MatchlineStyle = {
   on: false,
   mode: "overlap",
-  prefix: "",
+  prefix: "Matchline to ",
   suffix: "",
   extra: "",
-  color: "#d6249f",
-  width: 0.35,
+  color: "#6b6b6b",
+  width: 0.15,
   dash: "4 1.5 0.8 1.5",
-  textSize: 2.2,
+  textSize: 2.5,
   family: "Arial",
 };
 
@@ -52,5 +52,14 @@ export function matchSpecs(
   return out;
 }
 
-export const matchLabel = (st: MatchlineStyle, chart: number) =>
-  `${st.prefix}${String(chart).padStart(2, "0")}${st.suffix}`;
+/** Drawing number of another chart: the sheet number after the last dot is replaced (…CH-002.001 → …CH-002.002). */
+export function chartName(drawingNo: string, n: number): string {
+  const no = drawingNo.trim();
+  if (!no) return `Chart ${n}`;
+  const m = /^(.*\.)(\d+)$/.exec(no);
+  if (m) return m[1] + String(n).padStart(m[2].length, "0");
+  return `${no}.${String(n).padStart(3, "0")}`;
+}
+
+export const matchLabel = (st: MatchlineStyle, chart: number, drawingNo = "") =>
+  `${st.prefix}${chartName(drawingNo, chart)}${st.suffix}`;

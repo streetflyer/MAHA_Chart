@@ -1,25 +1,27 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState } from "react";
 
-type Theme = 'light' | 'dark';
-const KEY = 'mahachart.theme';
+type Theme = "light" | "dark";
+const KEY = "mahachart.theme";
 
 function initial(): Theme {
   try {
     const v = localStorage.getItem(KEY);
-    if (v === 'light' || v === 'dark') return v;
+    if (v === "light" || v === "dark") return v;
   } catch {
     /* preference only */
   }
-  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return window.matchMedia?.("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }
 
 /** Light / dark mode for the app around the sheet (the sheet has its own Dark sheet switch). */
 export function ThemeButton() {
   const [theme, setTheme] = useState<Theme>(initial);
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
-  const next: Theme = theme === 'dark' ? 'light' : 'dark';
+  const next: Theme = theme === "dark" ? "light" : "dark";
   return (
     <button
       className="theme-btn"
@@ -34,7 +36,7 @@ export function ThemeButton() {
         }
       }}
     >
-      {theme === 'dark' ? '☀ Light' : '☾ Dark'}
+      {theme === "dark" ? "☀ Light" : "☾ Dark"}
     </button>
   );
 }

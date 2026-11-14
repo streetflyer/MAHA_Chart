@@ -1,8 +1,11 @@
-import { planStyle } from './planStyle';
-import type { ChartTemplate, PaperSizeName, PlanStyle } from './types';
+import { planStyle } from "./planStyle";
+import type { ChartTemplate, PaperSizeName, PlanStyle } from "./types";
 
 /** ISO 216 sizes in millimetres, landscape (width >= height). */
-export const PAPER_SIZES: Record<Exclude<PaperSizeName, 'Custom'>, [number, number]> = {
+export const PAPER_SIZES: Record<
+  Exclude<PaperSizeName, "Custom">,
+  [number, number]
+> = {
   A0: [1189, 841],
   A1: [841, 594],
   A2: [594, 420],
@@ -10,18 +13,26 @@ export const PAPER_SIZES: Record<Exclude<PaperSizeName, 'Custom'>, [number, numb
   A4: [297, 210],
 };
 
-export function paperDimensions(size: PaperSizeName, orientation: 'landscape' | 'portrait', custom?: [number, number]): [number, number] {
-  const [a, b] = size === 'Custom' ? (custom ?? [841, 594]) : PAPER_SIZES[size];
+export function paperDimensions(
+  size: PaperSizeName,
+  orientation: "landscape" | "portrait",
+  custom?: [number, number],
+): [number, number] {
+  const [a, b] = size === "Custom" ? (custom ?? [841, 594]) : PAPER_SIZES[size];
   const long = Math.max(a, b);
   const short = Math.min(a, b);
-  return orientation === 'landscape' ? [long, short] : [short, long];
+  return orientation === "landscape" ? [long, short] : [short, long];
 }
 
 /**
  * Resize a template to a new paper size. Panels and text keep their relative
  * position; text height follows the smaller of the two ratios so it never overflows.
  */
-export function resizePaper(t: ChartTemplate, width: number, height: number): ChartTemplate {
+export function resizePaper(
+  t: ChartTemplate,
+  width: number,
+  height: number,
+): ChartTemplate {
   const sx = width / t.paper.width;
   const sy = height / t.paper.height;
   const st = Math.min(sx, sy);
@@ -36,9 +47,15 @@ export function resizePaper(t: ChartTemplate, width: number, height: number): Ch
       h: p.h * sy,
       labelWidth: p.labelWidth !== undefined ? p.labelWidth * sx : undefined,
       font: p.font ? { ...p.font, size: p.font.size * st } : undefined,
-      plan: p.type === 'plan' ? scalePlanStyle(planStyle(p), st) : p.plan,
+      plan: p.type === "plan" ? scalePlanStyle(planStyle(p), st) : p.plan,
     })),
-    images: (t.images ?? []).map((im) => ({ ...im, x: im.x * sx, y: im.y * sy, w: im.w * st, h: im.h * st })),
+    images: (t.images ?? []).map((im) => ({
+      ...im,
+      x: im.x * sx,
+      y: im.y * sy,
+      w: im.w * st,
+      h: im.h * st,
+    })),
     texts: t.texts.map((tx) => ({
       ...tx,
       x: tx.x * sx,

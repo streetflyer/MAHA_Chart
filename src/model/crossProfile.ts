@@ -14,7 +14,14 @@ export interface CrossProfileCols {
   first: number;
 }
 
-export const VW_RAW: CrossProfileCols = { kp: 2, diameter: 7, toPipe: 8, pipeDz: 9, count: 12, first: 13 };
+export const VW_RAW: CrossProfileCols = {
+  kp: 2,
+  diameter: 7,
+  toPipe: 8,
+  pipeDz: 9,
+  count: 12,
+  first: 13,
+};
 
 export interface CrossProfile {
   /** KP in metres. */
@@ -25,7 +32,11 @@ export interface CrossProfile {
 }
 
 /** One profile from a split row, or null if the row isn't one. */
-export function profileFromRow(r: ArrayLike<string>, c: CrossProfileCols, kpScale: number): CrossProfile | null {
+export function profileFromRow(
+  r: ArrayLike<string>,
+  c: CrossProfileCols,
+  kpScale: number,
+): CrossProfile | null {
   const kp = Number(r[c.kp]) * kpScale;
   const n = Number(r[c.count]);
   if (!Number.isFinite(kp) || !Number.isFinite(n) || n < 0) return null;
@@ -46,7 +57,11 @@ export function profileFromRow(r: ArrayLike<string>, c: CrossProfileCols, kpScal
 }
 
 /** The profile nearest a KP, if one lies within `tol` metres (profiles sorted by KP). */
-export function nearestProfile(list: CrossProfile[], kp: number, tol: number): CrossProfile | null {
+export function nearestProfile(
+  list: CrossProfile[],
+  kp: number,
+  tol: number,
+): CrossProfile | null {
   let lo = 0;
   let hi = list.length - 1;
   while (lo < hi) {
@@ -57,7 +72,12 @@ export function nearestProfile(list: CrossProfile[], kp: number, tol: number): C
   let best: CrossProfile | null = null;
   for (const i of [lo - 1, lo]) {
     const p = list[i];
-    if (p && Math.abs(p.kp - kp) <= tol && (!best || Math.abs(p.kp - kp) < Math.abs(best.kp - kp))) best = p;
+    if (
+      p &&
+      Math.abs(p.kp - kp) <= tol &&
+      (!best || Math.abs(p.kp - kp) < Math.abs(best.kp - kp))
+    )
+      best = p;
   }
   return best;
 }

@@ -1,4 +1,4 @@
-import type { Bounds, Route } from '../model/route';
+import type { Bounds, Route } from "../model/route";
 
 /** True when a polyline's extent overlaps the box. */
 export function touches(l: Float64Array, b: Bounds): boolean {
@@ -20,13 +20,18 @@ export function touches(l: Float64Array, b: Bounds): boolean {
 type Project = (e: number, n: number) => [number, number];
 
 /** One SVG path for many polylines, dropping vertices closer than `tol` paper mm. */
-export function linesPath(lines: Iterable<Float64Array>, area: Bounds, project: Project, tol: number): string {
+export function linesPath(
+  lines: Iterable<Float64Array>,
+  area: Bounds,
+  project: Project,
+  tol: number,
+): string {
   const parts: string[] = [];
   for (const l of lines) {
     if (!touches(l, area)) continue;
     parts.push(polyPath(l, project, tol));
   }
-  return parts.join('');
+  return parts.join("");
 }
 
 export function routePath(r: Route, project: Project, tol: number): string {
@@ -42,7 +47,8 @@ function polyPath(l: Float64Array, project: Project, tol: number): string {
   let ly = y;
   for (let i = 2; i < l.length; i += 2) {
     [x, y] = project(l[i], l[i + 1]);
-    if (i < l.length - 2 && Math.abs(x - lx) < tol && Math.abs(y - ly) < tol) continue;
+    if (i < l.length - 2 && Math.abs(x - lx) < tol && Math.abs(y - ly) < tol)
+      continue;
     s += `L${x.toFixed(dp)} ${y.toFixed(dp)}`;
     lx = x;
     ly = y;

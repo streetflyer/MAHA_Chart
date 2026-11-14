@@ -539,12 +539,10 @@ export function ImportDialog({
       const r = line && routeFromSurveyLine(line, newId());
       if (r && r.kind === "route") {
         useSurvey.getState().addDataset(r);
-        useEditor
-          .getState()
-          .setScale({
-            routeLength: Math.round(r.route.length * 1000) / 1000,
-            sheets: undefined,
-          });
+        useEditor.getState().setScale({
+          routeLength: Math.round(r.route.length * 1000) / 1000,
+          sheets: undefined,
+        });
         done.push(`${line!.name} → Runline (same as the survey line)`);
       } else
         failed.push({

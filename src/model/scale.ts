@@ -1,9 +1,9 @@
-import type { SheetFrame } from './types';
-import type { ChartTemplate, Panel } from './types';
+import type { SheetFrame } from "./types";
+import type { ChartTemplate, Panel } from "./types";
 
 /** Horizontal scale and KP per sheet are tied together by the plan view width: kp(m) = width(mm) x scale / 1000. */
 export function planPanel(t: ChartTemplate): Panel | undefined {
-  return t.panels.find((p) => p.type === 'plan');
+  return t.panels.find((p) => p.type === "plan");
 }
 
 export function kpForWidth(widthMm: number, scale: number): number {
@@ -24,7 +24,9 @@ export function alignKpPanels(t: ChartTemplate): ChartTemplate {
   if (!plan) return t;
   return {
     ...t,
-    panels: t.panels.map((p) => (p.kpAligned && p.id !== plan.id ? { ...p, x: plan.x, w: plan.w } : p)),
+    panels: t.panels.map((p) =>
+      p.kpAligned && p.id !== plan.id ? { ...p, x: plan.x, w: plan.w } : p,
+    ),
   };
 }
 
@@ -38,10 +40,15 @@ export function syncScaleToPlan(t: ChartTemplate): ChartTemplate {
   if (!plan) return t;
   const kp = round(kpForWidth(plan.w, t.scale.horizontal), 3);
   const aligned = alignKpPanels(t);
-  return kp === t.scale.kpPerSheet ? aligned : { ...aligned, scale: { ...t.scale, kpPerSheet: kp } };
+  return kp === t.scale.kpPerSheet
+    ? aligned
+    : { ...aligned, scale: { ...t.scale, kpPerSheet: kp } };
 }
 
-export function setHorizontalScale(t: ChartTemplate, value: number): ChartTemplate {
+export function setHorizontalScale(
+  t: ChartTemplate,
+  value: number,
+): ChartTemplate {
   if (!(value > 0)) return t;
   return syncScaleToPlan({ ...t, scale: { ...t.scale, horizontal: value } });
 }
@@ -51,7 +58,13 @@ export function setKpPerSheet(t: ChartTemplate, metres: number): ChartTemplate {
   if (!(metres > 0)) return t;
   const plan = planPanel(t);
   if (!plan) return { ...t, scale: { ...t.scale, kpPerSheet: metres } };
-  return syncScaleToPlan({ ...t, scale: { ...t.scale, horizontal: roundScale(scaleForWidth(plan.w, metres)) } });
+  return syncScaleToPlan({
+    ...t,
+    scale: {
+      ...t.scale,
+      horizontal: roundScale(scaleForWidth(plan.w, metres)),
+    },
+  });
 }
 
 /**
@@ -70,11 +83,15 @@ export function sheetCount(t: ChartTemplate): number {
   return n;
 }
 
-const startKp = (t: ChartTemplate) => parseFloat(t.fields.START_KP ?? '0') || 0;
-const sheetStep = (t: ChartTemplate) => Math.max(t.scale.kpPerSheet - t.scale.overlap, t.scale.kpPerSheet * 0.05);
+const startKp = (t: ChartTemplate) => parseFloat(t.fields.START_KP ?? "0") || 0;
+const sheetStep = (t: ChartTemplate) =>
+  Math.max(t.scale.kpPerSheet - t.scale.overlap, t.scale.kpPerSheet * 0.05);
 
 /** KP range of one sheet, in kilometres. */
-export function sheetRange(t: ChartTemplate, index: number): { start: number; end: number } {
+export function sheetRange(
+  t: ChartTemplate,
+  index: number,
+): { start: number; end: number } {
   const list = sheetList(t);
   let start: number;
   let end: number | undefined;
@@ -83,9 +100,16 @@ export function sheetRange(t: ChartTemplate, index: number): { start: number; en
     if (index <= last) {
       start = list[index].start;
       end = list[index].end;
-    } else start = (list[last].end ?? list[last].start + t.scale.kpPerSheet) - t.scale.overlap + (index - last - 1) * sheetStep(t);
+    } else
+      start =
+        (list[last].end ?? list[last].start + t.scale.kpPerSheet) -
+        t.scale.overlap +
+        (index - last - 1) * sheetStep(t);
   } else start = startKp(t) * 1000 + index * sheetStep(t);
-  return { start: start / 1000, end: (end ?? start + t.scale.kpPerSheet) / 1000 };
+  return {
+    start: start / 1000,
+    end: (end ?? start + t.scale.kpPerSheet) / 1000,
+  };
 }
 
 /** Hand-placed charts win; otherwise the automatic fit to the route; otherwise even spacing. */
@@ -93,7 +117,10 @@ export function sheetList(t: ChartTemplate): SheetFrame[] | undefined {
   return t.scale.sheets ?? t.scale.autoSheets;
 }
 
-export function sheetFrame(t: ChartTemplate, index: number): SheetFrame | undefined {
+export function sheetFrame(
+  t: ChartTemplate,
+  index: number,
+): SheetFrame | undefined {
   return sheetList(t)?.[index];
 }
 
@@ -103,16 +130,28 @@ export function sheetRotation(t: ChartTemplate, index: number): number {
 
 /** Every chart as an explicit frame, ready to be edited by hand. */
 export function materializeSheets(t: ChartTemplate): SheetFrame[] {
-  return Array.from({ length: sheetCount(t) }, (_, i) => ({ rotation: 0, ...sheetFrame(t, i), start: sheetRange(t, i).start * 1000 }));
+  return Array.from({ length: sheetCount(t) }, (_, i) => ({
+    rotation: 0,
+    ...sheetFrame(t, i),
+    start: sheetRange(t, i).start * 1000,
+  }));
 }
 
 /** Change one chart (materializing the even layout first). */
-export function editSheet(t: ChartTemplate, index: number, patch: Partial<SheetFrame>): ChartTemplate {
+export function editSheet(
+  t: ChartTemplate,
+  index: number,
+  patch: Partial<SheetFrame>,
+): ChartTemplate {
   const sheets = materializeSheets(t);
   if (!sheets[index]) return t;
   sheets[index] = { ...sheets[index], ...patch };
   // Moving a chart's start by hand keeps its length; a shortened bend chart moves as a whole.
-  if (patch.start !== undefined && sheets[index].end !== undefined && patch.end === undefined) {
+  if (
+    patch.start !== undefined &&
+    sheets[index].end !== undefined &&
+    patch.end === undefined
+  ) {
     const old = sheetRange(t, index);
     sheets[index].end = patch.start + (old.end - old.start) * 1000;
   }
@@ -148,18 +187,22 @@ function round(v: number, dp: number): number {
 }
 
 /** A "nice" scale bar: picks a round ground length that fits the available paper length. */
-export function niceScaleBar(scale: number, maxPaperMm: number): { metres: number; divisions: number; paperMm: number } {
+export function niceScaleBar(
+  scale: number,
+  maxPaperMm: number,
+): { metres: number; divisions: number; paperMm: number } {
   const maxMetres = (maxPaperMm * scale) / 1000;
   const pow = 10 ** Math.floor(Math.log10(maxMetres));
   const candidates = [5, 4, 2.5, 2, 1].map((m) => m * pow);
   const metres = candidates.find((c) => c <= maxMetres) ?? pow;
   const lead = metres / pow;
-  const divisions = lead === 2.5 || lead === 5 ? 5 : lead === 4 || lead === 2 ? 4 : 5;
+  const divisions =
+    lead === 2.5 || lead === 5 ? 5 : lead === 4 || lead === 2 ? 4 : 5;
   return { metres, divisions, paperMm: (metres * 1000) / scale };
 }
 
 export function formatScale(s: number): string {
-  return `1:${Math.round(s).toLocaleString('en-US')}`;
+  return `1:${Math.round(s).toLocaleString("en-US")}`;
 }
 
 /** Values available to text as {TOKEN}. Template fields override nothing here; they are merged on top. */
@@ -175,6 +218,11 @@ export function scaleTokens(t: ChartTemplate): Record<string, string> {
   };
 }
 
-export function resolveTokens(text: string, values: Record<string, string>): string {
-  return text.replace(/\{([A-Z0-9_#]+)\}/g, (m, key: string) => (key in values ? values[key] : m));
+export function resolveTokens(
+  text: string,
+  values: Record<string, string>,
+): string {
+  return text.replace(/\{([A-Z0-9_#]+)\}/g, (m, key: string) =>
+    key in values ? values[key] : m,
+  );
 }

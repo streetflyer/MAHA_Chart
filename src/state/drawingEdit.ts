@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import type { DxfText, Linework } from '../model/dxf';
-import { useSurvey } from './surveyData';
+import { create } from "zustand";
+import type { DxfText, Linework } from "../model/dxf";
+import { useSurvey } from "./surveyData";
 
 type Pt = [number, number];
 
@@ -18,9 +18,9 @@ export interface PlanContext {
 
 /** A gesture in progress, drawn live before it is applied to the drawing. */
 export type Preview =
-  | { kind: 'move'; dE: number; dN: number }
-  | { kind: 'rotate'; cE: number; cN: number; angle: number }
-  | { kind: 'box'; x0: number; y0: number; x1: number; y1: number };
+  | { kind: "move"; dE: number; dN: number }
+  | { kind: "rotate"; cE: number; cN: number; angle: number }
+  | { kind: "box"; x0: number; y0: number; x1: number; y1: number };
 
 interface Snapshot {
   /** The drawings' linework before the change, by dataset id. */
@@ -28,13 +28,16 @@ interface Snapshot {
 }
 
 /** A text's look, for copy/paste of format (like AutoCAD's match properties). */
-export type TextFormat = Pick<DxfText, 'h' | 'color' | 'font' | 'bold' | 'italic' | 'rot'>;
+export type TextFormat = Pick<
+  DxfText,
+  "h" | "color" | "font" | "bold" | "italic" | "rot"
+>;
 
 interface DrawingEdit {
   /** Copied texts (positions kept), ready to paste. */
-  textClip: Omit<DxfText, 'group'>[] | null;
+  textClip: Omit<DxfText, "group">[] | null;
   format: TextFormat | null;
-  setTextClip(t: Omit<DxfText, 'group'>[] | null): void;
+  setTextClip(t: Omit<DxfText, "group">[] | null): void;
   setFormat(f: TextFormat | null): void;
   active: boolean;
   panelId: string | null;
@@ -50,7 +53,11 @@ interface DrawingEdit {
   setPreview(p: Preview | null): void;
   select(sel: Record<string, number[]>): void;
   /** Apply a change to the chosen drawings, remembering how they were. */
-  change(ids: string[], f: (lw: Linework, id: string) => Linework, keepSelection?: boolean): void;
+  change(
+    ids: string[],
+    f: (lw: Linework, id: string) => Linework,
+    keepSelection?: boolean,
+  ): void;
   undo(): void;
   redo(): void;
 }
@@ -59,7 +66,7 @@ const survey = () => useSurvey.getState();
 
 function lineworkOf(id: string): Linework | null {
   const d = survey().datasets.find((x) => x.id === id);
-  return d?.kind === 'linework' ? d.lw : null;
+  return d?.kind === "linework" ? d.lw : null;
 }
 
 export const useDrawingEdit = create<DrawingEdit>((set, get) => ({
@@ -74,8 +81,17 @@ export const useDrawingEdit = create<DrawingEdit>((set, get) => ({
   preview: null,
   past: [],
   future: [],
-  enter: (panelId) => set({ active: true, panelId, selected: {}, preview: null, past: [], future: [] }),
-  exit: () => set({ active: false, panelId: null, selected: {}, preview: null }),
+  enter: (panelId) =>
+    set({
+      active: true,
+      panelId,
+      selected: {},
+      preview: null,
+      past: [],
+      future: [],
+    }),
+  exit: () =>
+    set({ active: false, panelId: null, selected: {}, preview: null }),
   setContext: (ctx) => set({ ctx }),
   setPreview: (preview) => set({ preview }),
   select: (selected) => set({ selected }),
@@ -88,7 +104,11 @@ export const useDrawingEdit = create<DrawingEdit>((set, get) => ({
       survey().updateDataset(id, { lw: f(lw, id) });
     }
     if (!Object.keys(before).length) return;
-    set((s) => ({ past: [...s.past.slice(-49), { lw: before }], future: [], selected: keepSelection ? s.selected : {} }));
+    set((s) => ({
+      past: [...s.past.slice(-49), { lw: before }],
+      future: [],
+      selected: keepSelection ? s.selected : {},
+    }));
   },
   undo: () => {
     const { past } = get();
@@ -100,7 +120,10 @@ export const useDrawingEdit = create<DrawingEdit>((set, get) => ({
       if (cur) now[id] = cur;
       survey().updateDataset(id, { lw });
     }
-    set((s) => ({ past: s.past.slice(0, -1), future: [{ lw: now }, ...s.future] }));
+    set((s) => ({
+      past: s.past.slice(0, -1),
+      future: [{ lw: now }, ...s.future],
+    }));
   },
   redo: () => {
     const { future } = get();

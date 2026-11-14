@@ -1,6 +1,6 @@
-import type { ChartTemplate } from './types';
+import type { ChartTemplate } from "./types";
 
-const KEY = 'mahachart.templates.v1';
+const KEY = "mahachart.templates.v1";
 
 /*
  * Saved user templates. Browser storage for now so the app works fully offline;
@@ -33,8 +33,14 @@ export function listUserTemplates(): ChartTemplate[] {
 
 /** Save under the template's name, replacing an existing user template with the same name. */
 export function saveUserTemplate(t: ChartTemplate): ChartTemplate | null {
-  const saved: ChartTemplate = { ...t, builtIn: false, updatedAt: new Date().toISOString() };
-  const list = readAll().filter((x) => x.id !== saved.id && x.name !== saved.name);
+  const saved: ChartTemplate = {
+    ...t,
+    builtIn: false,
+    updatedAt: new Date().toISOString(),
+  };
+  const list = readAll().filter(
+    (x) => x.id !== saved.id && x.name !== saved.name,
+  );
   list.push(saved);
   return writeAll(list) ? saved : null;
 }
@@ -44,19 +50,31 @@ export function deleteUserTemplate(id: string): void {
 }
 
 export function exportTemplateFile(t: ChartTemplate): void {
-  const blob = new Blob([JSON.stringify({ format: 'mahachart-template', version: 1, template: t }, null, 2)], {
-    type: 'application/json',
-  });
-  const a = document.createElement('a');
+  const blob = new Blob(
+    [
+      JSON.stringify(
+        { format: "mahachart-template", version: 1, template: t },
+        null,
+        2,
+      ),
+    ],
+    {
+      type: "application/json",
+    },
+  );
+  const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = `${t.name.replace(/[^\w.-]+/g, '_')}.mctemplate.json`;
+  a.download = `${t.name.replace(/[^\w.-]+/g, "_")}.mctemplate.json`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
 export async function importTemplateFile(file: File): Promise<ChartTemplate> {
   const data = JSON.parse(await file.text());
-  const t = (data?.format === 'mahachart-template' ? data.template : data) as ChartTemplate;
-  if (!t || !Array.isArray(t.panels) || !t.paper || !t.scale) throw new Error('Not a MAHA Chart template file.');
+  const t = (
+    data?.format === "mahachart-template" ? data.template : data
+  ) as ChartTemplate;
+  if (!t || !Array.isArray(t.panels) || !t.paper || !t.scale)
+    throw new Error("Not a MAHA Chart template file.");
   return { ...t, builtIn: false, texts: t.texts ?? [], fields: t.fields ?? {} };
 }

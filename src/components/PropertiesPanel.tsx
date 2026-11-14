@@ -1,3 +1,5 @@
+import { pointsOf, pointsPatch } from "../model/cpEdit";
+import type { CpPoint } from "../model/datasets";
 import { DEFAULT_MATCHLINES } from "../model/matchlines";
 import type { MatchlineStyle } from "../model/types";
 import { ColourBox } from "./ColourBox";
@@ -1634,23 +1636,77 @@ const kmText = (m: number) => (m / 1000).toFixed(3);
 /** Every imported CP reading with its KP, in a folding list. */
 function CpReadings({ d }: { d: Extract<Dataset, { kind: "cp" }> }) {
   const [all, setAll] = useState(false);
-  const n = d.kp.length;
+  const pts = pointsOf(d);
+  const n = pts.length;
   const last = all ? n : Math.min(n, 50);
+  const sv = useSurvey.getState();
+  // Edits keep the reading's place in the list; the data behind the chart is re-sorted by KP.
+  const save = (next: CpPoint[]) =>
+    sv.updateDataset(d.id, pointsPatch(next, d.notes ?? []));
+  const edit = (i: number, patch: Partial<CpPoint>) =>
+    save(pts.map((p, j) => (j === i ? { ...p, ...patch } : p)));
+  const order = pts.map((_, i) => i).sort((a, b) => pts[a].kp - pts[b].kp);
   return (
     <details className="layer-list">
       <summary>Readings ({n.toLocaleString()})</summary>
+      <p className="hint">
+        Edit the KP (km) or the mV; double-click the panel on the sheet to move
+        readings and add text.
+      </p>
       <table className="mini-table">
         <thead>
           <tr>
-            <th>KP</th>
+            <th>KP (km)</th>
             <th>mV</th>
+            <th />
           </tr>
         </thead>
         <tbody>
-          {Array.from({ length: last }, (_, i) => (
+          {order.slice(0, last).map((i) => (
             <tr key={i}>
-              <td>{kmText(d.kp[i])}</td>
-              <td>{d.mv[i]}</td>
+              <td>
+                <input
+                  key={`k${pts[i].kp}`}
+                  className="cell-input"
+                  defaultValue={(pts[i].kp / 1000).toFixed(3)}
+                  onBlur={(e) => {
+                    const v = parseFloat(e.target.value.replace(",", "."));
+                    if (
+                      Number.isFinite(v) &&
+                      Math.abs(v * 1000 - pts[i].kp) > 1e-6
+                    )
+                      edit(i, { kp: v * 1000 });
+                  }}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && (e.target as HTMLInputElement).blur()
+                  }
+                />
+              </td>
+              <td>
+                <input
+                  key={`m${pts[i].mv}`}
+                  className="cell-input"
+                  defaultValue={pts[i].mv}
+                  onBlur={(e) => {
+                    const v = parseFloat(e.target.value.replace(",", "."));
+                    if (Number.isFinite(v) && v !== pts[i].mv)
+                      edit(i, { mv: v });
+                  }}
+                  onKeyDown={(e) =>
+                    e.key === "Enter" && (e.target as HTMLInputElement).blur()
+                  }
+                />
+              </td>
+              <td>
+                <button
+                  type="button"
+                  className="link"
+                  title="Remove this reading"
+                  onClick={() => save(pts.filter((_, j) => j !== i))}
+                >
+                  ×
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
@@ -1660,6 +1716,20 @@ function CpReadings({ d }: { d: Extract<Dataset, { kind: "cp" }> }) {
           Show all {n.toLocaleString()}
         </button>
       )}
+      <button
+        type="button"
+        onClick={() =>
+          save([
+            ...pts,
+            {
+              kp: (pts[pts.length - 1]?.kp ?? 0) + 100,
+              mv: pts[pts.length - 1]?.mv ?? -1000,
+            },
+          ])
+        }
+      >
+        Add a reading
+      </button>
     </details>
   );
 }
@@ -1704,6 +1774,8 @@ function EventList({ d }: { d: Extract<Dataset, { kind: "events" }> }) {
 
 /** One imported dataset in the properties list: a caret folds its settings away. */
 function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
+  const hScale = useEditor((x) => x.template?.scale.horizontal ?? 5000);
+  const autoEvery = Math.max(1, hScale / 50);
   const sv = useSurvey.getState();
   const [open, setOpen] = useState(true);
   return (
@@ -1834,10 +1906,10 @@ function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
           {d.kind === "trans" && (
             <>
               <Field
-                label="Draw a profile every"
+                label="KP interval of the profiles"
                 type="number"
                 step={10}
-                suffix="m (0 = auto)"
+                suffix={`m (0 = auto: ${autoEvery} m)`}
                 value={d.every}
                 onCommit={(v) =>
                   num(v) >= 0 && sv.updateDataset(d.id, { every: num(v) })

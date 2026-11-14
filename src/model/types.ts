@@ -1,23 +1,23 @@
 // All geometry is in millimetres on the paper, origin top-left, y pointing down.
 
 export type PanelType =
-  | 'plan'
-  | 'longProfile'
-  | 'transProfile'
-  | 'events'
-  | 'cp'
-  | 'chartInfo'
-  | 'legend'
-  | 'notes'
-  | 'geodetic'
-  | 'equipment'
-  | 'scale'
-  | 'keyplan'
-  | 'titleBlock'
-  | 'logo'
-  | 'text';
+  | "plan"
+  | "longProfile"
+  | "transProfile"
+  | "events"
+  | "cp"
+  | "chartInfo"
+  | "legend"
+  | "notes"
+  | "geodetic"
+  | "equipment"
+  | "scale"
+  | "keyplan"
+  | "titleBlock"
+  | "logo"
+  | "text";
 
-export type TitlePosition = 'above' | 'inside' | 'none';
+export type TitlePosition = "above" | "inside" | "none";
 
 export interface EventRow {
   id: string;
@@ -27,7 +27,7 @@ export interface EventRow {
   /** Draw only `text` across the row, not events. */
   textOnly?: boolean;
   text?: string;
-  textAlign?: 'start' | 'middle' | 'end';
+  textAlign?: "start" | "middle" | "end";
 }
 
 export interface Panel {
@@ -119,7 +119,7 @@ export interface PlanStyle {
 export interface MatchlineStyle {
   on: boolean;
   /** 'overlap': where the neighbouring charts start and end inside this one. 'profile': this chart's own start and end KP. */
-  mode: 'overlap' | 'profile';
+  mode: "overlap" | "profile";
   prefix: string;
   suffix: string;
   /** A second line of text on the other side of each line. */
@@ -155,29 +155,29 @@ export interface TextStyle {
   size: number;
   bold?: boolean;
   italic?: boolean;
-  align?: 'start' | 'middle' | 'end';
+  align?: "start" | "middle" | "end";
   /** Vertically centre the text inside the panel. */
   vcenter?: boolean;
 }
 
-export type LegendGroup = 'plan' | 'long' | 'trans' | 'cp' | 'status';
+export type LegendGroup = "plan" | "long" | "trans" | "cp" | "status";
 
 export type LegendSymbol =
-  | 'kpMarker'
-  | 'line'
-  | 'thinLine'
-  | 'dashed'
-  | 'dashedThick'
-  | 'doubleLine'
-  | 'matchline'
-  | 'assetBlob'
-  | 'seabedProfile'
-  | 'cpStab'
-  | 'burial'
-  | 'freespan'
-  | 'box'
-  | 'circle'
-  | 'pipeBand';
+  | "kpMarker"
+  | "line"
+  | "thinLine"
+  | "dashed"
+  | "dashedThick"
+  | "doubleLine"
+  | "matchline"
+  | "assetBlob"
+  | "seabedProfile"
+  | "cpStab"
+  | "burial"
+  | "freespan"
+  | "box"
+  | "circle"
+  | "pipeBand";
 
 export interface LegendItem {
   id: string;
@@ -216,9 +216,9 @@ export interface LegendStyle {
   /** Event code definitions use the legend text height (default on). */
   sameCodeSize?: boolean;
   /** Definitions of every event code, or only of the codes on the chart being shown. */
-  codeScope?: 'all' | 'chart';
+  codeScope?: "all" | "chart";
   /** Heading wording, by group; unset keeps the standard heading. */
-  headings?: Partial<Record<LegendGroup | 'codes', string>>;
+  headings?: Partial<Record<LegendGroup | "codes", string>>;
 }
 
 /** A legend panel's items built from the imported data: on/off, and the user's wording per item. */
@@ -238,7 +238,7 @@ export interface RevisionRow {
   approved: string;
 }
 
-export type RevisionColumn = Exclude<keyof RevisionRow, 'id'>;
+export type RevisionColumn = Exclude<keyof RevisionRow, "id">;
 
 export interface ImageItem {
   id: string;
@@ -261,7 +261,7 @@ export interface TextItem {
   y: number;
   text: string;
   size: number;
-  anchor: 'start' | 'middle' | 'end';
+  anchor: "start" | "middle" | "end";
   bold?: boolean;
   rotation?: number;
   color?: string;
@@ -302,16 +302,16 @@ export interface SheetFrame {
 
 export interface PaperSettings {
   size: PaperSizeName;
-  orientation: 'landscape' | 'portrait';
+  orientation: "landscape" | "portrait";
   width: number;
   height: number;
   /** Inset of the outer drawing frame from the paper edge. */
   frameInset: number;
 }
 
-export type PaperSizeName = 'A0' | 'A1' | 'A2' | 'A3' | 'A4' | 'Custom';
+export type PaperSizeName = "A0" | "A1" | "A2" | "A3" | "A4" | "Custom";
 
-export type ChartKind = 'alignment' | 'northUp';
+export type ChartKind = "alignment" | "northUp";
 
 export interface ChartTemplate {
   id: string;
@@ -330,4 +330,4 @@ export interface ChartTemplate {
   updatedAt?: string;
 }
 
-export type Selection = { kind: 'panel' | 'text' | 'image'; id: string };
+export type Selection = { kind: "panel" | "text" | "image"; id: string };

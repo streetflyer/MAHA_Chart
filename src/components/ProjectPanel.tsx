@@ -129,7 +129,8 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
   function keepActiveTemplate() {
     const s = useProject.getState();
     // Template, panel properties and every file's look go with the folder (also when the project is saved).
-    if (s.active !== null && useEditor.getState().template) saveFolderSettings(s.active);
+    if (s.active !== null && useEditor.getState().template)
+      saveFolderSettings(s.active);
   }
 
   async function chartFolder(path: string) {
