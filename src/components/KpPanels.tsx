@@ -2,6 +2,7 @@ import { Cp } from "./CpPanel";
 import { useEditor } from "../state/store";
 import { useProject } from "../state/project";
 import { useVideo } from "../state/video";
+import { smoothLocal } from "../model/smooth";
 import { autoVideoText } from "../model/video";
 import { useMemo, type ReactElement } from "react";
 import { nearestProfile } from "../model/crossProfile";
@@ -20,6 +21,7 @@ import {
   codeMatcher,
   isKpRow,
   isVideoRow,
+  isBurialLink,
   rowCodes,
   splitRanges,
   type EventMark,
@@ -330,6 +332,8 @@ interface AxisOpts {
   tickLen?: number;
   suffix?: string;
   side?: "left" | "right" | "both";
+  /** Draw only the grid lines and ticks, or only the labels. */
+  only?: "grid" | "text";
   grid?: { show: boolean; color: string; width: number; dash: string };
 }
 
@@ -377,7 +381,7 @@ function DepthAxis({
     const text = `${Number(v.toFixed(2))}${unit}`;
     out.push(
       <g key={v}>
-        {isLine && (o.grid?.show ?? true) && (
+        {isLine && o.only !== "text" && (o.grid?.show ?? true) && (
           <line
             className="depth-tick"
             style={
@@ -395,10 +399,10 @@ function DepthAxis({
             y2={yy}
           />
         )}
-        {t > 0 && left && (
+        {t > 0 && left && o.only !== "text" && (
           <line className="depth-mark" x1={p.x} y1={yy} x2={p.x + t} y2={yy} />
         )}
-        {t > 0 && right && (
+        {t > 0 && right && o.only !== "text" && (
           <line
             className="depth-mark"
             x1={p.x + p.w - t}
@@ -407,7 +411,7 @@ function DepthAxis({
             y2={yy}
           />
         )}
-        {isLabel && left && (
+        {isLabel && left && o.only !== "grid" && (
           <text
             x={p.x + len + 0.5}
             y={yy + fontSize(cap) * 0.35}
@@ -417,7 +421,7 @@ function DepthAxis({
             {text}
           </text>
         )}
-        {isLabel && right && (
+        {isLabel && right && o.only !== "grid" && (
           <text
             x={p.x + p.w - len - 0.5}
             y={yy + fontSize(cap) * 0.35}
@@ -456,20 +460,28 @@ export function depthSense(d: Extract<Dataset, { kind: "long" }>): 1 | -1 {
 }
 
 /** The series with BOP replaced by TOP plus the median TOP-to-BOP gap (smooth, as a pipe is). */
-function smoothBop(d: Extract<Dataset, { kind: "long" }>): LongSeries[] {
-  if (d.top === undefined || d.bop === undefined) return d.series;
-  const top = d.series[d.top].values;
+function smoothBop(
+  d: Extract<Dataset, { kind: "long" }>,
+  smooth = 0,
+): LongSeries[] {
+  if (d.top === undefined) return d.series;
+  const rawTop = d.series[d.top].values;
+  const top = smoothLocal(rawTop, smooth);
+  const withTop = d.series.map((s, i) =>
+    i === d.top ? { ...s, values: top } : s,
+  );
+  if (d.bop === undefined) return withTop;
   const bop = d.series[d.bop];
   const gaps: number[] = [];
-  for (let i = 0; i < top.length; i++) {
-    const g = bop.values[i] - top[i];
+  for (let i = 0; i < rawTop.length; i++) {
+    const g = bop.values[i] - rawTop[i];
     if (Number.isFinite(g)) gaps.push(g);
   }
-  if (!gaps.length) return d.series;
+  if (!gaps.length) return withTop;
   gaps.sort((x, y) => x - y);
   const gap = gaps[gaps.length >> 1];
   const values = Float64Array.from(top, (v) => v + gap);
-  return d.series.map((s, i) => (i === d.bop ? { ...s, values } : s));
+  return withTop.map((s, i) => (i === d.bop ? { ...s, values } : s));
 }
 
 /**
@@ -497,7 +509,10 @@ function LongProfile({
   const sgn = depthSense(d);
   // BOP is TOP less the pipe diameter, so it is drawn as the TOP line moved by the
   // median gap: the survey's rounded BOP values would otherwise show as steps.
-  const series = useMemo(() => smoothBop(d), [d.series, d.top, d.bop]);
+  const series = useMemo(
+    () => smoothBop(d, o.smooth),
+    [d.series, d.top, d.bop, o.smooth],
+  );
   const top = d.top !== undefined ? series[d.top] : undefined;
   const bop = d.bop !== undefined ? series[d.bop] : undefined;
   const ref = (i: number) => (o.normalise && top ? top.values[i] : 0);
@@ -604,6 +619,7 @@ function LongProfile({
           lo={lo}
           hi={hi}
           o={{
+            only: o.textFront ? "grid" : undefined,
             line: o.gridLine || auto,
             label: o.gridLabel,
             major: o.majorTick,
@@ -633,6 +649,31 @@ function LongProfile({
             }
           />
         ))}
+        {o.textFront && (
+          <DepthAxis
+            p={part}
+            y={y}
+            lo={lo}
+            hi={hi}
+            o={{
+              only: "text",
+              line: o.gridLine || auto,
+              label: o.gridLabel,
+              major: o.majorTick,
+              minor: o.minorTick,
+              tickLen: o.tickLen,
+              suffix: o.suffix,
+              side: o.axisSide,
+              omitEnds: o.omitEndLabels,
+              grid: {
+                show: o.gridShow,
+                color: o.gridColor,
+                width: o.gridWidth,
+                dash: o.gridDash,
+              },
+            }}
+          />
+        )}
       </g>
     );
   };
@@ -1170,10 +1211,6 @@ function PointTicks({
  * Linked events (freespan, burial): a line at each end, a bar between them, the
  * length above and the height below by default, and the codes along the end lines.
  */
-/** Burial links get the bold stripe at the foot, freespans at the top. */
-export const isBurialLink = (l: { label: string; start: string }) =>
-  /burial/i.test(l.label) || /B/i.test(l.start.split(".")[1] ?? "");
-
 function LinkedEvents({
   list,
   y0,
@@ -1262,7 +1299,7 @@ function LinkedEvents({
                 {e.height.toFixed(2)}
               </text>
             )}
-            {labels && xb - xa > fs * 2.2 && (
+            {labels && (
               <>
                 <text
                   fontSize={fs}

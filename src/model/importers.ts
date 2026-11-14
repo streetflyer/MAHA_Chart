@@ -462,10 +462,13 @@ export function buildDataset(
     if (!sources.length)
       return "Pick the top and bottom of pipe columns, or tick a column to draw.";
     const kp: number[] = [];
+    const rowIdx: number[] = [];
+    const first = m.skip + (m.header ? 1 : 0);
     const vals: number[][] = sources.map(() => []);
-    for (const r of data) {
+    for (const [ri, r] of data.entries()) {
       const k = num(r[col("kp")]);
       if (!Number.isFinite(k)) continue;
+      rowIdx.push(first + ri);
       kp.push(k * kpScale);
       sources.forEach((src, j) =>
         vals[j].push(meanOf(src.cols.map((c) => num(r[c])))),
@@ -487,6 +490,10 @@ export function buildDataset(
       top: top >= 0 ? top : undefined,
       bop: bop >= 0 ? bop : undefined,
       fill: "#6b6b6b",
+      srcRows: new Int32Array(rowIdx),
+      srcSheet: m.sheet,
+      srcTopCol: col("top"),
+      srcBopCol: col("bop"),
     };
   }
   if (target === "trans") {

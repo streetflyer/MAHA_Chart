@@ -461,6 +461,7 @@ export function ImportDialog({
       );
     }
     if (typeof d === "string") return d;
+    if (d.kind === "long") d = { ...d, srcFile: x.file };
     d = applyStyle(d, x.style);
     useSurvey.getState().addDataset(d);
     if (d.kind === "route")

@@ -31,7 +31,12 @@ import type {
 import { PANEL_DEFAULTS } from "../state/panelDefaults";
 import { useEditor } from "../state/store";
 import { useSurvey } from "../state/surveyData";
-import { TARGETS, targetInfo, type Dataset } from "../model/datasets";
+import {
+  DEFAULT_LONG_OPTS,
+  TARGETS,
+  targetInfo,
+  type Dataset,
+} from "../model/datasets";
 import {
   codeMatcher,
   defaultRowCodes,
@@ -39,6 +44,8 @@ import {
   isVideoRow,
   rowCodes,
 } from "../model/events";
+import { canWriteBack, smoothedFile } from "../model/writeBack";
+import { downloadBlob } from "../state/workspace";
 import { useVideo } from "../state/video";
 import { autoVideoText, productKeys } from "../model/video";
 import { useProject } from "../state/project";
@@ -737,36 +744,50 @@ function RowsEditor({ p }: { p: Panel }) {
                     </label>
                     {(r.stripe ?? !!isVideoRow(r)) && (
                       <>
-                        <ColourBox
-                          value={r.stripeColor ?? "#d9d9d9"}
-                          onChange={(c) => patch(r.id, { stripeColor: c })}
-                        />
-                        <DraftNumber
-                          step={5}
-                          min={0}
-                          className="small-num"
-                          title="Opacity, %"
-                          value={Math.round((r.stripeOpacity ?? 1) * 100)}
-                          onCommit={(v) =>
-                            patch(r.id, {
-                              stripeOpacity: Math.min(100, v) / 100,
-                            })
-                          }
-                        />
-                        <span className="muted">% opacity</span>
-                        <DraftNumber
-                          step={0.1}
-                          min={0}
-                          className="small-num"
-                          title="Stripe width in mm: 0 is a line in the middle of the row"
-                          value={r.stripeWidth ?? Math.max(0, rowH - 2)}
-                          onCommit={(v) =>
-                            patch(r.id, {
-                              stripeWidth: Math.round(v * 10) / 10,
-                            })
-                          }
-                        />
-                        <span className="muted">mm wide</span>
+                        <label className="field colour-field">
+                          <span>Stripe colour</span>
+                          <ColourBox
+                            value={r.stripeColor ?? "#d9d9d9"}
+                            onChange={(c) => patch(r.id, { stripeColor: c })}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Stripe opacity</span>
+                          <span className="with-suffix">
+                            <DraftNumber
+                              step={5}
+                              min={0}
+                              title="Opacity, %"
+                              value={Math.round((r.stripeOpacity ?? 1) * 100)}
+                              onCommit={(v) =>
+                                patch(r.id, {
+                                  stripeOpacity: Math.min(100, v) / 100,
+                                })
+                              }
+                            />
+                            <span className="suffix">%</span>
+                          </span>
+                        </label>
+                        <label className="field">
+                          <span>Stripe width</span>
+                          <span className="with-suffix">
+                            <DraftNumber
+                              step={0.1}
+                              min={0}
+                              title="0 is a line in the middle of the row"
+                              value={
+                                r.stripeWidth ??
+                                Math.round(Math.max(0, rowH - 2) * 10) / 10
+                              }
+                              onCommit={(v) =>
+                                patch(r.id, {
+                                  stripeWidth: Math.round(v * 10) / 10,
+                                })
+                              }
+                            />
+                            <span className="suffix">mm</span>
+                          </span>
+                        </label>
                       </>
                     )}
                   </div>
@@ -889,6 +910,58 @@ function VideoTextEditor({
           Back to automatic text
         </button>
       )}
+    </div>
+  );
+}
+
+/** Local smooth of the TOP depth, and writing the smoothed depths back to the source file. */
+function LongSmooth({ d }: { d: Extract<Dataset, { kind: "long" }> }) {
+  const sv = useSurvey.getState();
+  const n = d.opts?.smooth ?? 0;
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const set = (smooth: number) =>
+    sv.updateDataset(d.id, {
+      opts: { ...DEFAULT_LONG_OPTS, ...d.opts, smooth },
+    });
+  return (
+    <div className="long-smooth">
+      <label className="field">
+        <span>Local smooth of the TOP depth</span>
+        <span className="with-suffix">
+          <DraftNumber
+            step={1}
+            min={0}
+            value={n}
+            onCommit={(v) => set(Math.round(v))}
+            title="Nodes each side that are averaged into each node. 0 = off. BOP follows TOP."
+          />
+          <span className="suffix">nodes each side</span>
+        </span>
+      </label>
+      <button
+        type="button"
+        disabled={busy || !canWriteBack(d)}
+        title={
+          canWriteBack(d)
+            ? "Write the smoothed TOP (and BOP) back into a copy of the imported file and download it"
+            : "This profile was not read from a file that is still known: import the file again"
+        }
+        onClick={async () => {
+          setBusy(true);
+          try {
+            const r = await smoothedFile(d, n);
+            downloadBlob(r.blob, r.name);
+            setNote(`Saved ${r.name}: ${r.changed} cells changed.`);
+          } catch (e) {
+            setNote((e as Error).message);
+          }
+          setBusy(false);
+        }}
+      >
+        Write back to the file and download
+      </button>
+      {note && <p className="hint">{note}</p>}
     </div>
   );
 }
@@ -2063,6 +2136,7 @@ function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
               ))}
             </div>
           )}
+          {d.kind === "long" && d.top !== undefined && <LongSmooth d={d} />}
           {d.kind === "events" && (
             <>
               <LinksEditor

@@ -55,4 +55,9 @@ describe("events", () => {
       [5161, 5178, 17, undefined],
     ]);
   });
+  it("# matches digits: FS# takes FS1 and FS2, not FS.X", () => {
+    const m = codeMatcher("FS#, B#");
+    expect(["FS1", "FS2", "B3", "B12"].every(m)).toBe(true);
+    expect(m("FS.X") || m("BX")).toBe(false);
+  });
 });

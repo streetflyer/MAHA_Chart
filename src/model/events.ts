@@ -3,7 +3,7 @@ import type { EventRow } from "./types";
 
 /**
  * Engineering events go into the panel's rows by event code. Each row lists the
- * codes it takes, comma separated, with `*` as a wildcard (`AN.*`, `D.*, OT.OU`).
+ * codes it takes, comma separated, with `*` as a wildcard and `#` for digits (`AN.*`, `FS#` = FS1, FS2..., `D.*, OT.OU`).
  */
 export function codeMatcher(patterns: string): (code: string) => boolean {
   const res = patterns
@@ -14,7 +14,10 @@ export function codeMatcher(patterns: string): (code: string) => boolean {
       (p) =>
         new RegExp(
           "^" +
-            p.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") +
+            p
+              .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+              .replace(/\*/g, ".*")
+              .replace(/#/g, "\\d+") +
             "$",
         ),
     );
@@ -33,8 +36,8 @@ export function defaultRowCodes(label: string): string {
   if (/FIELD ?JOINT/.test(l)) return "FJ.*";
   if (/PIPELINE FEATURE|ENGINEERING FEATURE/.test(l)) return "PF.*, FJ.*";
   if (/FITTING|SUPPORT/.test(l)) return "SF.*, R.*";
-  if (/FREESPAN|FREE SPAN/.test(l)) return "FS.*";
-  if (/BURIAL|EXPOSURE/.test(l)) return "B.*";
+  if (/FREESPAN|FREE SPAN/.test(l)) return "FS.*, FS#";
+  if (/BURIAL|EXPOSURE/.test(l)) return "B.*, B#";
   if (/DEBRIS|ANOMAL|DAMAGE/.test(l)) return "D.*, OT.OU";
   if (/VIDEO/.test(l)) return "OT.VS, OT.VE";
   return "";
@@ -151,3 +154,7 @@ export function linkPairs(
   }
   return out;
 }
+
+/** Burial links get the bold stripe at the foot, freespans at the top. */
+export const isBurialLink = (l: { label: string; start: string }) =>
+  /burial/i.test(l.label) || /B/i.test(l.start.split(".")[1] ?? "");

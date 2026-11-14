@@ -337,3 +337,135 @@ async function inflate(raw: Uint8Array): Promise<Uint8Array> {
     .pipeThrough(new DecompressionStream("deflate-raw"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
+
+// --- writing values back into an .xlsx ------------------------------------------
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(b: Uint8Array): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < b.length; i++)
+    c = CRC_TABLE[(c ^ b[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/** A zip with every entry stored (no compression): Excel opens it like any workbook. */
+function zipStore(files: Map<string, Uint8Array>): Blob {
+  const enc = new TextEncoder();
+  const parts: Uint8Array[] = [];
+  const central: Uint8Array[] = [];
+  let offset = 0;
+  for (const [name, data] of files) {
+    const nm = enc.encode(name);
+    const crc = crc32(data);
+    const local = new DataView(new ArrayBuffer(30));
+    local.setUint32(0, 0x04034b50, true);
+    local.setUint16(4, 20, true);
+    local.setUint16(6, 0x0800, true);
+    local.setUint32(14, crc, true);
+    local.setUint32(18, data.length, true);
+    local.setUint32(22, data.length, true);
+    local.setUint16(26, nm.length, true);
+    parts.push(new Uint8Array(local.buffer), nm, data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true);
+    c.setUint16(4, 20, true);
+    c.setUint16(6, 20, true);
+    c.setUint16(8, 0x0800, true);
+    c.setUint32(16, crc, true);
+    c.setUint32(20, data.length, true);
+    c.setUint32(24, data.length, true);
+    c.setUint16(28, nm.length, true);
+    c.setUint32(42, offset, true);
+    central.push(new Uint8Array(c.buffer), nm);
+    offset += 30 + nm.length + data.length;
+  }
+  const cdSize = central.reduce((a, b) => a + b.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, files.size, true);
+  end.setUint16(10, files.size, true);
+  end.setUint32(12, cdSize, true);
+  end.setUint32(16, offset, true);
+  return new Blob(
+    [...parts, ...central, new Uint8Array(end.buffer)] as BlobPart[],
+    {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    },
+  );
+}
+
+/**
+ * Put numbers into cells of one sheet of an .xlsx, keeping everything else as it was.
+ * `edits` maps a row (its position among the sheet's rows, as readXlsx counts them) to
+ * column -> value. Returns the new workbook and how many cells were changed.
+ */
+export async function patchXlsx(
+  data: ArrayBuffer,
+  sheetIndex: number,
+  edits: Map<number, Map<number, number>>,
+): Promise<{ blob: Blob; changed: number }> {
+  const files = await unzip(data);
+  const dec = new TextDecoder();
+  const text = (p: string) => (files.has(p) ? dec.decode(files.get(p)) : "");
+  const rels = new Map<string, string>();
+  for (const m of text("xl/_rels/workbook.xml.rels").matchAll(
+    /<Relationship\b[^>]*>/g,
+  )) {
+    const id = attr(m[0], "Id");
+    const target = attr(m[0], "Target");
+    if (id && target)
+      rels.set(id, target.replace(/^\/?xl\//, "").replace(/^\//, ""));
+  }
+  const paths: string[] = [];
+  for (const m of text("xl/workbook.xml").matchAll(/<sheet\b[^>]*>/g)) {
+    const rid = attr(m[0], "r:id");
+    paths.push(
+      "xl/" +
+        (rid && rels.get(rid)
+          ? rels.get(rid)
+          : `worksheets/sheet${paths.length + 1}.xml`),
+    );
+  }
+  const path = paths[sheetIndex];
+  if (!path || !files.has(path))
+    throw new Error("The sheet was not found in the workbook.");
+  const colLetters = (n: number) => {
+    let s = "";
+    for (let c = n + 1; c > 0; c = Math.floor((c - 1) / 26))
+      s = String.fromCharCode(65 + ((c - 1) % 26)) + s;
+    return s;
+  };
+  let changed = 0;
+  let rowNo = -1;
+  const xml = text(path).replace(
+    /<row\b[^>]*>[\s\S]*?<\/row>|<row\b[^>]*\/>/g,
+    (row) => {
+      rowNo++;
+      const e = edits.get(rowNo);
+      if (!e) return row;
+      return row.replace(
+        /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g,
+        (cell, a: string) => {
+          const ref = attr(a, "r");
+          if (!ref) return cell;
+          const v = e.get(colIndex(ref));
+          if (v === undefined || !Number.isFinite(v)) return cell;
+          changed++;
+          const style = attr(a, "s");
+          return `<c r="${colLetters(colIndex(ref))}${ref.replace(/^[A-Z]+/, "")}"${style ? ` s="${style}"` : ""}><v>${Number(v.toFixed(6))}</v></c>`;
+        },
+      );
+    },
+  );
+  files.set(path, new TextEncoder().encode(xml));
+  return { blob: zipStore(files), changed };
+}

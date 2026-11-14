@@ -137,6 +137,14 @@ export function Editor({ onExit }: { onExit(): void }) {
   );
 
   const projectInput = useRef<HTMLInputElement>(null);
+  const [panes, setPanes] = useState(loadPanes);
+  useEffect(() => {
+    try {
+      localStorage.setItem(PANES_KEY, JSON.stringify(panes));
+    } catch {
+      /* not remembered */
+    }
+  }, [panes]);
   async function saveProject() {
     try {
       const blob = await workspaceBlob();
@@ -194,8 +202,7 @@ export function Editor({ onExit }: { onExit(): void }) {
         e.preventDefault();
         if (e.shiftKey) void save(true);
         else void saveProject();
-      }
-      else if (mod && k === "a") {
+      } else if (mod && k === "a") {
         const t = s().template!;
         s().select([
           ...t.panels
@@ -686,6 +693,12 @@ export function Editor({ onExit }: { onExit(): void }) {
             Templates…
           </button>
           <button
+            onClick={() => setPanes(DEFAULT_PANES)}
+            title="Put the left and right panels back to their usual width (drag the thin bars beside them to resize)"
+          >
+            Reset panels
+          </button>
+          <button
             onClick={reset}
             title="Put the layout back the way it was when you opened it"
           >
@@ -802,8 +815,17 @@ export function Editor({ onExit }: { onExit(): void }) {
           <ThemeButton />
         </div>
       </header>
-      <div className="workspace">
+      <div
+        className="workspace"
+        style={
+          {
+            "--left-w": `${panes.left}px`,
+            "--right-w": `${panes.right}px`,
+          } as React.CSSProperties
+        }
+      >
         <ProjectPanel onNotice={flash} />
+        <PaneResizer side="left" panes={panes} setPanes={setPanes} />
         <div className="sheet-col">
           <SheetView
             onContextMenu={openMenu}
@@ -814,6 +836,7 @@ export function Editor({ onExit }: { onExit(): void }) {
           />
           <ChartTabs />
         </div>
+        <PaneResizer side="right" panes={panes} setPanes={setPanes} />
         <div ref={propsRef} className="props-wrap">
           <PropertiesPanel />
         </div>
@@ -1195,5 +1218,63 @@ function ScaleQuick() {
         Reset frames
       </button>
     </>
+  );
+}
+
+const DEFAULT_PANES = { left: 250, right: 300 };
+const PANES_KEY = "maha.paneWidths";
+
+function loadPanes() {
+  try {
+    const v = JSON.parse(localStorage.getItem(PANES_KEY) ?? "null");
+    if (v && Number.isFinite(v.left) && Number.isFinite(v.right))
+      return v as typeof DEFAULT_PANES;
+  } catch {
+    /* use the default */
+  }
+  return DEFAULT_PANES;
+}
+
+/** The thin bar between a side panel and the sheet: drag it to change the panel's width. */
+function PaneResizer({
+  side,
+  panes,
+  setPanes,
+}: {
+  side: "left" | "right";
+  panes: typeof DEFAULT_PANES;
+  setPanes(p: typeof DEFAULT_PANES): void;
+}) {
+  const [drag, setDrag] = useState(false);
+  return (
+    <div
+      className={`pane-resizer${drag ? " drag" : ""}`}
+      role="separator"
+      aria-orientation="vertical"
+      title="Drag to resize; double-click to reset"
+      onDoubleClick={() => setPanes({ ...panes, [side]: DEFAULT_PANES[side] })}
+      onPointerDown={(e) => {
+        e.preventDefault();
+        const el = e.currentTarget;
+        el.setPointerCapture(e.pointerId);
+        const x0 = e.clientX;
+        const w0 = panes[side];
+        setDrag(true);
+        const move = (ev: PointerEvent) => {
+          const dx = ev.clientX - x0;
+          const w = Math.round(
+            Math.min(700, Math.max(160, side === "left" ? w0 + dx : w0 - dx)),
+          );
+          setPanes({ ...panes, [side]: w });
+        };
+        const up = () => {
+          el.removeEventListener("pointermove", move);
+          el.removeEventListener("pointerup", up);
+          setDrag(false);
+        };
+        el.addEventListener("pointermove", move);
+        el.addEventListener("pointerup", up);
+      }}
+    />
   );
 }

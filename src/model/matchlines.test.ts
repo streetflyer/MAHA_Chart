@@ -37,6 +37,8 @@ describe("matchlines", () => {
     ).toBe("Matchline to 33DJ100138-T1201-CH-002.002");
     expect(chartName("", 3)).toBe("Chart 3");
     expect(chartName("X-CH-01", 3)).toBe("X-CH-03");
-    expect(chartName("33DJ100160-T1201-UMB1-CH-01", 2)).toBe("33DJ100160-T1201-UMB1-CH-02");
+    expect(chartName("33DJ100160-T1201-UMB1-CH-01", 2)).toBe(
+      "33DJ100160-T1201-UMB1-CH-02",
+    );
   });
 });

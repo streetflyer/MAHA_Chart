@@ -1,3 +1,4 @@
+import { isBurialLink } from "./events";
 import type { Dataset } from "./datasets";
 import type { LegendGroup, LegendItem, LegendStyle } from "./types";
 
@@ -143,7 +144,7 @@ export function dataLegend(
           add({
             key: `link:${l.start}`,
             group: "status",
-            symbol: "freespan",
+            symbol: isBurialLink(l) ? "burial" : "freespan",
             label: l.label,
             color: l.color,
             symbolText: "Length (m)",

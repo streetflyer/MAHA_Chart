@@ -248,8 +248,22 @@ textarea {
 }
 .workspace {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 300px;
+  grid-template-columns: auto 5px minmax(0, 1fr) 5px var(--right-w, 300px);
   min-height: 0;
+}
+.project-panel:not(.collapsed) {
+  width: var(--left-w, 250px);
+}
+.pane-resizer {
+  cursor: col-resize;
+  background: var(--border);
+  opacity: 0.5;
+  touch-action: none;
+}
+.pane-resizer:hover,
+.pane-resizer.drag {
+  opacity: 1;
+  background: var(--accent, #2563eb);
 }
 .props-wrap {
   border-left: 1px solid var(--border);
@@ -563,10 +577,14 @@ textarea {
 }
 
 @media (max-width: 800px) {
+  .pane-resizer {
+    display: none;
+  }
   .workspace {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr 40%;
   }
+  .project-panel:not(.collapsed),
   .project-panel,
   .project-panel.collapsed {
     width: auto;
@@ -1562,9 +1580,14 @@ table.preview thead th.mapped {
 }
 .row-stripe {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
-  align-items: center;
+  align-items: stretch;
+  width: 100%;
+}
+.row-stripe .with-suffix input {
+  width: 100%;
+  min-width: 80px;
 }
 .video-join {
   display: flex;

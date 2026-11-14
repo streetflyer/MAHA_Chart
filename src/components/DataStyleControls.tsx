@@ -554,6 +554,17 @@ function LongSetup({
         Normalise profile on top of pipe (TOP is the zero line; seabed drawn as
         its offset from the pipe)
       </label>
+      <label
+        className="check"
+        title="Draw the depth values over the profile, so the pipe and the seabed lines pass behind the text"
+      >
+        <input
+          type="checkbox"
+          checked={o.textFront}
+          onChange={(e) => set({ textFront: e.target.checked })}
+        />
+        Put the pipe and seabed behind the depth text
+      </label>
       <GridLook
         label="Show the horizontal grid lines"
         show={o.gridShow}

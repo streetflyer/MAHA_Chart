@@ -67,7 +67,11 @@ export function chartName(drawingNo: string, n: number): string {
 }
 
 /** "Matchline to " + the other chart's drawing number; a prefix typed without its space still reads right. */
-export const matchLabel = (st: MatchlineStyle, chart: number, drawingNo = "") => {
+export const matchLabel = (
+  st: MatchlineStyle,
+  chart: number,
+  drawingNo = "",
+) => {
   const pre = /[A-Za-z0-9)]$/.test(st.prefix) ? `${st.prefix} ` : st.prefix;
   return `${pre}${chartName(drawingNo, chart)}${st.suffix}`;
 };
