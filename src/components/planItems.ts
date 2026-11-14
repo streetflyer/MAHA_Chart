@@ -63,8 +63,13 @@ function pickColour(current: string, apply: (c: string) => void) {
 export async function editPlanItemText(id: string) {
   const { panelId, key } = split(id);
   if (key === "north") {
-    const p = useEditor.getState().template?.panels.find((x) => x.id === panelId);
-    const v = await askText("North arrow text", (p && planStyle(p).northText) ?? "N");
+    const p = useEditor
+      .getState()
+      .template?.panels.find((x) => x.id === panelId);
+    const v = await askText(
+      "North arrow text",
+      (p && planStyle(p).northText) ?? "N",
+    );
     if (v !== null) patchPlan(panelId, () => ({ northText: v }));
     return;
   }
@@ -76,7 +81,9 @@ export async function editPlanItemText(id: string) {
 export function planItemMenu(id: string): MenuItem[] {
   const { panelId, key } = split(id);
   if (key === "north") {
-    const p = useEditor.getState().template?.panels.find((x) => x.id === panelId);
+    const p = useEditor
+      .getState()
+      .template?.panels.find((x) => x.id === panelId);
     const st = p && planStyle(p);
     return [
       { label: "Edit text…", action: () => void editPlanItemText(id) },
@@ -91,11 +98,13 @@ export function planItemMenu(id: string): MenuItem[] {
       {
         label: "Colour",
         submenu: [
-          ...PALETTE.map(([label, c]): MenuItem => ({
-            label,
-            checked: st?.northColor === c,
-            action: () => patchPlan(panelId, () => ({ northColor: c })),
-          })),
+          ...PALETTE.map(
+            ([label, c]): MenuItem => ({
+              label,
+              checked: st?.northColor === c,
+              action: () => patchPlan(panelId, () => ({ northColor: c })),
+            }),
+          ),
           {
             label: "More colours…",
             action: () =>
@@ -135,11 +144,13 @@ export function planItemMenu(id: string): MenuItem[] {
     {
       label: "Colour",
       submenu: [
-        ...PALETTE.map(([label, c]): MenuItem => ({
-          label,
-          checked: colour === c,
-          action: () => patchMatchLabel(id, { color: c }),
-        })),
+        ...PALETTE.map(
+          ([label, c]): MenuItem => ({
+            label,
+            checked: colour === c,
+            action: () => patchMatchLabel(id, { color: c }),
+          }),
+        ),
         {
           label: "More colours…",
           action: () =>

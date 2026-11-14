@@ -31,6 +31,8 @@ import { planStyle } from "./PlanView";
 import { useSurvey } from "../state/surveyData";
 import { useImport } from "./ImportDialog";
 import { editPlanItemText, matchLabelOf } from "./planItems";
+import { eventLabelOf, patchEventLabel } from "./eventLabelEdit";
+import { useEventEdit } from "../state/eventEdit";
 import {
   PanelContent,
   TITLE_CAP,
@@ -63,7 +65,8 @@ export interface ContextTarget {
     | "sheet"
     | "drawing"
     | "cp"
-    | "planitem";
+    | "planitem"
+    | "evlabel";
   id?: string;
   rowId?: string;
 }
@@ -89,6 +92,7 @@ interface ViewBox {
 }
 
 type Drag =
+  | { type: "evlabel"; id: string; start: Pt; dx0: number; dy0: number }
   | { type: "mlabel"; id: string; start: Pt; dx0: number; dy0: number }
   | {
       type: "move";
@@ -335,6 +339,36 @@ export function SheetView({
         return;
       }
     }
+    // Editing event codes: drag a code; anywhere outside the panel leaves edit mode.
+    const ee = useEventEdit.getState();
+    if (ee.active) {
+      const ep = template.panels.find((q) => q.id === ee.panelId);
+      const inside =
+        !!ep &&
+        at.x >= ep.x &&
+        at.x <= ep.x + ep.w &&
+        at.y >= ep.y &&
+        at.y <= ep.y + ep.h;
+      if (inside) {
+        const hit = document
+          .elementsFromPoint(e.clientX, e.clientY)
+          .find((x) => x.closest("[data-evlabel]"));
+        const id = hit?.closest("[data-evlabel]")?.getAttribute("data-evlabel");
+        svgRef.current!.setPointerCapture(e.pointerId);
+        if (id) {
+          const cur = eventLabelOf(id);
+          return setDrag({
+            type: "evlabel",
+            id,
+            start: at,
+            dx0: cur.dx ?? 0,
+            dy0: cur.dy ?? 0,
+          });
+        }
+        return;
+      }
+      ee.exit();
+    }
     // Matchline labels and the north arrow are picked before drawing objects, so they stay editable in edit mode.
     const pit = planItemUnder(e);
     if (pit) {
@@ -352,7 +386,10 @@ export function SheetView({
         });
       }
       store().beginGesture();
-      return setDrag({ type: "north", panelId: pit.getAttribute("data-north")! });
+      return setDrag({
+        type: "north",
+        panelId: pit.getAttribute("data-north")!,
+      });
     }
     // Editing the CP panel: clicks inside it choose and move readings; anywhere else leaves edit mode.
     const ce = useCpEdit.getState();
@@ -779,6 +816,13 @@ export function SheetView({
       if (!drag.moved) setDrag({ ...drag, moved: true });
       return;
     }
+    if (drag.type === "evlabel") {
+      patchEventLabel(drag.id, {
+        dx: Math.round((drag.dx0 + at.x - drag.start.x) * 10) / 10,
+        dy: Math.round((drag.dy0 + at.y - drag.start.y) * 10) / 10,
+      });
+      return;
+    }
     if (drag.type === "mlabel") {
       const id = drag.id;
       const dx = Math.round((drag.dx0 + at.x - drag.start.x) * 10) / 10;
@@ -1089,6 +1133,27 @@ export function SheetView({
       }
       return;
     }
+    // Double-click in an events panel that has data switches to editing its codes.
+    const evPanel = template.panels.find(
+      (q) =>
+        q.type === "events" &&
+        dblAt.x >= q.x &&
+        dblAt.x <= q.x + q.w &&
+        dblAt.y >= q.y &&
+        dblAt.y <= q.y + q.h,
+    );
+    if (
+      evPanel &&
+      useSurvey
+        .getState()
+        .datasets.some((x) => x.kind === "events" && x.visible)
+    ) {
+      if (!useEventEdit.getState().active) {
+        useEventEdit.getState().enter(evPanel.id);
+        store().select({ kind: "panel", id: evPanel.id });
+      }
+      return;
+    }
     // Double-click anywhere without text to edit zooms to fit, like a CAD viewport.
     if (!itemEl) return fit();
     const kind = itemEl.getAttribute("data-kind");
@@ -1171,6 +1236,15 @@ export function SheetView({
     e.preventDefault();
     clearRenameTimer();
     const at = toMm(e.clientX, e.clientY);
+    const evEl = document
+      .elementsFromPoint(e.clientX, e.clientY)
+      .find((x) => x.closest("[data-evlabel]"))
+      ?.closest("[data-evlabel]");
+    if (evEl)
+      return onContextMenu(e.clientX, e.clientY, at, {
+        kind: "evlabel",
+        id: evEl.getAttribute("data-evlabel")!,
+      });
     const planEl = planItemUnder(e);
     if (planEl) {
       const ml = planEl.getAttribute("data-mlabel");

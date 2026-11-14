@@ -2,6 +2,7 @@ import { Cp } from "./CpPanel";
 import { useEditor } from "../state/store";
 import { useProject } from "../state/project";
 import { useVideo } from "../state/video";
+import { useEventEdit } from "../state/eventEdit";
 import { useSmoothTool } from "../state/smoothTool";
 import { kpFinder } from "./CpPanel";
 import { autoVideoText } from "../model/video";
@@ -16,6 +17,8 @@ import {
   type DataFont,
   type Dataset,
   type EventLayout,
+  type EventLabelEdit,
+  eventKey,
   type LabelPos,
 } from "../model/datasets";
 import {
@@ -974,6 +977,7 @@ function EventsPanel({
   const video = useVideo((s) => s.rows);
   const joinHours = useVideo((s) => s.joinHours);
   const sheetIndex = useEditor((s) => s.sheetIndex);
+  const editing = useEventEdit((s) => s.active && s.panelId === p.id);
   const split = useMemo(
     () => sets.map((d) => ({ d, ...splitRanges(d.records, d.links) })),
     [sets],
@@ -1130,6 +1134,9 @@ function EventsPanel({
           font={d.font}
           labels={d.labels}
           layout={d.layout ?? DEFAULT_EVENT_LAYOUT}
+          datasetId={d.id}
+          edits={d.labelEdits}
+          editing={editing}
         />,
       );
     }
@@ -1204,6 +1211,9 @@ function PointTicks({
   font,
   labels,
   layout,
+  datasetId,
+  edits,
+  editing,
 }: {
   list: EventMark[];
   y0: number;
@@ -1213,6 +1223,9 @@ function PointTicks({
   font: DataFont;
   labels: boolean;
   layout: EventLayout;
+  datasetId: string;
+  edits?: Record<string, EventLabelEdit>;
+  editing: boolean;
 }) {
   if (!list.length) return null;
   const len = rh * layout.markLen;
@@ -1220,56 +1233,116 @@ function PointTicks({
   const top =
     layout.markPos === "middle" ? y0 + rh / 2 - len / 2 : y0 + rh - len;
   const bottom = top + len;
-  const cap = Math.min(font.size, rh / 5);
-  const fs = fontSize(cap);
+  const baseCap = Math.min(font.size, rh / 5);
   const rot = layout.labelRotation;
   const upright = Math.abs(Math.sin((rot * Math.PI) / 180)) > 0.7;
+  const canLabel = labels && list.length <= 80;
+  const textW = (code: string, cap: number) =>
+    measureText(code, cap, !!font.bold, font.family);
+
+  // Codes stay in line: labels that would overprint step aside along a common baseline.
+  // If they are still packed, the row's codes shrink (down to 60 %) until they fit.
+  const place = (scale: number) => {
+    const cap = baseCap * scale;
+    const fs = fontSize(cap);
+    let free = -Infinity;
+    let worst = 0;
+    const out = list.map((e) => {
+      const ed = edits?.[eventKey(e.code, e.kp)];
+      const text = ed?.text ?? e.code;
+      const ecap = ed?.size ?? cap;
+      const efs = fontSize(ecap);
+      const room = upright ? efs * 1.15 : textW(text, ecap) + efs * 0.4;
+      const x = toX(e.kp);
+      const manual = ed?.dx !== undefined || ed?.dy !== undefined;
+      const lx = manual ? x : Math.max(x, free);
+      const shift = lx - x;
+      if (!manual) {
+        free = lx + room;
+        worst = Math.max(worst, shift / room);
+      }
+      return { e, ed, text, ecap, efs, room, x, lx, shift, manual };
+    });
+    return { out, worst, fs, cap };
+  };
+  let s = 1;
+  let laid = place(s);
+  while (canLabel && laid.worst > 2 && s > 0.6) {
+    s = Math.max(0.6, s - 0.1);
+    laid = place(s);
+  }
+  const { out } = laid;
+  // A cluster of shifted labels shares one baseline above the ticks, with a zigzag branch to each.
+  const clustered = new Set<number>();
+  out.forEach((l, i) => {
+    if (l.shift > 0.01 && !l.manual) {
+      clustered.add(i);
+      if (i > 0) clustered.add(i - 1);
+    }
+  });
+  const rise = Math.min(Math.max(1.2, rh * 0.18), Math.max(0.6, top - y0 - 4));
   let path = "";
   const texts: ReactElement[] = [];
-  // Where the next label may start. A label that would overprint the one before it
-  // moves aside on a branch from its tick, so close events all keep their codes.
-  let free = -Infinity;
-  let branches = 0;
-  for (const e of list) {
-    const x = toX(e.kp);
+  out.forEach((l, i) => {
+    const { e, ed, text, ecap, efs, x, lx } = l;
     path += `M${x.toFixed(2)} ${bottom.toFixed(2)}V${top.toFixed(2)}`;
-    // Label sparse events with their code; dense ones (field joints) stay as ticks.
-    const room = upright
-      ? fs * 1.15
-      : measureText(e.code, cap, !!font.bold, font.family) + fs * 0.4;
-    if (!labels || list.length > 80) continue;
-    const shift = Math.max(0, free - x);
-    if (shift > room * 3) continue;
-    const lx = x + shift;
-    const ax = upright ? lx + fs * 0.35 : lx;
-    let ay = top - layout.labelGap;
-    if (shift > 0) {
-      // Up from the tick, across to where the label stands, then up to the label.
-      const textLen = upright
-        ? measureText(e.code, cap, !!font.bold, font.family)
-        : fs;
-      const spare = top - y0 - layout.labelGap * 2 - textLen;
-      const rise = Math.max(
-        0.4,
-        Math.min(spare / 2, 1.5 * (1 + (branches++ % 2))),
-      );
-      const knee = top - rise;
-      path += `M${x.toFixed(2)} ${top.toFixed(2)}V${knee.toFixed(2)}H${lx.toFixed(2)}V${(knee - layout.labelGap).toFixed(2)}`;
-      ay = knee - layout.labelGap;
+    if (!canLabel || text === "") return;
+    const key = eventKey(e.code, e.kp);
+    const inCluster = clustered.has(i);
+    const base = (inCluster ? top - rise : top) - layout.labelGap;
+    const fx = lx + (ed?.dx ?? 0);
+    const fy = base + (ed?.dy ?? 0);
+    const moved =
+      Math.abs(fx - x) > 0.01 || fy < base - 0.01 || fy > base + 0.01;
+    if (inCluster || moved) {
+      // Trunk up from the tick, a slanted step across, then up to the code.
+      const gap = top - fy;
+      if (Math.abs(fx - x) < 0.01 || gap <= 0.3)
+        path += `M${x.toFixed(2)} ${top.toFixed(2)}L${fx.toFixed(2)} ${(fy + layout.labelGap).toFixed(2)}`;
+      else {
+        const k1 = top - gap * 0.3;
+        const k2 = top - gap * 0.7;
+        path += `M${x.toFixed(2)} ${top.toFixed(2)}V${k1.toFixed(2)}L${fx.toFixed(2)} ${k2.toFixed(2)}V${(fy + layout.labelGap).toFixed(2)}`;
+      }
     }
+    const ax = upright ? fx + efs * 0.35 : fx;
+    const w = textW(text, ecap);
     texts.push(
-      <text
-        key={texts.length}
-        fontSize={fs}
-        {...fontProps(font)}
-        textAnchor={upright ? "start" : "middle"}
-        transform={`translate(${ax.toFixed(2)} ${ay.toFixed(2)}) rotate(${(-rot).toFixed(1)})`}
-      >
-        {e.code}
-      </text>,
+      <g key={key}>
+        {editing && (
+          <rect
+            x={upright ? fx - efs * 0.45 : fx - w / 2 - 0.3}
+            y={upright ? fy - w - 0.3 : fy - efs}
+            width={upright ? efs * 0.9 : w + 0.6}
+            height={upright ? w + 0.6 : efs * 1.2}
+            fill="#0a84ff"
+            fillOpacity={0.12}
+            stroke="#0a84ff"
+            strokeWidth={0.12}
+            strokeDasharray="0.6 0.4"
+          />
+        )}
+        <text
+          fontSize={efs}
+          {...fontProps(font)}
+          textAnchor={upright ? "start" : "middle"}
+          transform={`translate(${ax.toFixed(2)} ${fy.toFixed(2)}) rotate(${(-rot).toFixed(1)})`}
+          {...(editing
+            ? {
+                "data-evlabel": `${datasetId}|${key}`,
+                style: {
+                  ...fontProps(font).style,
+                  cursor: "move",
+                  pointerEvents: "all" as const,
+                },
+              }
+            : {})}
+        >
+          {text}
+        </text>
+      </g>,
     );
-    free = lx + room;
-  }
+  });
   return (
     <g>
       <path d={path} stroke={color} strokeWidth={0.15} fill="none" />

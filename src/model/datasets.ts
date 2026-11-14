@@ -175,6 +175,19 @@ export interface EventLink {
   lineExtent?: number;
 }
 
+/** What the user changed about one event's code text. */
+export interface EventLabelEdit {
+  text?: string;
+  /** Moved from its tidy place by this much on the sheet, mm. */
+  dx?: number;
+  dy?: number;
+  /** Text height, mm. */
+  size?: number;
+}
+
+export const eventKey = (code: string, kp: number) =>
+  `${code}@${kp.toFixed(3)}`;
+
 /** Where the marks and codes of single events sit in their row. */
 export interface EventLayout {
   /** Tick from the row's foot, or standing in the middle of the row. */
@@ -485,6 +498,8 @@ export type Dataset =
       font: DataFont;
       links: EventLink[];
       layout?: EventLayout;
+      /** Hand edits of single codes, keyed `CODE@kp` (see eventKey). */
+      labelEdits?: Record<string, EventLabelEdit>;
     })
   | (Base & {
       kind: "cp";

@@ -35,6 +35,8 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { ProjectPanel } from "./ProjectPanel";
 import { downloadBlob, loadWorkspace, workspaceBlob } from "../state/workspace";
 import { useSmoothTool } from "../state/smoothTool";
+import { eventLabelMenu } from "./eventLabelEdit";
+import { useEventEdit } from "../state/eventEdit";
 import { planItemMenu } from "./planItems";
 import { SheetView, type ContextTarget } from "./SheetView";
 import { useDrawingEdit } from "../state/drawingEdit";
@@ -181,6 +183,10 @@ export function Editor({ onExit }: { onExit(): void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || s().editing) return;
+      if (e.key === "Escape" && useEventEdit.getState().active) {
+        useEventEdit.getState().exit();
+        return;
+      }
       if (e.key === "Escape" && useSmoothTool.getState().active) {
         useSmoothTool.getState().stop();
         return;
@@ -269,6 +275,14 @@ export function Editor({ onExit }: { onExit(): void }) {
   ) {
     if (target.kind === "cp") {
       setMenu({ x: clientX, y: clientY, items: cpMenu(at) });
+      return;
+    }
+    if (target.kind === "evlabel") {
+      setMenu({
+        x: clientX,
+        y: clientY,
+        items: eventLabelMenu(target.id ?? ""),
+      });
       return;
     }
     if (target.kind === "planitem") {

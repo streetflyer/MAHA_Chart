@@ -291,10 +291,10 @@ function Matchlines({
           {...(own
             ? {
                 "data-mlabel": `${panelId}|${lkey}`,
-                pointerEvents: "all" as const,
                 style: {
                   fill: ov.color ?? st.color,
                   cursor: "move",
+                  pointerEvents: "all" as const,
                 },
               }
             : { style: { fill: st.color } })}
