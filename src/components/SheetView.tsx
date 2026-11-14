@@ -179,6 +179,9 @@ export function SheetView({
     h: template.paper.height + 20,
   });
   const [drag, setDrag] = useState<Drag | null>(null);
+  useEffect(() => {
+    useSmoothTool.getState().setView({ x: view.x, w: view.w });
+  }, [view.x, view.w]);
   const [guides, setGuides] = useState<{ x?: number; y?: number }>({});
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
   const [, forceRender] = useState(0);

@@ -519,7 +519,6 @@ function LongProfile({
   );
   const toolOn = !!tool;
   useEffect(() => {
-    if (!toolOn) return;
     useSmoothTool.getState().setCtx({
       panelId: p.id,
       rect: { x: p.x, y: p.y, w: p.w, h: p.h },

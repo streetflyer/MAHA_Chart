@@ -18,6 +18,9 @@ interface SmoothTool {
   /** Node under the pointer, or null. */
   hover: number | null;
   ctx: SmoothContext | null;
+  /** The part of the sheet on screen now, paper mm (x and width). */
+  view: { x: number; w: number } | null;
+  setView(v: { x: number; w: number }): void;
   /** Earlier TOP values, newest last, per dataset. */
   history: Record<string, (Float64Array | undefined)[]>;
   start(datasetId: string): void;
@@ -37,6 +40,8 @@ export const useSmoothTool = create<SmoothTool>((set, get) => ({
   n: 21,
   hover: null,
   ctx: null,
+  view: null,
+  setView: (view) => set({ view }),
   history: {},
   start: (datasetId) => set({ active: true, datasetId, hover: null }),
   stop: () => set({ active: false, hover: null, ctx: null }),

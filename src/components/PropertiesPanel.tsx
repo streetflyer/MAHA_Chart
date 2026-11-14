@@ -41,7 +41,6 @@ import {
 } from "../model/events";
 import { canWriteBack, smoothedFile } from "../model/writeBack";
 import { useSmoothTool } from "../state/smoothTool";
-import { sheetRange } from "../model/scale";
 import { downloadBlob } from "../state/workspace";
 import { useVideo } from "../state/video";
 import { autoVideoText, productKeys } from "../model/video";
@@ -914,20 +913,24 @@ function VideoTextEditor({
 /** Local smooth of the TOP depth, and writing the smoothed depths back to the source file. */
 function LongSmooth({ d }: { d: Extract<Dataset, { kind: "long" }> }) {
   const tool = useSmoothTool();
-  const template = useEditor((x) => x.template)!;
-  const sheetIndex = useEditor((x) => x.sheetIndex);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const mine = tool.active && tool.datasetId === d.id;
   const edited = !!d.topEdit;
-  const range = (all: boolean): [number, number] => {
-    if (all) return [0, d.kp.length - 1];
-    const r = sheetRange(template, sheetIndex);
+  /** Nodes whose x is on screen now, inside the profile panel. */
+  const inView = (): [number, number] | null => {
+    const { ctx, view } = tool;
+    if (!ctx || !view) return null;
+    const x0 = Math.max(ctx.rect.x, view.x);
+    const x1 = Math.min(ctx.rect.x + ctx.rect.w, view.x + view.w);
+    if (x1 <= x0) return null;
+    const k0 = ctx.kpAt(x0);
+    const k1 = ctx.kpAt(x1);
     let a = 0;
-    while (a < d.kp.length && d.kp[a] < r.start * 1000) a++;
+    while (a < d.kp.length && d.kp[a] < k0) a++;
     let b = d.kp.length - 1;
-    while (b > 0 && d.kp[b] > r.end * 1000) b--;
-    return [a, b];
+    while (b > 0 && d.kp[b] > k1) b--;
+    return b >= a ? [a, b] : null;
   };
   return (
     <div className="long-smooth">
@@ -957,18 +960,19 @@ function LongSmooth({ d }: { d: Extract<Dataset, { kind: "long" }> }) {
         <button
           type="button"
           onClick={() => {
-            const [a, b] = range(false);
-            tool.apply(d.id, a, b);
+            const r = inView();
+            if (!r) return setNote("The profile is not in view.");
+            tool.apply(d.id, r[0], r[1]);
+            setNote(`Smoothed ${r[1] - r[0] + 1} nodes in view.`);
           }}
-          title="Smooth only the part shown on the current chart"
+          title="Smooth only the pipe shown on screen now (zoom in to choose the stretch)"
         >
-          Smooth this chart's part
+          Smooth what is in view
         </button>
         <button
           type="button"
           onClick={() => {
-            const [a, b] = range(true);
-            tool.apply(d.id, a, b);
+            tool.apply(d.id, 0, d.kp.length - 1);
           }}
           title="Smooth the whole line"
         >
