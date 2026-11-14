@@ -271,12 +271,12 @@ export const DEFAULT_CP_LOOK: CpLook = {
   textRotation: 0,
   suffix: " mV",
   textClock: 3,
-  yMode: "fixed",
+  yMode: "value",
   yMin: null,
   yMax: null,
   yStep: 0,
   yLabels: true,
-  yGrid: false,
+  yGrid: true,
   yAbs: true,
 };
 

@@ -28,6 +28,10 @@ export interface EventRow {
   textOnly?: boolean;
   text?: string;
   textAlign?: "start" | "middle" | "end";
+  /** Zebra stripe: a coloured band behind the text along the row. */
+  stripe?: boolean;
+  stripeColor?: string;
+  stripeOpacity?: number;
 }
 
 export interface Panel {
@@ -111,13 +115,28 @@ export interface PlanStyle {
   /** North arrow height in mm. */
   northSize: number;
   northColor: string;
+  /** Replaces the "N" under the north arrow. */
+  northText?: string;
   /** Matchlines marking where neighbouring charts begin and end (unset = off). */
   match?: Partial<MatchlineStyle>;
 }
 
 /** Matchlines of the plan view, like AutoChart's Create Matchlines. */
+export interface MatchLabel {
+  /** Replaces the generated "Matchline to ..." wording. */
+  text?: string;
+  /** Moved from its place by this much on the sheet, mm. */
+  dx?: number;
+  dy?: number;
+  size?: number;
+  color?: string;
+  hidden?: boolean;
+}
+
 export interface MatchlineStyle {
   on: boolean;
+  /** Edits of single labels, keyed `chartNumber-neighbourNumber`. */
+  labels?: Record<string, MatchLabel>;
   /** 'overlap': where the neighbouring charts start and end inside this one. 'profile': this chart's own start and end KP. */
   mode: "overlap" | "profile";
   prefix: string;

@@ -30,6 +30,7 @@ import {
 import { planStyle } from "./PlanView";
 import { useSurvey } from "../state/surveyData";
 import { useImport } from "./ImportDialog";
+import { editPlanItemText, matchLabelOf } from "./planItems";
 import {
   PanelContent,
   TITLE_CAP,
@@ -53,7 +54,15 @@ import {
 const clamp01 = (v: number) => Math.min(0.98, Math.max(0.02, v));
 
 export interface ContextTarget {
-  kind: "panel" | "text" | "image" | "row" | "sheet" | "drawing" | "cp";
+  kind:
+    | "panel"
+    | "text"
+    | "image"
+    | "row"
+    | "sheet"
+    | "drawing"
+    | "cp"
+    | "planitem";
   id?: string;
   rowId?: string;
 }
@@ -79,6 +88,7 @@ interface ViewBox {
 }
 
 type Drag =
+  | { type: "mlabel"; id: string; start: Pt; dx0: number; dy0: number }
   | {
       type: "move";
       start: Pt;
@@ -362,6 +372,20 @@ export function SheetView({
     const frameEl = el.closest("[data-frame]");
     svgRef.current!.setPointerCapture(e.pointerId);
 
+    const mlEl = el.closest("[data-mlabel]");
+    if (mlEl) {
+      const id = mlEl.getAttribute("data-mlabel")!;
+      const cur = matchLabelOf(id);
+      store().beginGesture();
+      setDrag({
+        type: "mlabel",
+        id,
+        start: at,
+        dx0: cur.dx ?? 0,
+        dy0: cur.dy ?? 0,
+      });
+      return;
+    }
     const northEl = el.closest("[data-north]");
     if (northEl) {
       store().beginGesture();
@@ -692,6 +716,35 @@ export function SheetView({
       if (!drag.moved) setDrag({ ...drag, moved: true });
       return;
     }
+    if (drag.type === "mlabel") {
+      const id = drag.id;
+      const dx = Math.round((drag.dx0 + at.x - drag.start.x) * 10) / 10;
+      const dy = Math.round((drag.dy0 + at.y - drag.start.y) * 10) / 10;
+      store().updateGesture((t) => {
+        const [panelId, key] = id.split("|");
+        return {
+          ...t,
+          panels: t.panels.map((p) => {
+            if (p.id !== panelId) return p;
+            const st = planStyle(p);
+            return {
+              ...p,
+              plan: {
+                ...st,
+                match: {
+                  ...st.match,
+                  labels: {
+                    ...st.match?.labels,
+                    [key]: { ...st.match?.labels?.[key], dx, dy },
+                  },
+                },
+              },
+            };
+          }),
+        };
+      });
+      return;
+    }
     if (drag.type === "north") {
       store().updateGesture((t) => ({
         ...t,
@@ -931,6 +984,10 @@ export function SheetView({
         .find((x) => !x.closest("[data-edge],[data-img-handle]")) ??
       (e.target as Element);
     const itemEl = el.closest("[data-item]");
+    const mlDbl = el.closest("[data-mlabel]");
+    if (mlDbl) return void editPlanItemText(mlDbl.getAttribute("data-mlabel")!);
+    const nDbl = el.closest("[data-north]");
+    if (nDbl) return void editPlanItemText(`${nDbl.getAttribute("data-north")}|north`);
     // Double-click in a plan view that has a drawing switches to editing the drawing's objects.
     const pp = planPanel(template);
     const dblAt = toMm(e.clientX, e.clientY);
@@ -1048,6 +1105,12 @@ export function SheetView({
     e.preventDefault();
     clearRenameTimer();
     const at = toMm(e.clientX, e.clientY);
+    const planEl = (e.target as Element).closest("[data-mlabel],[data-north]");
+    if (planEl) {
+      const ml = planEl.getAttribute("data-mlabel");
+      const id = ml ?? `${planEl.getAttribute("data-north")}|north`;
+      return onContextMenu(e.clientX, e.clientY, at, { kind: "planitem", id });
+    }
     const cs = useCpEdit.getState();
     if (
       cs.active &&

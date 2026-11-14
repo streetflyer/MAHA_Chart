@@ -193,7 +193,6 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
     onNotice(
       `${files.length} file${files.length > 1 ? "s" : ""} ${written ? "copied into" : "added to"} ${node.name || s.name}.`,
     );
-    if (s.active === path) useImport.getState().request(files);
   }
 
   /** Take a file out of a folder's list; optionally delete it from the disk folder too. */

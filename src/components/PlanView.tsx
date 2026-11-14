@@ -168,6 +168,7 @@ export function PlanView({
         )}
         {route && st.match?.on && (
           <Matchlines
+            panelId={p.id}
             template={template}
             sheetIndex={sheetIndex}
             project={project}
@@ -214,12 +215,14 @@ export function PlanView({
 
 /** Lines across the plan view, square to the route, where neighbouring charts meet this one. */
 function Matchlines({
+  panelId,
   template,
   sheetIndex,
   project,
   rect,
   st,
 }: {
+  panelId: string;
   template: ChartTemplate;
   sheetIndex: number;
   project: (e: number, n: number) => Pt;
@@ -235,7 +238,6 @@ function Matchlines({
   });
   const out: ReactNode[] = [];
   const cap = st.textSize;
-  const fs = fontSize(cap);
   matchSpecs(ranges, sheetIndex, st.mode).forEach((m, k) => {
     const c = project(...pointAt(route, m.kp - k0));
     const a = project(...pointAt(route, m.kp - k0 + 1));
@@ -261,20 +263,35 @@ function Matchlines({
     // Text runs up the line (from B towards A); its glyph-up direction is (sinθ, -cosθ).
     const ang = Math.atan2(-dy, -dx);
     const up = [Math.sin(ang), -Math.cos(ang)];
-    const label = (text: string, side: number, key: string) => {
+    const lkey = `${sheetIndex + 1}-${m.chart}`;
+    const ov = st.labels?.[lkey] ?? {};
+    const label = (text: string, side: number, key: string, own = false) => {
+      const lcap = own ? (ov.size ?? cap) : cap;
       const s = [tx * side, ty * side];
       const gap = 1;
-      const off = up[0] * s[0] + up[1] * s[1] > 0 ? gap : gap + cap;
-      const inset = 2 + cap;
-      const x = A[0] + dx * inset + s[0] * off;
-      const y = A[1] + dy * inset + s[1] * off;
+      const off = up[0] * s[0] + up[1] * s[1] > 0 ? gap : gap + lcap;
+      // The text ends a little short of the upper end of the line, so it always sits
+      // inside the plan view (the line is clipped to it) instead of running off the top.
+      const inset = 2;
+      const x = A[0] + dx * inset + s[0] * off + (own ? (ov.dx ?? 0) : 0);
+      const y = A[1] + dy * inset + s[1] * off + (own ? (ov.dy ?? 0) : 0);
       return (
         <text
           key={key}
-          fontSize={fs}
+          fontSize={fontSize(lcap)}
           fontFamily={`${st.family}, Arial, sans-serif`}
-          fill={st.color}
+          textAnchor="end"
           transform={`translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${((ang * 180) / Math.PI).toFixed(2)})`}
+          {...(own
+            ? {
+                "data-mlabel": `${panelId}|${lkey}`,
+                pointerEvents: "all" as const,
+                style: {
+                  fill: ov.color ?? st.color,
+                  cursor: "move",
+                },
+              }
+            : { style: { fill: st.color } })}
         >
           {text}
         </text>
@@ -291,11 +308,14 @@ function Matchlines({
           strokeWidth={st.width}
           strokeDasharray={st.dash.trim() || undefined}
         />
-        {label(
-          matchLabel(st, m.chart, template.fields.DRAWING_NO ?? ""),
-          m.side,
-          "l",
-        )}
+        {!ov.hidden &&
+          label(
+            ov.text ??
+              matchLabel(st, m.chart, template.fields.DRAWING_NO ?? ""),
+            m.side,
+            "l",
+            true,
+          )}
         {st.extra.trim() && label(st.extra, -m.side, "x")}
       </g>,
     );
@@ -439,7 +459,7 @@ function PlanNorth({
         fill={st.northColor}
         transform={`rotate(${-angle} 0 ${s * 0.32})`}
       >
-        N
+        {st.northText ?? "N"}
       </text>
       <title>Drag to move the north arrow</title>
     </g>

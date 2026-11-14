@@ -41,6 +41,7 @@ import {
 import { useImport } from "./ImportDialog";
 import { askCodes } from "./Dialog";
 import {
+  DraftNumber,
   FontControls,
   LinksEditor,
   StyleControls,
@@ -680,6 +681,44 @@ function RowsEditor({ p }: { p: Panel }) {
                     <option value="middle">Centre</option>
                     <option value="end">Right</option>
                   </select>
+                )}
+                {r.textOnly && (
+                  <div className="row-stripe">
+                    <label
+                      className="check"
+                      title="Zebra stripe: a band behind the text along the row"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={!!r.stripe}
+                        onChange={(e) =>
+                          patch(r.id, { stripe: e.target.checked })
+                        }
+                      />
+                      Stripe
+                    </label>
+                    {r.stripe && (
+                      <>
+                        <ColourBox
+                          value={r.stripeColor ?? "#d9d9d9"}
+                          onChange={(c) => patch(r.id, { stripeColor: c })}
+                        />
+                        <DraftNumber
+                          step={5}
+                          min={0}
+                          className="small-num"
+                          title="Opacity, %"
+                          value={Math.round((r.stripeOpacity ?? 1) * 100)}
+                          onCommit={(v) =>
+                            patch(r.id, {
+                              stripeOpacity: Math.min(100, v) / 100,
+                            })
+                          }
+                        />
+                        <span className="muted">% opacity</span>
+                      </>
+                    )}
+                  </div>
                 )}
                 {!r.textOnly && (
                   <button type="button" onClick={() => addCodes(r)}>
@@ -1437,7 +1476,7 @@ function MatchlineControls({
             <Field
               label="Width"
               type="number"
-              step={0.05}
+              step={1}
               suffix="mm"
               value={st.width}
               onCommit={(v) => num(v) > 0 && onChange({ width: num(v) })}
@@ -1864,11 +1903,10 @@ function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
                       })
                     }
                   />
-                  <input
-                    type="number"
+                  <DraftNumber
+                    step={1}
+                    min={0}
                     className="small-num"
-                    min={0.01}
-                    step={0.05}
                     title="Line width (mm)"
                     placeholder={String(
                       i === d.top || i === d.bop
@@ -1876,14 +1914,13 @@ function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
                         : (d.opts?.lineWidth ?? 0.2),
                     )}
                     value={se.width ?? ""}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
+                    onCommit={(v) =>
                       sv.updateDataset(d.id, {
                         series: d.series.map((x, j) =>
                           j === i ? { ...x, width: v > 0 ? v : undefined } : x,
                         ),
-                      });
-                    }}
+                      })
+                    }
                   />
                   <span className="muted">mm</span>
                   <span className="series-name">{se.name}</span>

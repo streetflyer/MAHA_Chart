@@ -33,6 +33,7 @@ import { ThemeButton } from "./ThemeButton";
 import { ImportDialog, useImport } from "./ImportDialog";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { ProjectPanel } from "./ProjectPanel";
+import { planItemMenu } from "./planItems";
 import { SheetView, type ContextTarget } from "./SheetView";
 import { useDrawingEdit } from "../state/drawingEdit";
 import { drawingKey } from "./drawingEditing";
@@ -218,6 +219,10 @@ export function Editor({ onExit }: { onExit(): void }) {
   ) {
     if (target.kind === "cp") {
       setMenu({ x: clientX, y: clientY, items: cpMenu(at) });
+      return;
+    }
+    if (target.kind === "planitem") {
+      setMenu({ x: clientX, y: clientY, items: planItemMenu(target.id ?? "") });
       return;
     }
     if (target.kind === "drawing") {

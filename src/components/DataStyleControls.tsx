@@ -140,6 +140,60 @@ const Colour = ({
   </label>
 );
 
+/** A number box that keeps what is typed until Enter or blur, so editing digits never fights the value. */
+export function DraftNumber({
+  value,
+  step,
+  min,
+  onCommit,
+  placeholder,
+  disabled,
+  className,
+  title,
+}: {
+  className?: string;
+  title?: string;
+  value: number | "";
+  step: number;
+  min?: number;
+  onCommit(v: number): void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown =
+    draft ?? (value === "" ? "" : String(Math.round(value * 1000) / 1000));
+  const commit = (txt: string) => {
+    const v = parseFloat(txt.replace(",", "."));
+    if (Number.isFinite(v) && (min === undefined || v >= min)) onCommit(v);
+  };
+  return (
+    <input
+      type="number"
+      className={className}
+      title={title}
+      step={step}
+      min={min}
+      disabled={disabled}
+      placeholder={placeholder}
+      value={shown}
+      onChange={(e) => {
+        setDraft(e.target.value);
+        const v = parseFloat(e.target.value);
+        if (Number.isFinite(v) && v > 0) commit(e.target.value);
+      }}
+      onBlur={() => {
+        if (draft !== null) commit(draft);
+        setDraft(null);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key === "Escape") setDraft(null);
+      }}
+    />
+  );
+}
+
 const Num = ({
   label,
   value,
@@ -156,14 +210,11 @@ const Num = ({
   <label className="field">
     <span>{label}</span>
     <span className="with-suffix">
-      <input
-        type="number"
+      <DraftNumber
         min={0}
         step={step}
         value={value}
-        onChange={(e) =>
-          Number(e.target.value) > 0 && onChange(Number(e.target.value))
-        }
+        onCommit={(v) => v > 0 && onChange(v)}
       />
       <span className="suffix">{suffix}</span>
     </span>
@@ -485,14 +536,14 @@ function LongSetup({
         <Num
           label="Seabed line width"
           value={o.lineWidth}
-          step={0.05}
+          step={1}
           suffix="mm"
           onChange={(lineWidth) => set({ lineWidth })}
         />
         <Num
           label="Pipe outline width"
           value={o.pipeWidth}
-          step={0.05}
+          step={1}
           suffix="mm"
           onChange={(pipeWidth) => set({ pipeWidth })}
         />
@@ -584,7 +635,7 @@ export function StyleControls({
           <Num
             label="Line width"
             value={s.width!}
-            step={0.05}
+            step={1}
             suffix="mm"
             onChange={(width) => onChange({ width })}
           />
@@ -709,16 +760,11 @@ function Any({
     <label className="field">
       <span>{label}</span>
       <span className="with-suffix">
-        <input
-          type="number"
+        <DraftNumber
           step={step}
           min={min}
-          max={max}
           value={Number.isFinite(value) ? value : 0}
-          onChange={(e) => {
-            const v = Number(e.target.value);
-            if (e.target.value !== "" && Number.isFinite(v)) onChange(v);
-          }}
+          onCommit={(v) => (max === undefined || v <= max) && onChange(v)}
         />
         <span className="suffix">{suffix}</span>
       </span>
@@ -814,7 +860,7 @@ function CpLookControls({
           onChange={(e) => set({ yMode: e.target.value as CpLook["yMode"] })}
         >
           <option value="fixed">At one height in the panel</option>
-          <option value="value">At the height of their value (mV axis)</option>
+          <option value="value">At the height of their value (mV axis with grid)</option>
         </select>
       </label>
       {look.yMode === "fixed" && (

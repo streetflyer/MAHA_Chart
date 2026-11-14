@@ -440,6 +440,23 @@ export function depthSense(d: Extract<Dataset, { kind: "long" }>): 1 | -1 {
   return neg > pos ? -1 : 1;
 }
 
+/** The series with BOP replaced by TOP plus the median TOP-to-BOP gap (smooth, as a pipe is). */
+function smoothBop(d: Extract<Dataset, { kind: "long" }>): LongSeries[] {
+  if (d.top === undefined || d.bop === undefined) return d.series;
+  const top = d.series[d.top].values;
+  const bop = d.series[d.bop];
+  const gaps: number[] = [];
+  for (let i = 0; i < top.length; i++) {
+    const g = bop.values[i] - top[i];
+    if (Number.isFinite(g)) gaps.push(g);
+  }
+  if (!gaps.length) return d.series;
+  gaps.sort((x, y) => x - y);
+  const gap = gaps[gaps.length >> 1];
+  const values = Float64Array.from(top, (v) => v + gap);
+  return d.series.map((s, i) => (i === d.bop ? { ...s, values } : s));
+}
+
 /**
  * Longitudinal profile after AutoChart's Create Profile: values pointing down or up,
  * placed upper / middle / lower (or from a forced top), the depth grid and hatching.
@@ -463,15 +480,18 @@ function LongProfile({
   const o = { ...DEFAULT_LONG_OPTS, ...d.opts };
   const [a, b] = indexRange(d.kp, span);
   const sgn = depthSense(d);
-  const top = d.top !== undefined ? d.series[d.top] : undefined;
-  const bop = d.bop !== undefined ? d.series[d.bop] : undefined;
+  // BOP is TOP less the pipe diameter, so it is drawn as the TOP line moved by the
+  // median gap: the survey's rounded BOP values would otherwise show as steps.
+  const series = useMemo(() => smoothBop(d), [d.series, d.top, d.bop]);
+  const top = d.top !== undefined ? series[d.top] : undefined;
+  const bop = d.bop !== undefined ? series[d.bop] : undefined;
   const ref = (i: number) => (o.normalise && top ? top.values[i] : 0);
   const val = (vals: Float64Array, i: number) => vals[i] - ref(i);
   // u runs down the page: depth, or minus the level.
   const uRange = (
     from: number,
     to: number,
-    which: LongSeries[] = d.series,
+    which: LongSeries[] = series,
   ): [number, number] => {
     let lo = Infinity;
     let hi = -Infinity;
@@ -524,7 +544,7 @@ function LongProfile({
     if (o.hatchPipe && top && bop)
       band = line(top.values) + line(bop.values, -1).replace(/^M/, "L") + "Z";
     const under = o.hatchBelow
-      ? d.series.find((s) => s.name === o.hatchBelow)
+      ? series.find((s) => s.name === o.hatchBelow)
       : undefined;
     let below = "";
     if (under) {
@@ -580,7 +600,7 @@ function LongProfile({
           }}
         />
         {band && <path d={band} fill={d.fill} stroke="none" />}
-        {d.series.map((s, j) => (
+        {series.map((s, j) => (
           <path
             key={j}
             d={line(s.values)}
@@ -611,7 +631,7 @@ function LongProfile({
   const W = p.h / k;
   const step = Math.max(0.01, o.cutStep);
   // The pipe decides where to cut; noisy seabed lines are simply clipped.
-  const decide = top && bop ? [top, bop] : d.series;
+  const decide = top && bop ? [top, bop] : series;
   const fits = (i: number, u0: number) => {
     for (const s of decide) {
       const v = val(s.values, i);
@@ -874,6 +894,18 @@ function EventsPanel({
     if (r.textOnly) {
       const font = split[0]?.d.font ?? DEFAULT_FONT;
       const text = r.text ?? "";
+      if (r.stripe)
+        out.push(
+          <rect
+            key={`z${r.id}`}
+            x={x0 + 1}
+            y={y0 + 1}
+            width={Math.max(0, x1 - x0 - 2)}
+            height={Math.max(0, rh - 2)}
+            style={{ fill: r.stripeColor ?? "#d9d9d9" }}
+            fillOpacity={r.stripeOpacity ?? 1}
+          />,
+        );
       if (!text.trim()) return;
       const w = x1 - x0 - 4;
       let cap = Math.min(font.size, rh * 0.6);
