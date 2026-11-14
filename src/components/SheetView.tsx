@@ -293,6 +293,15 @@ export function SheetView({
     }
   }
 
+  /** The matchline label or north arrow under the pointer, even with the edit overlay on top of it. */
+  function planItemUnder(e: { clientX: number; clientY: number }) {
+    for (const x of document.elementsFromPoint(e.clientX, e.clientY)) {
+      const hit = x.closest("[data-mlabel],[data-north]");
+      if (hit) return hit;
+    }
+    return null;
+  }
+
   function onPointerDown(e: React.PointerEvent) {
     if (editing) return;
     const at = toMm(e.clientX, e.clientY);
@@ -313,6 +322,25 @@ export function SheetView({
       return;
     }
     if (e.button !== 0) return;
+    // Matchline labels and the north arrow are picked before drawing objects, so they stay editable in edit mode.
+    const pit = planItemUnder(e);
+    if (pit) {
+      svgRef.current!.setPointerCapture(e.pointerId);
+      const ml = pit.getAttribute("data-mlabel");
+      if (ml) {
+        const cur = matchLabelOf(ml);
+        store().beginGesture();
+        return setDrag({
+          type: "mlabel",
+          id: ml,
+          start: at,
+          dx0: cur.dx ?? 0,
+          dy0: cur.dy ?? 0,
+        });
+      }
+      store().beginGesture();
+      return setDrag({ type: "north", panelId: pit.getAttribute("data-north")! });
+    }
     // Editing the CP panel: clicks inside it choose and move readings; anywhere else leaves edit mode.
     const ce = useCpEdit.getState();
     if (ce.active) {
@@ -984,10 +1012,13 @@ export function SheetView({
         .find((x) => !x.closest("[data-edge],[data-img-handle]")) ??
       (e.target as Element);
     const itemEl = el.closest("[data-item]");
-    const mlDbl = el.closest("[data-mlabel]");
-    if (mlDbl) return void editPlanItemText(mlDbl.getAttribute("data-mlabel")!);
-    const nDbl = el.closest("[data-north]");
-    if (nDbl) return void editPlanItemText(`${nDbl.getAttribute("data-north")}|north`);
+    const pDbl = planItemUnder(e);
+    if (pDbl) {
+      const ml = pDbl.getAttribute("data-mlabel");
+      return void editPlanItemText(
+        ml ?? `${pDbl.getAttribute("data-north")}|north`,
+      );
+    }
     // Double-click in a plan view that has a drawing switches to editing the drawing's objects.
     const pp = planPanel(template);
     const dblAt = toMm(e.clientX, e.clientY);
@@ -1105,7 +1136,7 @@ export function SheetView({
     e.preventDefault();
     clearRenameTimer();
     const at = toMm(e.clientX, e.clientY);
-    const planEl = (e.target as Element).closest("[data-mlabel],[data-north]");
+    const planEl = planItemUnder(e);
     if (planEl) {
       const ml = planEl.getAttribute("data-mlabel");
       const id = ml ?? `${planEl.getAttribute("data-north")}|north`;

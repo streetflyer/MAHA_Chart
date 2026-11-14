@@ -52,14 +52,22 @@ export function matchSpecs(
   return out;
 }
 
-/** Drawing number of another chart: the sheet number after the last dot is replaced (…CH-002.001 → …CH-002.002). */
+/**
+ * Drawing number of another chart. The sheet number after the last dot is replaced
+ * (…CH-002.001 → …CH-002.002); without a dot, the last number is (…UMB1-CH-01 → …UMB1-CH-02).
+ */
 export function chartName(drawingNo: string, n: number): string {
   const no = drawingNo.trim();
   if (!no) return `Chart ${n}`;
-  const m = /^(.*\.)(\d+)$/.exec(no);
-  if (m) return m[1] + String(n).padStart(m[2].length, "0");
+  const dot = /^(.*\.)(\d+)$/.exec(no);
+  if (dot) return dot[1] + String(n).padStart(dot[2].length, "0");
+  const tail = /^(.*?)(\d+)(\D*)$/.exec(no);
+  if (tail) return tail[1] + String(n).padStart(tail[2].length, "0") + tail[3];
   return `${no}.${String(n).padStart(3, "0")}`;
 }
 
-export const matchLabel = (st: MatchlineStyle, chart: number, drawingNo = "") =>
-  `${st.prefix}${chartName(drawingNo, chart)}${st.suffix}`;
+/** "Matchline to " + the other chart's drawing number; a prefix typed without its space still reads right. */
+export const matchLabel = (st: MatchlineStyle, chart: number, drawingNo = "") => {
+  const pre = /[A-Za-z0-9)]$/.test(st.prefix) ? `${st.prefix} ` : st.prefix;
+  return `${pre}${chartName(drawingNo, chart)}${st.suffix}`;
+};

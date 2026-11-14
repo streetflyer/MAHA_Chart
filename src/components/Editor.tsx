@@ -33,6 +33,7 @@ import { ThemeButton } from "./ThemeButton";
 import { ImportDialog, useImport } from "./ImportDialog";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { ProjectPanel } from "./ProjectPanel";
+import { downloadBlob, loadWorkspace, workspaceBlob } from "../state/workspace";
 import { planItemMenu } from "./planItems";
 import { SheetView, type ContextTarget } from "./SheetView";
 import { useDrawingEdit } from "../state/drawingEdit";
@@ -135,6 +136,39 @@ export function Editor({ onExit }: { onExit(): void }) {
     [s],
   );
 
+  const projectInput = useRef<HTMLInputElement>(null);
+  async function saveProject() {
+    try {
+      const blob = await workspaceBlob();
+      const t = s().template!;
+      downloadBlob(blob, `${t.name.replace(/[^\w.-]+/g, "_")}.mahachart`);
+      s().markSaved(t);
+      flash(`Saved the whole project (${(blob.size / 1048576).toFixed(1)} MB)`);
+    } catch (e) {
+      flash(`Could not save: ${(e as Error).message}`);
+    }
+  }
+  async function loadProject(f: File | undefined) {
+    if (!f) return;
+    if (
+      s().dirty &&
+      !(await askConfirm(
+        "Load a project file?",
+        "Everything now open is replaced by the file's contents.",
+        "Load",
+        true,
+      ))
+    )
+      return;
+    try {
+      const name = await loadWorkspace(f);
+      setFitSignal((n) => n + 1);
+      flash(`Loaded the project "${name}"`);
+    } catch (e) {
+      flash((e as Error).message);
+    }
+  }
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || s().editing) return;
@@ -156,7 +190,11 @@ export function Editor({ onExit }: { onExit(): void }) {
       else if (mod && k === "x") s().cutSelection();
       else if (mod && k === "v") s().paste();
       else if (mod && k === "d") s().duplicateSelection();
-      else if (mod && k === "s") save(e.shiftKey);
+      else if (mod && k === "s") {
+        e.preventDefault();
+        if (e.shiftKey) void save(true);
+        else void saveProject();
+      }
       else if (mod && k === "a") {
         const t = s().template!;
         s().select([
@@ -623,20 +661,29 @@ export function Editor({ onExit }: { onExit(): void }) {
           {dirty ? " •" : ""}
         </span>
         <div className="group">
-          <button onClick={() => save(false)} title="Save template (Ctrl+S)">
+          <button
+            onClick={() => void saveProject()}
+            title="Save everything to a project file: paper, scale, overlap, every panel setting, imported data, project folders and their files, import settings (Ctrl+S)"
+          >
             Save
           </button>
           <button
-            onClick={() => save(true)}
-            title="Save as a new template (Ctrl+Shift+S)"
+            onClick={() => projectInput.current?.click()}
+            title="Load a project file saved with Save: brings back all of it"
           >
-            Save as…
+            Load
+          </button>
+          <button
+            onClick={() => void save(true)}
+            title="Save only the layout as a template (Ctrl+Shift+S)"
+          >
+            Save template…
           </button>
           <button
             onClick={() => setShowLoad(true)}
             title="Open a saved or built-in template"
           >
-            Load…
+            Templates…
           </button>
           <button
             onClick={reset}
@@ -787,6 +834,16 @@ export function Editor({ onExit }: { onExit(): void }) {
           · F2 rename
         </span>
       </footer>
+      <input
+        ref={projectInput}
+        type="file"
+        accept=".mahachart"
+        hidden
+        onChange={(e) => {
+          void loadProject(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
       <input
         ref={imageInput}
         type="file"

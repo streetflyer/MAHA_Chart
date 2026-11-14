@@ -5,6 +5,7 @@ import {
   DEFAULT_EVENT_LAYOUT,
   DEFAULT_FONT,
   DEFAULT_LONG_OPTS,
+  GRID_DASHES,
   type CpLook,
   type EventLayout,
   type LongOpts,
@@ -140,6 +141,73 @@ const Colour = ({
   </label>
 );
 
+/** Show/hide plus colour, width and dash style of grid lines. */
+function GridLook({
+  show,
+  color,
+  width,
+  dash,
+  label,
+  onChange,
+}: {
+  show: boolean;
+  color: string;
+  width: number;
+  dash: string;
+  label: string;
+  onChange(p: {
+    show?: boolean;
+    color?: string;
+    width?: number;
+    dash?: string;
+  }): void;
+}) {
+  return (
+    <>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={show}
+          onChange={(e) => onChange({ show: e.target.checked })}
+        />
+        {label}
+      </label>
+      {show && (
+        <div className="style-row">
+          <Colour
+            label="Grid colour"
+            value={color}
+            onChange={(c) => onChange({ color: c })}
+          />
+          <Num
+            label="Grid line width"
+            value={width}
+            step={0.05}
+            suffix="mm"
+            onChange={(v) => onChange({ width: v })}
+          />
+          <label className="field">
+            <span>Grid line style</span>
+            <select
+              value={dash}
+              onChange={(e) => onChange({ dash: e.target.value })}
+            >
+              {!GRID_DASHES.some(([, d]) => d === dash) && (
+                <option value={dash}>Custom</option>
+              )}
+              {GRID_DASHES.map(([n, d]) => (
+                <option key={n} value={d}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** A number box that keeps what is typed until Enter or blur, so editing digits never fights the value. */
 export function DraftNumber({
   value,
@@ -180,7 +248,7 @@ export function DraftNumber({
       onChange={(e) => {
         setDraft(e.target.value);
         const v = parseFloat(e.target.value);
-        if (Number.isFinite(v) && v > 0) commit(e.target.value);
+        if (Number.isFinite(v) && v >= Math.max(0, min ?? 1e-9)) commit(e.target.value);
       }}
       onBlur={() => {
         if (draft !== null) commit(draft);
@@ -486,6 +554,21 @@ function LongSetup({
         Normalise profile on top of pipe (TOP is the zero line; seabed drawn as
         its offset from the pipe)
       </label>
+      <GridLook
+        label="Show the horizontal grid lines"
+        show={o.gridShow}
+        color={o.gridColor}
+        width={o.gridWidth}
+        dash={o.gridDash}
+        onChange={(g) =>
+          set({
+            ...(g.show !== undefined && { gridShow: g.show }),
+            ...(g.color !== undefined && { gridColor: g.color }),
+            ...(g.width !== undefined && { gridWidth: g.width }),
+            ...(g.dash !== undefined && { gridDash: g.dash }),
+          })
+        }
+      />
       <div className="style-row">
         {num(
           "Grid line every",
@@ -905,11 +988,26 @@ function CpLookControls({
           <label className="check">
             <input
               type="checkbox"
-              checked={look.yGrid}
-              onChange={(e) => set({ yGrid: e.target.checked })}
+              checked={look.showAll}
+              onChange={(e) => set({ showAll: e.target.checked })}
             />
-            Grid lines across the panel
+            Print the value of every reading, even when they overlap
           </label>
+          <GridLook
+            label="Horizontal grid lines across the panel"
+            show={look.yGrid}
+            color={look.gridColor}
+            width={look.gridWidth}
+            dash={look.gridDash}
+            onChange={(g) =>
+              set({
+                ...(g.show !== undefined && { yGrid: g.show }),
+                ...(g.color !== undefined && { gridColor: g.color }),
+                ...(g.width !== undefined && { gridWidth: g.width }),
+                ...(g.dash !== undefined && { gridDash: g.dash }),
+              })
+            }
+          />
         </>
       )}
       <Any

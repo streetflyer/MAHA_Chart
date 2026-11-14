@@ -1,4 +1,8 @@
 import { Cp } from "./CpPanel";
+import { useEditor } from "../state/store";
+import { useProject } from "../state/project";
+import { useVideo } from "../state/video";
+import { productIn, productKeys, videoRange, videoText } from "../model/video";
 import { useMemo, type ReactElement } from "react";
 import { nearestProfile } from "../model/crossProfile";
 import {
@@ -15,6 +19,7 @@ import {
 import {
   codeMatcher,
   isKpRow,
+  isVideoRow,
   rowCodes,
   splitRanges,
   type EventMark,
@@ -325,6 +330,7 @@ interface AxisOpts {
   tickLen?: number;
   suffix?: string;
   side?: "left" | "right" | "both";
+  grid?: { show: boolean; color: string; width: number; dash: string };
 }
 
 const onStep = (v: number, step: number) =>
@@ -371,9 +377,18 @@ function DepthAxis({
     const text = `${Number(v.toFixed(2))}${unit}`;
     out.push(
       <g key={v}>
-        {isLine && (
+        {isLine && (o.grid?.show ?? true) && (
           <line
             className="depth-tick"
+            style={
+              o.grid
+                ? {
+                    stroke: o.grid.color,
+                    strokeWidth: o.grid.width,
+                    strokeDasharray: o.grid.dash || "none",
+                  }
+                : undefined
+            }
             x1={p.x}
             y1={yy}
             x2={p.x + p.w}
@@ -597,6 +612,12 @@ function LongProfile({
             suffix: o.suffix,
             side: o.axisSide,
             omitEnds: o.omitEndLabels,
+            grid: {
+              show: o.gridShow,
+              color: o.gridColor,
+              width: o.gridWidth,
+              dash: o.gridDash,
+            },
           }}
         />
         {band && <path d={band} fill={d.fill} stroke="none" />}
@@ -855,6 +876,9 @@ function EventsPanel({
   routeEnd: number;
 }) {
   const rows = p.rows ?? [];
+  const drawingNo = useEditor((s) => s.template?.fields.DRAWING_NO ?? "");
+  const folder = useProject((s) => s.active ?? "");
+  const video = useVideo((s) => s.rows);
   const split = useMemo(
     () => sets.map((d) => ({ d, ...splitRanges(d.records, d.links) })),
     [sets],
@@ -863,8 +887,25 @@ function EventsPanel({
   const rh = p.h / rows.length;
   const x1 = p.x + p.w;
   const out: ReactElement[] = [];
-  rows.forEach((r, ri) => {
+  rows.forEach((row, ri) => {
     const y0 = p.y + ri * rh;
+    // A video row prints "start to end" of its product, as a stripe along the row.
+    let r = row;
+    if (isVideoRow(row) && !isKpRow(row)) {
+      const key =
+        row.videoProduct ||
+        productIn(video, drawingNo) ||
+        productIn(video, folder) ||
+        (productKeys(video).length === 1 ? productKeys(video)[0] : null);
+      const range = key ? videoRange(video, key) : null;
+      r = {
+        ...row,
+        textOnly: true,
+        text: range ? videoText(range) : (row.text ?? ""),
+        stripe: row.stripe ?? true,
+        stripeColor: row.stripeColor ?? "#d9d9d9",
+      };
+    }
     if (isKpRow(r)) {
       const cap = Math.min(1.8, rh / 3);
       for (const [kp, x] of ticks) {
@@ -899,9 +940,9 @@ function EventsPanel({
           <rect
             key={`z${r.id}`}
             x={x0 + 1}
-            y={y0 + 1}
+            y={y0 + rh / 2 - Math.max(0.15, ((rh - 2) * (r.stripeWidth ?? 100)) / 100) / 2}
             width={Math.max(0, x1 - x0 - 2)}
-            height={Math.max(0, rh - 2)}
+            height={Math.max(0.15, ((rh - 2) * (r.stripeWidth ?? 100)) / 100)}
             style={{ fill: r.stripeColor ?? "#d9d9d9" }}
             fillOpacity={r.stripeOpacity ?? 1}
           />,

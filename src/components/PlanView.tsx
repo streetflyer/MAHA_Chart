@@ -273,15 +273,21 @@ function Matchlines({
       // The text ends a little short of the upper end of the line, so it always sits
       // inside the plan view (the line is clipped to it) instead of running off the top.
       const inset = 2;
-      const x = A[0] + dx * inset + s[0] * off + (own ? (ov.dx ?? 0) : 0);
-      const y = A[1] + dy * inset + s[1] * off + (own ? (ov.dy ?? 0) : 0);
+      let x = A[0] + dx * inset + s[0] * off + (own ? (ov.dx ?? 0) : 0);
+      let y = A[1] + dy * inset + s[1] * off + (own ? (ov.dy ?? 0) : 0);
+      // Turned 180°: the same strip of the sheet, read from the other side.
+      const flip = own ? (ov.flip ?? st.flip) : st.flip;
+      if (flip) {
+        x += up[0] * lcap;
+        y += up[1] * lcap;
+      }
       return (
         <text
           key={key}
           fontSize={fontSize(lcap)}
           fontFamily={`${st.family}, Arial, sans-serif`}
-          textAnchor="end"
-          transform={`translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${((ang * 180) / Math.PI).toFixed(2)})`}
+          textAnchor={flip ? "start" : "end"}
+          transform={`translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${((ang * 180) / Math.PI + (flip ? 180 : 0)).toFixed(2)})`}
           {...(own
             ? {
                 "data-mlabel": `${panelId}|${lkey}`,

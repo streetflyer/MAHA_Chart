@@ -28,10 +28,16 @@ export interface EventRow {
   textOnly?: boolean;
   text?: string;
   textAlign?: "start" | "middle" | "end";
+  /** Print the video start and end of the product from the Video timing list. Unset: rows labelled VIDEO do. */
+  video?: boolean;
+  /** Product key for a video row (UMB1); unset picks the one named in the drawing number or folder. */
+  videoProduct?: string;
   /** Zebra stripe: a coloured band behind the text along the row. */
   stripe?: boolean;
   stripeColor?: string;
   stripeOpacity?: number;
+  /** Band thickness as % of the row (0 = a thin line in the middle, 100 = the full row). */
+  stripeWidth?: number;
 }
 
 export interface Panel {
@@ -131,10 +137,14 @@ export interface MatchLabel {
   size?: number;
   color?: string;
   hidden?: boolean;
+  /** Text turned 180°. */
+  flip?: boolean;
 }
 
 export interface MatchlineStyle {
   on: boolean;
+  /** Text turned 180° (reads from the other side). */
+  flip?: boolean;
   /** Edits of single labels, keyed `chartNumber-neighbourNumber`. */
   labels?: Record<string, MatchLabel>;
   /** 'overlap': where the neighbouring charts start and end inside this one. 'profile': this chart's own start and end KP. */

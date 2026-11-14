@@ -148,6 +148,11 @@ export function planItemMenu(id: string): MenuItem[] {
       ],
     },
     {
+      label: "Flip text 180°",
+      checked: cur.flip ?? base.flip ?? false,
+      action: () => patchMatchLabel(id, { flip: !(cur.flip ?? base.flip) }),
+    },
+    {
       label: "Reset position",
       disabled: !cur.dx && !cur.dy,
       action: () => patchMatchLabel(id, { dx: undefined, dy: undefined }),

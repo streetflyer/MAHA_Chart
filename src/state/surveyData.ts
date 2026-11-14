@@ -22,6 +22,8 @@ interface SurveyData {
   setReversed(on: boolean): void;
   /** Drop every dataset (switching to another folder of the project). */
   clear(): void;
+  /** Replace everything (opening a saved project file). */
+  load(datasets: Dataset[], reversed: boolean): void;
 }
 
 function derive(datasets: Dataset[], reversed: boolean) {
@@ -90,4 +92,5 @@ export const useSurvey = create<SurveyData>((set, get) => ({
   setReversed: (reversed) =>
     set({ reversed, ...derive(get().datasets, reversed) }),
   clear: () => set({ reversed: false, ...derive([], false) }),
+  load: (datasets, reversed) => set({ reversed, ...derive(datasets, reversed) }),
 }));

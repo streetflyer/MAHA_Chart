@@ -36,8 +36,11 @@ import {
   codeMatcher,
   defaultRowCodes,
   isKpRow,
+  isVideoRow,
   rowCodes,
 } from "../model/events";
+import { useVideo } from "../state/video";
+import { productKeys } from "../model/video";
 import { useImport } from "./ImportDialog";
 import { askCodes } from "./Dialog";
 import {
@@ -564,6 +567,7 @@ function RowsEditor({ p }: { p: Panel }) {
   const patch = (id: string, change: Partial<EventRow>) =>
     setRows(rows.map((x) => (x.id === id ? { ...x, ...change } : x)));
   const datasets = useSurvey((x) => x.datasets);
+  const videoRows = useVideo((x) => x.rows);
   const legendCodes = useEditor(
     (x) => x.template?.panels.find((q) => q.type === "legend")?.eventCodes,
   );
@@ -656,6 +660,34 @@ function RowsEditor({ p }: { p: Panel }) {
               <div className="row-extra">
                 <label
                   className="check"
+                  title="Print the video start and end of the product, from the Video timing list in the left panel"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!isVideoRow(r)}
+                    onChange={(e) => patch(r.id, { video: e.target.checked })}
+                  />
+                  Video timing
+                </label>
+                {isVideoRow(r) && (
+                  <select
+                    value={r.videoProduct ?? ""}
+                    title="Which product's video this row shows"
+                    onChange={(e) =>
+                      patch(r.id, { videoProduct: e.target.value || undefined })
+                    }
+                  >
+                    <option value="">Product named in the drawing number</option>
+                    {productKeys(videoRows).map((k) => (
+                      <option key={k} value={k}>
+                        {k}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {!isVideoRow(r) && (
+                <label
+                  className="check"
                   title="Show only the text typed here in this row, no imported events"
                 >
                   <input
@@ -667,7 +699,8 @@ function RowsEditor({ p }: { p: Panel }) {
                   />
                   Text only
                 </label>
-                {r.textOnly && (
+                )}
+                {(r.textOnly || isVideoRow(r)) && (
                   <select
                     value={r.textAlign ?? "middle"}
                     title="Where the text sits in the row"
@@ -682,7 +715,7 @@ function RowsEditor({ p }: { p: Panel }) {
                     <option value="end">Right</option>
                   </select>
                 )}
-                {r.textOnly && (
+                {(r.textOnly || isVideoRow(r)) && (
                   <div className="row-stripe">
                     <label
                       className="check"
@@ -690,14 +723,14 @@ function RowsEditor({ p }: { p: Panel }) {
                     >
                       <input
                         type="checkbox"
-                        checked={!!r.stripe}
+                        checked={r.stripe ?? !!isVideoRow(r)}
                         onChange={(e) =>
                           patch(r.id, { stripe: e.target.checked })
                         }
                       />
                       Stripe
                     </label>
-                    {r.stripe && (
+                    {(r.stripe ?? !!isVideoRow(r)) && (
                       <>
                         <ColourBox
                           value={r.stripeColor ?? "#d9d9d9"}
@@ -716,16 +749,38 @@ function RowsEditor({ p }: { p: Panel }) {
                           }
                         />
                         <span className="muted">% opacity</span>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          title="Stripe width: 0 is a line in the middle of the row"
+                          value={r.stripeWidth ?? 100}
+                          onChange={(e) =>
+                            patch(r.id, { stripeWidth: Number(e.target.value) })
+                          }
+                        />
+                        <DraftNumber
+                          step={5}
+                          min={0}
+                          className="small-num"
+                          title="Stripe width, % of the row"
+                          value={r.stripeWidth ?? 100}
+                          onCommit={(v) =>
+                            patch(r.id, { stripeWidth: Math.min(100, v) })
+                          }
+                        />
+                        <span className="muted">% width</span>
                       </>
                     )}
                   </div>
                 )}
-                {!r.textOnly && (
+                {!r.textOnly && !isVideoRow(r) && (
                   <button type="button" onClick={() => addCodes(r)}>
                     Add Events Code…
                   </button>
                 )}
-                {r.textOnly ? (
+                {isVideoRow(r) ? null : r.textOnly ? (
                   <textarea
                     key={`${r.id}:t:${r.text ?? ""}`}
                     rows={2}
@@ -1465,6 +1520,14 @@ function MatchlineControls({
             {txt("Label suffix", "suffix")}
           </div>
           {txt("Extra text (other side)", "extra")}
+          <label className="check" title="Turn the label text 180°. Single labels: right-click them">
+            <input
+              type="checkbox"
+              checked={!!st.flip}
+              onChange={(e) => onChange({ flip: e.target.checked })}
+            />{" "}
+            Flip the text (180°)
+          </label>
           <div className="row2">
             <label className="field colour-field">
               <span>Colour</span>

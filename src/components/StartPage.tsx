@@ -1,3 +1,4 @@
+import { loadWorkspace } from "../state/workspace";
 import { ThemeButton } from "./ThemeButton";
 import { useMemo, useRef, useState } from "react";
 import { BUILTIN_TEMPLATES } from "../model/builtinTemplates";
@@ -47,6 +48,25 @@ export function StartPage({ onOpen }: { onOpen(t: ChartTemplate): void }) {
         <ThemeButton />
       </header>
       <section className="start-open">
+        <label className="field">
+          <span>Saved project</span>
+          <button
+            type="button"
+            onClick={() => {
+              const i = document.createElement("input");
+              i.type = "file";
+              i.accept = ".mahachart";
+              i.onchange = () => {
+                const f = i.files?.[0];
+                if (f)
+                  loadWorkspace(f).catch((e) => alert((e as Error).message));
+              };
+              i.click();
+            }}
+          >
+            Load project file…
+          </button>
+        </label>
         <label className="field">
           <span>Chart template</span>
           <select

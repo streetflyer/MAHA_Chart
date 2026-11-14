@@ -20,6 +20,7 @@ import {
   saveFolderSettings,
 } from "../state/folderSettings";
 import { useImport } from "./ImportDialog";
+import { VideoTiming } from "./VideoTiming";
 
 const COLLAPSE_KEY = "maha.projectPanel";
 
@@ -563,6 +564,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
           e.target.value = "";
         }}
       />
+      <VideoTiming onNotice={onNotice} />
       <input
         ref={addInput}
         type="file"

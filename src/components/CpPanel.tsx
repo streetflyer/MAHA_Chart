@@ -81,8 +81,9 @@ export function Cp({
             x2={p.x + p.w}
             y1={t.y}
             y2={t.y}
-            stroke="#9aa3ae"
-            strokeWidth={0.12}
+            stroke={look.gridColor}
+            strokeWidth={look.gridWidth}
+            strokeDasharray={look.gridDash || undefined}
           />,
         );
       if (look.yLabels)
@@ -94,7 +95,7 @@ export function Cp({
             fontSize={fontSize(1.5)}
             className="depth-label"
           >
-            {look.yAbs ? Math.abs(t.mv) : t.mv}
+            {look.yAbs ? Math.abs(t.mv) : t.mv < 0 ? `-${-t.mv}` : t.mv}
           </text>,
         );
     }
@@ -144,7 +145,7 @@ export function Cp({
     // Neighbouring readings on the same side must not print over each other.
     const need = horizontal ? label.length * fs * 0.6 + 0.5 : fs * 1.15;
     const key = `${clock}`;
-    if (!editing && x - (lastX.get(key) ?? -Infinity) <= need) continue;
+    if (!editing && !look.showAll && x - (lastX.get(key) ?? -Infinity) <= need) continue;
     lastX.set(key, x);
     const c = clockText(
       clock,

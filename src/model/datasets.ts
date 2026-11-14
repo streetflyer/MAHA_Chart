@@ -258,6 +258,13 @@ export interface CpLook {
   yLabels: boolean;
   /** Horizontal grid lines across the panel at the axis steps. */
   yGrid: boolean;
+  gridColor: string;
+  /** Grid line width on paper, mm. */
+  gridWidth: number;
+  /** Dash pattern in mm ('' = solid). */
+  gridDash: string;
+  /** Print every reading's value, even where they would overlap. */
+  showAll: boolean;
   /** Axis labels without the minus sign (-1046 reads 1046), as on AutoChart sheets. */
   yAbs: boolean;
 }
@@ -277,7 +284,11 @@ export const DEFAULT_CP_LOOK: CpLook = {
   yStep: 0,
   yLabels: true,
   yGrid: true,
-  yAbs: true,
+  gridColor: "#9aa3ae",
+  gridWidth: 0.12,
+  gridDash: "",
+  showAll: true,
+  yAbs: false,
 };
 
 /** One CP reading as drawn; the fields after `mv` override the dataset's look for this reading only. */
@@ -322,6 +333,11 @@ export interface LongOpts {
   /** Depth grid (metres; 0 = chosen from the scale). */
   gridLine: number;
   gridLabel: number;
+  /** Show the horizontal grid lines, and how they look. */
+  gridShow: boolean;
+  gridColor: string;
+  gridWidth: number;
+  gridDash: string;
   majorTick: number;
   minorTick: number;
   /** Major tick length on paper, mm; minor ticks are half of it. */
@@ -353,6 +369,10 @@ export const DEFAULT_LONG_OPTS: LongOpts = {
   forceTop: null,
   gridLine: 0,
   gridLabel: 0,
+  gridShow: true,
+  gridColor: "#8a8f96",
+  gridWidth: 0.12,
+  gridDash: "0.3 1.2",
   majorTick: 0,
   minorTick: 0,
   tickLen: 1.5,
@@ -507,3 +527,13 @@ export function lineworkFor(
         !!d.both),
   );
 }
+
+/** Line styles offered for grid lines: label and dash pattern in mm. */
+export const GRID_DASHES: [string, string][] = [
+  ["Solid", ""],
+  ["Dashed", "4 2"],
+  ["Dotted", "0.3 1.2"],
+  ["Dash-dot", "4 1.5 0.8 1.5"],
+  ["Dash-dot-dot", "4 1.5 0.8 1.5 0.8 1.5"],
+  ["Long dash", "8 3"],
+];

@@ -1504,3 +1504,65 @@ table.preview thead th.mapped {
 .event-kps { list-style: none; margin: 0 0 4px; padding: 0 0 0 12px; font-size: 11px; max-height: 200px; overflow: auto; }
 
 .cell-input { width: 100%; min-width: 0; font-size: 11px; padding: 1px 3px; }
+
+.video-timing {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+.video-timing.over {
+  outline: 2px dashed var(--accent, #2563eb);
+}
+.video-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.video-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.video-list li > input,
+.video-list li > label {
+  grid-column: 1;
+}
+.video-list li > button {
+  grid-column: 2;
+  grid-row: 1;
+}
+.video-list label {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 12px;
+}
+.video-list label span {
+  width: 32px;
+  color: var(--muted);
+}
+.video-list input {
+  min-width: 0;
+  font-size: 12px;
+}
+.video-image img {
+  max-width: 100%;
+}
+.video-image {
+  margin: 0;
+  font-size: 12px;
+}
+.row-stripe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
