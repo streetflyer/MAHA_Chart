@@ -111,6 +111,26 @@ export interface PlanStyle {
   /** North arrow height in mm. */
   northSize: number;
   northColor: string;
+  /** Matchlines marking where neighbouring charts begin and end (unset = off). */
+  match?: Partial<MatchlineStyle>;
+}
+
+/** Matchlines of the plan view, like AutoChart's Create Matchlines. */
+export interface MatchlineStyle {
+  on: boolean;
+  /** 'overlap': where the neighbouring charts start and end inside this one. 'profile': this chart's own start and end KP. */
+  mode: 'overlap' | 'profile';
+  prefix: string;
+  suffix: string;
+  /** A second line of text on the other side of each line. */
+  extra: string;
+  color: string;
+  width: number;
+  /** Dash pattern in mm ("" = continuous). */
+  dash: string;
+  /** Label text height, mm. */
+  textSize: number;
+  family: string;
 }
 
 export interface KeyplanStyle {

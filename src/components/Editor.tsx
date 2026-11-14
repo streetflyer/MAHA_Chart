@@ -25,6 +25,7 @@ import { useSurvey } from "../state/surveyData";
 import { fitInto, readImageFile } from "./imageImport";
 import { titleInsideHeight } from "./PanelContent";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
+import { drawingMenu } from "./drawingMenu";
 import { askChoice, askConfirm, askText } from "./Dialog";
 import { chartsToDxf } from "../model/dxfExport";
 import { chartsToPdf } from "../model/pdfExport";
@@ -209,6 +210,10 @@ export function Editor({ onExit }: { onExit(): void }) {
     at: { x: number; y: number },
     target: ContextTarget,
   ) {
+    if (target.kind === "drawing") {
+      setMenu({ x: clientX, y: clientY, items: drawingMenu(at) });
+      return;
+    }
     const st = s();
     const sel = st.selection;
     const panel =
@@ -441,19 +446,21 @@ export function Editor({ onExit }: { onExit(): void }) {
       ["PDF", "DXF"],
     );
     if (fmt === null) return;
-    let sheets = [cur];
+    const ext = fmt ? "dxf" : "pdf";
+    // Each entry is one file: the charts it holds.
+    let files: number[][] = [[cur]];
     if (n > 1) {
+      const all = Array.from({ length: n }, (_, i) => i);
       const pick = await askChoice(
-        `Save as ${fmt ? "DXF" : "PDF"}`,
-        fmt
-          ? `Save Chart ${cur + 1} only, or all ${n} charts side by side in one file (50 mm apart)?`
-          : `Save Chart ${cur + 1} only, or all ${n} charts as one PDF with a page each?`,
-        [`Chart ${cur + 1}`, `All ${n} charts`],
+        `Save as ${ext.toUpperCase()}`,
+        `Save Chart ${cur + 1} only, all ${n} charts in one file, or each of the ${n} charts as its own file (${n} downloads)?`,
+        [`Chart ${cur + 1}`, `All ${n} in one file`, `Each chart its own file`],
       );
       if (pick === null) return;
-      if (pick === 1) sheets = Array.from({ length: n }, (_, i) => i);
+      if (pick === 1) files = [all];
+      if (pick === 2) files = all.map((i) => [i]);
     }
-    flash(fmt ? "Writing DXF…" : "Writing PDF…");
+    flash(`Writing ${ext.toUpperCase()}…`);
     const prevSel = s().selection;
     useEditor.setState({ selection: [] });
     const frame = () =>
@@ -465,49 +472,42 @@ export function Editor({ onExit }: { onExit(): void }) {
       await new Promise((r) => setTimeout(r, 60));
       return document.querySelector<SVGSVGElement>("svg.sheet");
     };
-    let blob: Blob;
-    try {
-      blob = fmt
-        ? new Blob(
-            [
-              await chartsToDxf(
-                template.paper.width,
-                template.paper.height,
-                sheets,
-                draw,
-              ),
-            ],
-            { type: "application/dxf" },
-          )
-        : new Blob(
-            [
-              (await chartsToPdf(
-                template.paper.width,
-                template.paper.height,
-                sheets,
-                draw,
-              )) as BlobPart,
-            ],
-            { type: "application/pdf" },
-          );
-    } finally {
-      s().setSheet(cur);
-      useEditor.setState({ selection: prevSel });
-    }
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
     const base = (template.fields.DRAWING_NO || template.name).replace(
       /[^\w.-]+/g,
       "_",
     );
-    const ext = fmt ? "dxf" : "pdf";
-    a.download =
-      sheets.length > 1
-        ? `${base}_all_charts.${ext}`
-        : `${base}_chart${cur + 1}.${ext}`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
-    flash(`Saved ${a.download}`);
+    const saved: string[] = [];
+    try {
+      for (const sheets of files) {
+        const { width, height } = template.paper;
+        const blob = fmt
+          ? new Blob([await chartsToDxf(width, height, sheets, draw)], {
+              type: "application/dxf",
+            })
+          : new Blob(
+              [(await chartsToPdf(width, height, sheets, draw)) as BlobPart],
+              { type: "application/pdf" },
+            );
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download =
+          sheets.length > 1
+            ? `${base}_all_charts.${ext}`
+            : `${base}_chart${String(sheets[0] + 1).padStart(2, "0")}.${ext}`;
+        a.click();
+        saved.push(a.download);
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+        if (files.length > 1) await new Promise((r) => setTimeout(r, 350));
+      }
+    } finally {
+      s().setSheet(cur);
+      useEditor.setState({ selection: prevSel });
+    }
+    flash(
+      saved.length > 1
+        ? `Saved ${saved.length} files, ${saved[0]} …`
+        : `Saved ${saved[0]}`,
+    );
   }
 
   async function reset() {

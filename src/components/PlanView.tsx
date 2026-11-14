@@ -1,18 +1,34 @@
-import { useEffect, useMemo, type ReactElement } from 'react';
-import { chartGeometry, gridToPlan, pointAt, type Bounds, type ChartGeometry } from '../model/route';
-import type { ChartTemplate, Panel, PlanStyle } from '../model/types';
-import { DEFAULT_PLAN, kpInterval, planStyle } from '../model/planStyle';
-import { useSurvey } from '../state/surveyData';
-import { useDrawingEdit } from '../state/drawingEdit';
-import { DrawingEditOverlay } from './DrawingEditOverlay';
+import { useEffect, useMemo, type ReactElement, type ReactNode } from "react";
+import {
+  DEFAULT_MATCHLINES,
+  matchLabel,
+  matchSpecs,
+} from "../model/matchlines";
+import { sheetCount, sheetRange } from "../model/scale";
+import {
+  chartGeometry,
+  gridToPlan,
+  pointAt,
+  type Bounds,
+  type ChartGeometry,
+} from "../model/route";
+import type {
+  ChartTemplate,
+  MatchlineStyle,
+  Panel,
+  PlanStyle,
+} from "../model/types";
+import { DEFAULT_PLAN, kpInterval, planStyle } from "../model/planStyle";
+import { useSurvey } from "../state/surveyData";
+import { useDrawingEdit } from "../state/drawingEdit";
+import { DrawingEditOverlay } from "./DrawingEditOverlay";
 
 export { DEFAULT_PLAN, planStyle };
-import { niceGrid } from './Keyplan';
-import { linesPath, routePath } from './linework';
-import { LineworkLayer } from './LineworkLayer';
-import { lineworkFor } from '../model/datasets';
-import { fontSize, measureText } from './svgText';
-
+import { niceGrid } from "./Keyplan";
+import { linesPath, routePath } from "./linework";
+import { LineworkLayer } from "./LineworkLayer";
+import { lineworkFor } from "../model/datasets";
+import { fontSize, measureText } from "./svgText";
 
 type Rect = { x: number; y: number; w: number; h: number };
 type Pt = [number, number];
@@ -22,12 +38,25 @@ type Pt = [number, number];
  * an easting/northing grid, turned so the line runs left to right (alignment
  * sheets) or kept north-up.
  */
-export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; template: ChartTemplate; sheetIndex: number; tokens: Record<string, string> }) {
+export function PlanView({
+  p,
+  template,
+  sheetIndex,
+  tokens,
+}: {
+  p: Panel;
+  template: ChartTemplate;
+  sheetIndex: number;
+  tokens: Record<string, string>;
+}) {
   const route = useSurvey((s) => s.route);
   const datasets = useSurvey((s) => s.datasets);
-  const sets = useMemo(() => lineworkFor(datasets, 'plan'), [datasets]);
+  const sets = useMemo(() => lineworkFor(datasets, "plan"), [datasets]);
   const st = planStyle(p);
-  const rect = useMemo(() => ({ x: p.x, y: p.y, w: p.w, h: p.h }), [p.x, p.y, p.w, p.h]);
+  const rect = useMemo(
+    () => ({ x: p.x, y: p.y, w: p.w, h: p.h }),
+    [p.x, p.y, p.w, p.h],
+  );
   const along = (p.w * template.scale.horizontal) / 1000;
   const across = (p.h * template.scale.horizontal) / 1000;
 
@@ -36,15 +65,35 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
     if (!sets.length) return null;
     // No route yet: show the middle of the drawings at the chart scale.
     const b = sets[0].lw.bounds;
-    return { origin: [(b.minE + b.maxE) / 2 - along / 2, (b.minN + b.maxN) / 2], u: [1, 0], along, across, northUp: true };
+    return {
+      origin: [(b.minE + b.maxE) / 2 - along / 2, (b.minN + b.maxN) / 2],
+      u: [1, 0],
+      along,
+      across,
+      northUp: true,
+    };
   }, [route, sets, template, sheetIndex, along, across]);
 
-  const view = useMemo(() => (geo ? { project: gridToPlan(geo, rect), area: frameBounds(geo) } : null), [geo, rect]);
-  const routeD = useMemo(() => (view && route ? routePath(route, view.project, 0.05) : ''), [view, route]);
+  const view = useMemo(
+    () =>
+      geo ? { project: gridToPlan(geo, rect), area: frameBounds(geo) } : null,
+    [geo, rect],
+  );
+  const routeD = useMemo(
+    () => (view && route ? routePath(route, view.project, 0.05) : ""),
+    [view, route],
+  );
   // Runline before KP 0 (a platform approach): drawn, but not part of the KP line.
-  const before = useSurvey((s) => (s.reversed ? undefined : s.datasets.find((d) => d.kind === 'route' && d.visible)));
+  const before = useSurvey((s) =>
+    s.reversed
+      ? undefined
+      : s.datasets.find((d) => d.kind === "route" && d.visible),
+  );
   const beforeD = useMemo(
-    () => (view && before?.kind === 'route' && before.before ? linesPath([before.before], view.area, view.project, 0.05) : ''),
+    () =>
+      view && before?.kind === "route" && before.before
+        ? linesPath([before.before], view.area, view.project, 0.05)
+        : "",
     [view, before],
   );
 
@@ -54,18 +103,30 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
   const preview = useDrawingEdit((x) => x.preview);
   const mmPerM = 1000 / template.scale.horizontal;
   const uAngle = geo ? (Math.atan2(geo.u[1], geo.u[0]) * 180) / Math.PI : 0;
-  const ctx = useMemo(() => (view && editOn ? { panelId: p.id, project: view.project, mmPerM, uAngle, rect } : null), [view, editOn, p.id, mmPerM, uAngle, rect]);
+  const ctx = useMemo(
+    () =>
+      view && editOn
+        ? { panelId: p.id, project: view.project, mmPerM, uAngle, rect }
+        : null,
+    [view, editOn, p.id, mmPerM, uAngle, rect],
+  );
   useEffect(() => {
     useDrawingEdit.getState().setContext(ctx);
     return () => useDrawingEdit.getState().setContext(null);
   }, [ctx]);
-  const skip = useMemo(() => (editOn ? new Map(Object.entries(selected).map(([id, g]) => [id, new Set(g)])) : undefined), [editOn, selected]);
+  const skip = useMemo(
+    () =>
+      editOn
+        ? new Map(Object.entries(selected).map(([id, g]) => [id, new Set(g)]))
+        : undefined,
+    [editOn, selected],
+  );
 
   if (!geo || !view) return null;
   const project = view.project;
   // The runline's own colour and width, set on import or in its data list entry.
   const routeColor = before?.color ?? st.routeColor;
-  const routeWidth = before?.kind === 'route' ? before.width : st.routeWidth;
+  const routeWidth = before?.kind === "route" ? before.width : st.routeWidth;
   const clipId = `plan-clip-${p.id}`;
   return (
     <g pointerEvents="none">
@@ -75,20 +136,74 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
         </clipPath>
       </defs>
       <g clipPath={`url(#${clipId})`}>
-        <LineworkLayer sets={sets} area={view.area} project={project} mmPerM={mmPerM} uAngle={uAngle} skip={skip} />
+        <LineworkLayer
+          sets={sets}
+          area={view.area}
+          project={project}
+          mmPerM={mmPerM}
+          uAngle={uAngle}
+          skip={skip}
+        />
         {st.showGrid && <PlanGrid geo={geo} rect={rect} st={st} />}
-        {beforeD && <path d={beforeD} fill="none" stroke={routeColor} strokeWidth={routeWidth} strokeDasharray="2 1" />}
-        {routeD && <path d={routeD} fill="none" stroke={routeColor} strokeWidth={routeWidth} strokeLinejoin="round" />}
-        {route && st.showKp && <KpBlocks template={template} project={project} rect={rect} st={st} />}
+        {beforeD && (
+          <path
+            d={beforeD}
+            fill="none"
+            stroke={routeColor}
+            strokeWidth={routeWidth}
+            strokeDasharray="2 1"
+          />
+        )}
+        {routeD && (
+          <path
+            d={routeD}
+            fill="none"
+            stroke={routeColor}
+            strokeWidth={routeWidth}
+            strokeLinejoin="round"
+          />
+        )}
+        {route && st.showKp && (
+          <KpBlocks template={template} project={project} rect={rect} st={st} />
+        )}
+        {route && st.match?.on && (
+          <Matchlines
+            template={template}
+            sheetIndex={sheetIndex}
+            project={project}
+            rect={rect}
+            st={{ ...DEFAULT_MATCHLINES, ...st.match }}
+          />
+        )}
       </g>
-      {ctx && <DrawingEditOverlay p={p} clipId={clipId} sets={sets} ctx={ctx} selected={selected} preview={preview} />}
+      {ctx && (
+        <DrawingEditOverlay
+          p={p}
+          clipId={clipId}
+          sets={sets}
+          ctx={ctx}
+          selected={selected}
+          preview={preview}
+        />
+      )}
       {st.showNorth && <PlanNorth p={p} project={project} st={st} />}
       {!route && (
         <>
-          <text className="hint" x={p.x + 3} y={p.y + p.h - 3} fontSize={fontSize(2)}>
+          <text
+            className="hint"
+            x={p.x + 3}
+            y={p.y + p.h - 3}
+            fontSize={fontSize(2)}
+          >
             KP {tokens.KP_START}
           </text>
-          <text className="hint" x={p.x + p.w - 3} y={p.y + p.h - 3} fontSize={fontSize(2)} textAnchor="end">
+          <text
+            className="hint"
+            x={p.x + p.w - 3}
+            y={p.y + p.h - 3}
+            fontSize={fontSize(2)}
+            textAnchor="end"
+          >
             KP {tokens.KP_END}
           </text>
         </>
@@ -97,9 +212,106 @@ export function PlanView({ p, template, sheetIndex, tokens }: { p: Panel; templa
   );
 }
 
-function KpBlocks({ template, project, rect, st }: { template: ChartTemplate; project: (e: number, n: number) => Pt; rect: Rect; st: PlanStyle }) {
+/** Lines across the plan view, square to the route, where neighbouring charts meet this one. */
+function Matchlines({
+  template,
+  sheetIndex,
+  project,
+  rect,
+  st,
+}: {
+  template: ChartTemplate;
+  sheetIndex: number;
+  project: (e: number, n: number) => Pt;
+  rect: Rect;
+  st: MatchlineStyle;
+}) {
   const route = useSurvey((s) => s.route)!;
-  const k0 = (parseFloat(template.fields.START_KP ?? '0') || 0) * 1000;
+  const k0 = (parseFloat(template.fields.START_KP ?? "0") || 0) * 1000;
+  const n = sheetCount(template);
+  const ranges = Array.from({ length: n }, (_, i) => {
+    const r = sheetRange(template, i);
+    return { start: r.start * 1000, end: r.end * 1000 };
+  });
+  const out: ReactNode[] = [];
+  const cap = st.textSize;
+  const fs = fontSize(cap);
+  matchSpecs(ranges, sheetIndex, st.mode).forEach((m, k) => {
+    const c = project(...pointAt(route, m.kp - k0));
+    const a = project(...pointAt(route, m.kp - k0 + 1));
+    const b = project(...pointAt(route, m.kp - k0 - 1));
+    let tx = a[0] - b[0];
+    let ty = a[1] - b[1];
+    const tl = Math.hypot(tx, ty) || 1;
+    tx /= tl;
+    ty /= tl;
+    // The line runs square to the route on paper; clip it to the plan view.
+    const L = Math.hypot(rect.w, rect.h);
+    const seg = clip(
+      [c[0] - ty * L, c[1] + tx * L],
+      [c[0] + ty * L, c[1] - tx * L],
+      rect,
+    );
+    if (!seg) return;
+    let [A, B] = seg;
+    if (A[1] > B[1]) [A, B] = [B, A]; // A is the upper end
+    const dl = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1;
+    const dx = (B[0] - A[0]) / dl;
+    const dy = (B[1] - A[1]) / dl;
+    // Text runs up the line (from B towards A); its glyph-up direction is (sinθ, -cosθ).
+    const ang = Math.atan2(-dy, -dx);
+    const up = [Math.sin(ang), -Math.cos(ang)];
+    const label = (text: string, side: number, key: string) => {
+      const s = [tx * side, ty * side];
+      const gap = 1;
+      const off = up[0] * s[0] + up[1] * s[1] > 0 ? gap : gap + cap;
+      const inset = 2 + cap;
+      const x = A[0] + dx * inset + s[0] * off;
+      const y = A[1] + dy * inset + s[1] * off;
+      return (
+        <text
+          key={key}
+          fontSize={fs}
+          fontFamily={`${st.family}, Arial, sans-serif`}
+          fill={st.color}
+          transform={`translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${((ang * 180) / Math.PI).toFixed(2)})`}
+        >
+          {text}
+        </text>
+      );
+    };
+    out.push(
+      <g key={k}>
+        <line
+          x1={A[0]}
+          y1={A[1]}
+          x2={B[0]}
+          y2={B[1]}
+          stroke={st.color}
+          strokeWidth={st.width}
+          strokeDasharray={st.dash.trim() || undefined}
+        />
+        {label(matchLabel(st, m.chart), m.side, "l")}
+        {st.extra.trim() && label(st.extra, -m.side, "x")}
+      </g>,
+    );
+  });
+  return <g>{out}</g>;
+}
+
+function KpBlocks({
+  template,
+  project,
+  rect,
+  st,
+}: {
+  template: ChartTemplate;
+  project: (e: number, n: number) => Pt;
+  rect: Rect;
+  st: PlanStyle;
+}) {
+  const route = useSurvey((s) => s.route)!;
+  const k0 = (parseFloat(template.fields.START_KP ?? "0") || 0) * 1000;
   const interval = kpInterval(st, template.scale.horizontal);
   const out = [];
   const size = st.kpBlockSize;
@@ -107,15 +319,25 @@ function KpBlocks({ template, project, rect, st }: { template: ChartTemplate; pr
   const reach = st.kpStem + size;
   const rot = (st.kpRotation * Math.PI) / 180;
   // Every block along the line is tested, so a turned or extra chart still gets the right ones.
-  for (let kp = Math.ceil(k0 / interval) * interval; kp <= k0 + route.length + 1e-6; kp += interval) {
+  for (
+    let kp = Math.ceil(k0 / interval) * interval;
+    kp <= k0 + route.length + 1e-6;
+    kp += interval
+  ) {
     const [x, y] = project(...pointAt(route, kp - k0));
-    if (x < rect.x || x > rect.x + rect.w || y < rect.y || y > rect.y + rect.h) continue;
+    if (x < rect.x || x > rect.x + rect.w || y < rect.y || y > rect.y + rect.h)
+      continue;
     // Stand the block up from the line; hang it below instead if it would leave the frame.
     let dx = Math.sin(rot);
     let dy = -Math.cos(rot);
     const tipY = y + dy * reach;
     const tipX = x + dx * reach;
-    if (tipY < rect.y || tipY > rect.y + rect.h || tipX < rect.x || tipX > rect.x + rect.w) {
+    if (
+      tipY < rect.y ||
+      tipY > rect.y + rect.h ||
+      tipX < rect.x ||
+      tipX > rect.x + rect.w
+    ) {
       dx = -dx;
       dy = -dy;
     }
@@ -125,13 +347,36 @@ function KpBlocks({ template, project, rect, st }: { template: ChartTemplate; pr
     const cy = sy + dy * half;
     const label = (kp / 1000).toFixed(3);
     // Shrink the text if it would spill out of the diamond.
-    const cap = Math.min(st.kpTextSize, (st.kpTextSize * size * 0.58) / Math.max(measureText(label, st.kpTextSize, true), 1e-6));
+    const cap = Math.min(
+      st.kpTextSize,
+      (st.kpTextSize * size * 0.58) /
+        Math.max(measureText(label, st.kpTextSize, true), 1e-6),
+    );
     out.push(
       <g key={kp}>
-        <line x1={x} y1={y} x2={sx} y2={sy} stroke={st.kpColor} strokeWidth={0.2} />
+        <line
+          x1={x}
+          y1={y}
+          x2={sx}
+          y2={sy}
+          stroke={st.kpColor}
+          strokeWidth={0.2}
+        />
         <g transform={`rotate(${st.kpRotation} ${cx} ${cy})`}>
-          <path d={`M${cx} ${cy - half}L${cx + half} ${cy}L${cx} ${cy + half}L${cx - half} ${cy}Z`} fill={st.kpFill} stroke={st.kpColor} strokeWidth={0.25} />
-          <text x={cx} y={cy + cap / 2} fontSize={fontSize(cap)} fontWeight="bold" textAnchor="middle" fill={st.kpTextColor}>
+          <path
+            d={`M${cx} ${cy - half}L${cx + half} ${cy}L${cx} ${cy + half}L${cx - half} ${cy}Z`}
+            fill={st.kpFill}
+            stroke={st.kpColor}
+            strokeWidth={0.25}
+          />
+          <text
+            x={cx}
+            y={cy + cap / 2}
+            fontSize={fontSize(cap)}
+            fontWeight="bold"
+            textAnchor="middle"
+            fill={st.kpTextColor}
+          >
             {label}
           </text>
         </g>
@@ -143,7 +388,15 @@ function KpBlocks({ template, project, rect, st }: { template: ChartTemplate; pr
 }
 
 /** Grid north arrow; drag it to place it anywhere in the plan view. */
-function PlanNorth({ p, project, st }: { p: Panel; project: (e: number, n: number) => Pt; st: PlanStyle }) {
+function PlanNorth({
+  p,
+  project,
+  st,
+}: {
+  p: Panel;
+  project: (e: number, n: number) => Pt;
+  st: PlanStyle;
+}) {
   const [x0, y0] = project(0, 0);
   const [x1, y1] = project(0, 1000);
   const angle = (Math.atan2(x1 - x0, -(y1 - y0)) * 180) / Math.PI;
@@ -152,14 +405,36 @@ function PlanNorth({ p, project, st }: { p: Panel; project: (e: number, n: numbe
   const y = p.y + st.northY * p.h;
   const w = s * 0.28;
   return (
-    <g data-north={p.id} pointerEvents="all" style={{ cursor: 'move' }} transform={`translate(${x} ${y}) rotate(${angle})`}>
-      <rect x={-s * 0.4} y={-s * 0.55} width={s * 0.8} height={s * 1.15} fill="transparent" />
+    <g
+      data-north={p.id}
+      pointerEvents="all"
+      style={{ cursor: "move" }}
+      transform={`translate(${x} ${y}) rotate(${angle})`}
+    >
+      <rect
+        x={-s * 0.4}
+        y={-s * 0.55}
+        width={s * 0.8}
+        height={s * 1.15}
+        fill="transparent"
+      />
       <g stroke={st.northColor} strokeWidth={s * 0.035} fill={st.northColor}>
         <path d={`M0 ${-s / 2} L${w} ${s * 0.25} L0 ${s * 0.1} Z`} />
-        <path d={`M0 ${-s / 2} L${-w} ${s * 0.25} L0 ${s * 0.1} Z`} fill="none" />
+        <path
+          d={`M0 ${-s / 2} L${-w} ${s * 0.25} L0 ${s * 0.1} Z`}
+          fill="none"
+        />
         <line x1={0} y1={s * 0.1} x2={0} y2={s * 0.55} />
       </g>
-      <text x={0} y={s * 0.45} fontSize={s * 0.36} fontWeight="bold" textAnchor="middle" fill={st.northColor} transform={`rotate(${-angle} 0 ${s * 0.32})`}>
+      <text
+        x={0}
+        y={s * 0.45}
+        fontSize={s * 0.36}
+        fontWeight="bold"
+        textAnchor="middle"
+        fill={st.northColor}
+        transform={`rotate(${-angle} 0 ${s * 0.32})`}
+      >
         N
       </text>
       <title>Drag to move the north arrow</title>
@@ -168,25 +443,59 @@ function PlanNorth({ p, project, st }: { p: Panel; project: (e: number, n: numbe
 }
 
 /** Easting/northing ticks at the frame edge and crosses inside, with labels that never collide. */
-function PlanGrid({ geo, rect, st }: { geo: ChartGeometry; rect: Rect; st: PlanStyle }) {
+function PlanGrid({
+  geo,
+  rect,
+  st,
+}: {
+  geo: ChartGeometry;
+  rect: Rect;
+  st: PlanStyle;
+}) {
   const project = gridToPlan(geo, rect);
   const toGrid = planToGrid(geo, rect);
-  const corners = [toGrid(rect.x, rect.y), toGrid(rect.x + rect.w, rect.y), toGrid(rect.x, rect.y + rect.h), toGrid(rect.x + rect.w, rect.y + rect.h)];
+  const corners = [
+    toGrid(rect.x, rect.y),
+    toGrid(rect.x + rect.w, rect.y),
+    toGrid(rect.x, rect.y + rect.h),
+    toGrid(rect.x + rect.w, rect.y + rect.h),
+  ];
   const b: Bounds = {
     minE: Math.min(...corners.map((c) => c[0])),
     maxE: Math.max(...corners.map((c) => c[0])),
     minN: Math.min(...corners.map((c) => c[1])),
     maxN: Math.max(...corners.map((c) => c[1])),
   };
-  const spacing = st.gridSpacing > 0 ? st.gridSpacing : niceGrid((geo.along * 4) / Math.max(1, rect.w / 70));
+  const spacing =
+    st.gridSpacing > 0
+      ? st.gridSpacing
+      : niceGrid((geo.along * 4) / Math.max(1, rect.w / 70));
   const es: number[] = [];
   const ns: number[] = [];
-  for (let e = Math.ceil(b.minE / spacing) * spacing; e <= b.maxE && es.length < 200; e += spacing) es.push(e);
-  for (let n = Math.ceil(b.minN / spacing) * spacing; n <= b.maxN && ns.length < 200; n += spacing) ns.push(n);
+  for (
+    let e = Math.ceil(b.minE / spacing) * spacing;
+    e <= b.maxE && es.length < 200;
+    e += spacing
+  )
+    es.push(e);
+  for (
+    let n = Math.ceil(b.minN / spacing) * spacing;
+    n <= b.maxN && ns.length < 200;
+    n += spacing
+  )
+    ns.push(n);
 
   const fs = fontSize(st.gridTextSize);
   const ticks: ReactElement[] = [];
-  const labels: { x: number; y: number; angle: number; anchor: 'start' | 'end'; text: string; box: Bounds; dir: Pt }[] = [];
+  const labels: {
+    x: number;
+    y: number;
+    angle: number;
+    anchor: "start" | "end";
+    text: string;
+    box: Bounds;
+    dir: Pt;
+  }[] = [];
   const line = (a: Pt, c: Pt, key: string) => {
     const seg = clip(project(...a), project(...c), rect);
     if (!seg) return;
@@ -199,7 +508,17 @@ function PlanGrid({ geo, rect, st }: { geo: ChartGeometry; rect: Rect; st: PlanS
       [p1, [-d[0], -d[1]]],
     ] as [Pt, Pt][]) {
       if (!onEdge(pt, rect)) continue;
-      ticks.push(<line key={`${key}${pt[0]}`} x1={pt[0]} y1={pt[1]} x2={pt[0] + dir[0] * st.tickSize} y2={pt[1] + dir[1] * st.tickSize} stroke={st.tickColor} strokeWidth={0.2} />);
+      ticks.push(
+        <line
+          key={`${key}${pt[0]}`}
+          x1={pt[0]}
+          y1={pt[1]}
+          x2={pt[0] + dir[0] * st.tickSize}
+          y2={pt[1] + dir[1] * st.tickSize}
+          stroke={st.tickColor}
+          strokeWidth={0.2}
+        />,
+      );
       labels.push(labelAt(pt, dir, key, st, fs));
     }
   };
@@ -212,20 +531,48 @@ function PlanGrid({ geo, rect, st }: { geo: ChartGeometry; rect: Rect; st: PlanS
   for (const l of labels) {
     // A label leaving the frame at a slant pokes out near its start; slide it inward along its line.
     for (let k = 0; k < 4; k++) {
-      const over = Math.max(rect.x - l.box.minE, l.box.maxE - rect.x - rect.w, rect.y - l.box.minN, l.box.maxN - rect.y - rect.h);
+      const over = Math.max(
+        rect.x - l.box.minE,
+        l.box.maxE - rect.x - rect.w,
+        rect.y - l.box.minN,
+        l.box.maxN - rect.y - rect.h,
+      );
       if (over <= 1e-6) break;
       const step = over + 0.2;
       l.x += l.dir[0] * step;
       l.y += l.dir[1] * step;
-      l.box = { minE: l.box.minE + l.dir[0] * step, maxE: l.box.maxE + l.dir[0] * step, minN: l.box.minN + l.dir[1] * step, maxN: l.box.maxN + l.dir[1] * step };
+      l.box = {
+        minE: l.box.minE + l.dir[0] * step,
+        maxE: l.box.maxE + l.dir[0] * step,
+        minN: l.box.minN + l.dir[1] * step,
+        maxN: l.box.maxN + l.dir[1] * step,
+      };
     }
     const bx = l.box;
-    if (bx.minE < rect.x || bx.maxE > rect.x + rect.w || bx.minN < rect.y || bx.maxN > rect.y + rect.h) continue;
-    if (kept.some((k) => bx.minE < k.box.maxE + pad && bx.maxE > k.box.minE - pad && bx.minN < k.box.maxN + pad && bx.maxN > k.box.minN - pad)) continue;
+    if (
+      bx.minE < rect.x ||
+      bx.maxE > rect.x + rect.w ||
+      bx.minN < rect.y ||
+      bx.maxN > rect.y + rect.h
+    )
+      continue;
+    if (
+      kept.some(
+        (k) =>
+          bx.minE < k.box.maxE + pad &&
+          bx.maxE > k.box.minE - pad &&
+          bx.minN < k.box.maxN + pad &&
+          bx.maxN > k.box.minN - pad,
+      )
+    )
+      continue;
     kept.push(l);
   }
 
-  const [ux, uy] = [project(1, 0)[0] - project(0, 0)[0], project(1, 0)[1] - project(0, 0)[1]];
+  const [ux, uy] = [
+    project(1, 0)[0] - project(0, 0)[0],
+    project(1, 0)[1] - project(0, 0)[1],
+  ];
   const ul = Math.hypot(ux, uy);
   const de: Pt = [ux / ul, uy / ul];
   const dn: Pt = [-de[1], de[0]];
@@ -234,9 +581,20 @@ function PlanGrid({ geo, rect, st }: { geo: ChartGeometry; rect: Rect; st: PlanS
   for (const e of es)
     for (const n of ns) {
       const [x, y] = project(e, n);
-      if (x < rect.x + h || x > rect.x + rect.w - h || y < rect.y + h || y > rect.y + rect.h - h) continue;
+      if (
+        x < rect.x + h ||
+        x > rect.x + rect.w - h ||
+        y < rect.y + h ||
+        y > rect.y + rect.h - h
+      )
+        continue;
       crosses.push(
-        <path key={`${e},${n}`} d={`M${x - de[0] * h} ${y - de[1] * h}L${x + de[0] * h} ${y + de[1] * h}M${x - dn[0] * h} ${y - dn[1] * h}L${x + dn[0] * h} ${y + dn[1] * h}`} stroke={st.crossColor} strokeWidth={0.2} />,
+        <path
+          key={`${e},${n}`}
+          d={`M${x - de[0] * h} ${y - de[1] * h}L${x + de[0] * h} ${y + de[1] * h}M${x - dn[0] * h} ${y - dn[1] * h}L${x + dn[0] * h} ${y + dn[1] * h}`}
+          stroke={st.crossColor}
+          strokeWidth={0.2}
+        />,
       );
     }
 
@@ -245,7 +603,13 @@ function PlanGrid({ geo, rect, st }: { geo: ChartGeometry; rect: Rect; st: PlanS
       {crosses}
       {ticks}
       {kept.map((l, i) => (
-        <text key={i} fontSize={fs} fill={st.gridTextColor} textAnchor={l.anchor} transform={`translate(${l.x.toFixed(2)} ${l.y.toFixed(2)}) rotate(${l.angle.toFixed(2)})`}>
+        <text
+          key={i}
+          fontSize={fs}
+          fill={st.gridTextColor}
+          textAnchor={l.anchor}
+          transform={`translate(${l.x.toFixed(2)} ${l.y.toFixed(2)}) rotate(${l.angle.toFixed(2)})`}
+        >
           {l.text}
         </text>
       ))}
@@ -256,10 +620,10 @@ function PlanGrid({ geo, rect, st }: { geo: ChartGeometry; rect: Rect; st: PlanS
 /** A label running inward along a grid line from where it meets the frame, sat just beside the tick. */
 function labelAt(pt: Pt, dir: Pt, text: string, st: PlanStyle, fs: number) {
   let angle = (Math.atan2(dir[1], dir[0]) * 180) / Math.PI;
-  let anchor: 'start' | 'end' = 'start';
+  let anchor: "start" | "end" = "start";
   if (dir[0] < -1e-6 || (Math.abs(dir[0]) <= 1e-6 && dir[1] < 0)) {
     angle += 180;
-    anchor = 'end';
+    anchor = "end";
   }
   const gap = st.tickSize * 0.3 + 0.6;
   // Baseline a little to the side of the line so the tick doesn't strike through the text.
@@ -272,7 +636,7 @@ function labelAt(pt: Pt, dir: Pt, text: string, st: PlanStyle, fs: number) {
   // Four corners of the text box, for the collision check.
   const ax = Math.cos(rad);
   const ay = Math.sin(rad);
-  const s0 = anchor === 'start' ? 0 : -w;
+  const s0 = anchor === "start" ? 0 : -w;
   const pts: Pt[] = [
     [s0, 0],
     [s0 + w, 0],
@@ -290,7 +654,12 @@ function labelAt(pt: Pt, dir: Pt, text: string, st: PlanStyle, fs: number) {
 
 function onEdge([x, y]: Pt, r: Rect) {
   const eps = 1e-3;
-  return Math.abs(x - r.x) < eps || Math.abs(x - r.x - r.w) < eps || Math.abs(y - r.y) < eps || Math.abs(y - r.y - r.h) < eps;
+  return (
+    Math.abs(x - r.x) < eps ||
+    Math.abs(x - r.x - r.w) < eps ||
+    Math.abs(y - r.y) < eps ||
+    Math.abs(y - r.y - r.h) < eps
+  );
 }
 
 /** Liang–Barsky clip of a segment to a rectangle. */
@@ -338,7 +707,22 @@ function frameBounds(g: ChartGeometry): Bounds {
   const [ox, oy] = g.origin;
   const [ux, uy] = g.u;
   const h = g.across / 2;
-  const xs = [ox - uy * h, ox + uy * h, ox + ux * g.along - uy * h, ox + ux * g.along + uy * h];
-  const ys = [oy + ux * h, oy - ux * h, oy + uy * g.along + ux * h, oy + uy * g.along - ux * h];
-  return { minE: Math.min(...xs), maxE: Math.max(...xs), minN: Math.min(...ys), maxN: Math.max(...ys) };
+  const xs = [
+    ox - uy * h,
+    ox + uy * h,
+    ox + ux * g.along - uy * h,
+    ox + ux * g.along + uy * h,
+  ];
+  const ys = [
+    oy + ux * h,
+    oy - ux * h,
+    oy + uy * g.along + ux * h,
+    oy + uy * g.along - ux * h,
+  ];
+  return {
+    minE: Math.min(...xs),
+    maxE: Math.max(...xs),
+    minN: Math.min(...ys),
+    maxN: Math.max(...ys),
+  };
 }

@@ -1,32 +1,68 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { movePanels, resizeEdge, snap, type Edge } from '../model/layout';
-import { resolveTokens } from '../model/scale';
-import { templateTokens } from '../model/tokens';
-import type { ChartTemplate, ImageItem, Panel, Selection, TextItem } from '../model/types';
-import { useEditor } from '../state/store';
-import { fitInto, readImageFile } from './imageImport';
-import { InlineEditor } from './InlineEditor';
-import { distanceBeforeStart, nearestChainage } from '../model/route';
-import { editSheet, planPanel, sheetFrame, sheetRange, sheetRotation } from '../model/scale';
-import { planStyle } from './PlanView';
-import { useSurvey } from '../state/surveyData';
-import { useImport } from './ImportDialog';
-import { PanelContent, TITLE_CAP, titleInsideHeight, titleLineHeight, titleLines } from './PanelContent';
-import { approxTextWidth, fontSize } from './svgText';
-import { useDrawingEdit } from '../state/drawingEdit';
-import { moveGroups, rotateGroups } from '../model/drawingOps';
-import { pickInBox, pickObject, planSets, rotateHandle, toGrid } from './drawingEditing';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { movePanels, resizeEdge, snap, type Edge } from "../model/layout";
+import { resolveTokens } from "../model/scale";
+import { templateTokens } from "../model/tokens";
+import type {
+  ChartTemplate,
+  ImageItem,
+  Panel,
+  Selection,
+  TextItem,
+} from "../model/types";
+import { useEditor } from "../state/store";
+import { fitInto, readImageFile } from "./imageImport";
+import { InlineEditor } from "./InlineEditor";
+import { distanceBeforeStart, nearestChainage } from "../model/route";
+import {
+  editSheet,
+  planPanel,
+  sheetFrame,
+  sheetRange,
+  sheetRotation,
+} from "../model/scale";
+import { planStyle } from "./PlanView";
+import { useSurvey } from "../state/surveyData";
+import { useImport } from "./ImportDialog";
+import {
+  PanelContent,
+  TITLE_CAP,
+  titleInsideHeight,
+  titleLineHeight,
+  titleLines,
+} from "./PanelContent";
+import { approxTextWidth, fontSize } from "./svgText";
+import { useDrawingEdit } from "../state/drawingEdit";
+import { moveGroups, rotateGroups } from "../model/drawingOps";
+import {
+  pickInBox,
+  pickObject,
+  planSets,
+  rotateHandle,
+  toGrid,
+} from "./drawingEditing";
 
 const clamp01 = (v: number) => Math.min(0.98, Math.max(0.02, v));
 
 export interface ContextTarget {
-  kind: 'panel' | 'text' | 'image' | 'row' | 'sheet';
+  kind: "panel" | "text" | "image" | "row" | "sheet" | "drawing";
   id?: string;
   rowId?: string;
 }
 
 interface Props {
-  onContextMenu(clientX: number, clientY: number, at: { x: number; y: number }, target: ContextTarget): void;
+  onContextMenu(
+    clientX: number,
+    clientY: number,
+    at: { x: number; y: number },
+    target: ContextTarget,
+  ): void;
   onCursor(at: { x: number; y: number } | null): void;
   onNotice(msg: string): void;
   fitSignal: number;
@@ -41,18 +77,63 @@ interface ViewBox {
 }
 
 type Drag =
-  | { type: 'move'; start: Pt; panelIds: string[]; textIds: string[]; imageIds: string[]; moved: boolean; wasSelected: boolean; hit: Selection; toggle: boolean }
-  | { type: 'imgResize'; start: Pt; id: string; sx: number; sy: number; origin: ImageItem }
-  | { type: 'mapPan'; start: Pt; index: number; panU: number; panV: number; k: number; moved?: boolean; hit?: Selection }
-  | { type: 'north'; panelId: string }
-  | { type: 'frame'; index: number; startChain: number; startKp: number; toGrid: (p: Pt) => [number, number] }
-  | { type: 'rotate'; index: number; centre: [number, number]; startAngle: number; startRot: number; toGrid: (p: Pt) => [number, number] }
-  | { type: 'edge'; start: Pt; panelId: string; edges: Edge[]; origin: Record<Edge, number> }
-  | { type: 'pan'; startClient: Pt; startView: ViewBox }
-  | { type: 'marquee'; start: Pt; cur: Pt; additive: boolean }
-  | { type: 'drawMove'; start: Pt; moved: boolean }
-  | { type: 'drawRotate'; cE: number; cN: number; startAngle: number }
-  | { type: 'drawBox'; start: Pt; shift: boolean };
+  | {
+      type: "move";
+      start: Pt;
+      panelIds: string[];
+      textIds: string[];
+      imageIds: string[];
+      moved: boolean;
+      wasSelected: boolean;
+      hit: Selection;
+      toggle: boolean;
+    }
+  | {
+      type: "imgResize";
+      start: Pt;
+      id: string;
+      sx: number;
+      sy: number;
+      origin: ImageItem;
+    }
+  | {
+      type: "mapPan";
+      start: Pt;
+      index: number;
+      panU: number;
+      panV: number;
+      k: number;
+      moved?: boolean;
+      hit?: Selection;
+    }
+  | { type: "north"; panelId: string }
+  | {
+      type: "frame";
+      index: number;
+      startChain: number;
+      startKp: number;
+      toGrid: (p: Pt) => [number, number];
+    }
+  | {
+      type: "rotate";
+      index: number;
+      centre: [number, number];
+      startAngle: number;
+      startRot: number;
+      toGrid: (p: Pt) => [number, number];
+    }
+  | {
+      type: "edge";
+      start: Pt;
+      panelId: string;
+      edges: Edge[];
+      origin: Record<Edge, number>;
+    }
+  | { type: "pan"; startClient: Pt; startView: ViewBox }
+  | { type: "marquee"; start: Pt; cur: Pt; additive: boolean }
+  | { type: "drawMove"; start: Pt; moved: boolean }
+  | { type: "drawRotate"; cE: number; cN: number; startAngle: number }
+  | { type: "drawBox"; start: Pt; shift: boolean };
 
 interface Pt {
   x: number;
@@ -63,14 +144,25 @@ const SNAP_PX = 6;
 const EDGE_HIT_PX = 6;
 const SLOW_CLICK_MS = 550;
 
-export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }: Props) {
+export function SheetView({
+  onContextMenu,
+  onCursor,
+  onNotice,
+  fitSignal,
+  dark,
+}: Props) {
   const template = useEditor((s) => s.template)!;
   const selection = useEditor((s) => s.selection);
   const editing = useEditor((s) => s.editing);
   const sheetIndex = useEditor((s) => s.sheetIndex);
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [view, setView] = useState<ViewBox>({ x: -10, y: -10, w: template.paper.width + 20, h: template.paper.height + 20 });
+  const [view, setView] = useState<ViewBox>({
+    x: -10,
+    y: -10,
+    w: template.paper.width + 20,
+    h: template.paper.height + 20,
+  });
   const [drag, setDrag] = useState<Drag | null>(null);
   const [guides, setGuides] = useState<{ x?: number; y?: number }>({});
   const [hoverEdge, setHoverEdge] = useState<string | null>(null);
@@ -78,17 +170,40 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
   const spaceDown = useRef(false);
   const renameTimer = useRef<number | null>(null);
 
-  const tokens = useMemo(() => templateTokens(template, sheetIndex), [template, sheetIndex]);
+  const tokens = useMemo(
+    () => templateTokens(template, sheetIndex),
+    [template, sheetIndex],
+  );
   const images = template.images ?? [];
-  const selectedImageIds = useMemo(() => new Set(selection.filter((s) => s.kind === 'image').map((s) => s.id)), [selection]);
-  const isSelected = (s: Selection) => (s.kind === 'panel' ? selectedPanelIds : s.kind === 'text' ? selectedTextIds : selectedImageIds).has(s.id);
-  const selectedPanelIds = useMemo(() => new Set(selection.filter((s) => s.kind === 'panel').map((s) => s.id)), [selection]);
-  const selectedTextIds = useMemo(() => new Set(selection.filter((s) => s.kind === 'text').map((s) => s.id)), [selection]);
+  const selectedImageIds = useMemo(
+    () => new Set(selection.filter((s) => s.kind === "image").map((s) => s.id)),
+    [selection],
+  );
+  const isSelected = (s: Selection) =>
+    (s.kind === "panel"
+      ? selectedPanelIds
+      : s.kind === "text"
+        ? selectedTextIds
+        : selectedImageIds
+    ).has(s.id);
+  const selectedPanelIds = useMemo(
+    () => new Set(selection.filter((s) => s.kind === "panel").map((s) => s.id)),
+    [selection],
+  );
+  const selectedTextIds = useMemo(
+    () => new Set(selection.filter((s) => s.kind === "text").map((s) => s.id)),
+    [selection],
+  );
 
   const lastMiddle = useRef(0);
   const fit = useCallback(() => {
     const m = Math.max(template.paper.width, template.paper.height) * 0.02;
-    setView({ x: -m, y: -m, w: template.paper.width + 2 * m, h: template.paper.height + 2 * m });
+    setView({
+      x: -m,
+      y: -m,
+      w: template.paper.width + 2 * m,
+      h: template.paper.height + 2 * m,
+    });
   }, [template.paper.width, template.paper.height]);
 
   useEffect(fit, [fitSignal, template.paper.width, template.paper.height, fit]);
@@ -102,16 +217,23 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      if (e.code === 'Space' && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) spaceDown.current = true;
+      if (
+        e.code === "Space" &&
+        !(
+          e.target instanceof HTMLInputElement ||
+          e.target instanceof HTMLTextAreaElement
+        )
+      )
+        spaceDown.current = true;
     };
     const up = (e: KeyboardEvent) => {
-      if (e.code === 'Space') spaceDown.current = false;
+      if (e.code === "Space") spaceDown.current = false;
     };
-    window.addEventListener('keydown', down);
-    window.addEventListener('keyup', up);
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
     return () => {
-      window.removeEventListener('keydown', down);
-      window.removeEventListener('keyup', up);
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
     };
   }, []);
 
@@ -136,11 +258,16 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       setView((v) => {
         const w = Math.min(Math.max(v.w * k, 5), 20000);
         const h = (v.h * w) / v.w;
-        return { x: p.x - ((p.x - v.x) * w) / v.w, y: p.y - ((p.y - v.y) * h) / v.h, w, h };
+        return {
+          x: p.x - ((p.x - v.x) * w) / v.w,
+          y: p.y - ((p.y - v.y) * h) / v.h,
+          w,
+          h,
+        };
       });
     };
-    svg.addEventListener('wheel', onWheel, { passive: false });
-    return () => svg.removeEventListener('wheel', onWheel);
+    svg.addEventListener("wheel", onWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", onWheel);
   }, [toMm]);
 
   const store = useEditor.getState;
@@ -163,7 +290,11 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
         return fit();
       }
       if (e.button === 1) lastMiddle.current = e.timeStamp;
-      setDrag({ type: 'pan', startClient: { x: e.clientX, y: e.clientY }, startView: view });
+      setDrag({
+        type: "pan",
+        startClient: { x: e.clientX, y: e.clientY },
+        startView: view,
+      });
       (e.target as Element).setPointerCapture?.(e.pointerId);
       return;
     }
@@ -172,86 +303,130 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     const de = useDrawingEdit.getState();
     if (de.active) {
       const pp = planPanel(template);
-      if (pp && de.ctx && at.x >= pp.x && at.x <= pp.x + pp.w && at.y >= pp.y && at.y <= pp.y + pp.h) {
+      if (
+        pp &&
+        de.ctx &&
+        at.x >= pp.x &&
+        at.x <= pp.x + pp.w &&
+        at.y >= pp.y &&
+        at.y <= pp.y + pp.h
+      ) {
         svgRef.current!.setPointerCapture(e.pointerId);
         return drawingDown(e, at);
       }
       de.exit();
     }
     const el = e.target as Element;
-    const edgeEl = el.closest('[data-edge]');
-    const itemEl = el.closest('[data-item]');
-    const imgHandle = el.closest('[data-img-handle]');
-    const frameEl = el.closest('[data-frame]');
+    const edgeEl = el.closest("[data-edge]");
+    const itemEl = el.closest("[data-item]");
+    const imgHandle = el.closest("[data-img-handle]");
+    const frameEl = el.closest("[data-frame]");
     svgRef.current!.setPointerCapture(e.pointerId);
 
-    const northEl = el.closest('[data-north]');
+    const northEl = el.closest("[data-north]");
     if (northEl) {
       store().beginGesture();
-      setDrag({ type: 'north', panelId: northEl.getAttribute('data-north')! });
+      setDrag({ type: "north", panelId: northEl.getAttribute("data-north")! });
       return;
     }
     const plan = planPanel(template);
-    const inPlan = !!plan && at.x >= plan.x && at.x <= plan.x + plan.w && at.y >= plan.y && at.y <= plan.y + plan.h;
+    const inPlan =
+      !!plan &&
+      at.x >= plan.x &&
+      at.x <= plan.x + plan.w &&
+      at.y >= plan.y &&
+      at.y <= plan.y + plan.h;
     if (inPlan && (store().panMap || e.shiftKey) && !edgeEl && !imgHandle) {
       // Shift+drag (or pan mode): slide the map inside the plan view for this chart only.
       const f = sheetFrame(template, store().sheetIndex);
-      const hitEl = itemEl?.getAttribute('data-kind') === 'panel' ? itemEl : null;
+      const hitEl =
+        itemEl?.getAttribute("data-kind") === "panel" ? itemEl : null;
       store().beginGesture();
       setDrag({
-        type: 'mapPan',
+        type: "mapPan",
         start: at,
         index: store().sheetIndex,
         panU: f?.panU ?? 0,
         panV: f?.panV ?? 0,
         k: template.scale.horizontal / 1000,
-        hit: e.shiftKey && hitEl ? { kind: 'panel', id: hitEl.getAttribute('data-item')! } : undefined,
+        hit:
+          e.shiftKey && hitEl
+            ? { kind: "panel", id: hitEl.getAttribute("data-item")! }
+            : undefined,
       });
       return;
     }
     const route = useSurvey.getState().route;
     if (frameEl && route) {
       // Slide a chart's frame along the line in the key plan to fine-tune its overlap.
-      const [minE, maxN, k, ax, ay] = frameEl.getAttribute('data-view')!.split(',').map(Number);
-      const toGrid = (q: Pt): [number, number] => [minE + (q.x - ax) / k, maxN - (q.y - ay) / k];
-      const index = Number(frameEl.getAttribute('data-frame'));
+      const [minE, maxN, k, ax, ay] = frameEl
+        .getAttribute("data-view")!
+        .split(",")
+        .map(Number);
+      const toGrid = (q: Pt): [number, number] => [
+        minE + (q.x - ax) / k,
+        maxN - (q.y - ay) / k,
+      ];
+      const index = Number(frameEl.getAttribute("data-frame"));
       store().beginGesture();
       store().setSheet(index);
-      const centre = frameEl.getAttribute('data-centre');
+      const centre = frameEl.getAttribute("data-centre");
       if (centre) {
         // Rotation handle: turn the frame about its centre.
-        const c = centre.split(',').map(Number) as [number, number];
+        const c = centre.split(",").map(Number) as [number, number];
         const g = toGrid(at);
-        setDrag({ type: 'rotate', index, centre: c, startAngle: Math.atan2(g[1] - c[1], g[0] - c[0]), startRot: sheetRotation(template, index), toGrid });
+        setDrag({
+          type: "rotate",
+          index,
+          centre: c,
+          startAngle: Math.atan2(g[1] - c[1], g[0] - c[0]),
+          startRot: sheetRotation(template, index),
+          toGrid,
+        });
         return;
       }
-      setDrag({ type: 'frame', index, startChain: nearestChainage(route, ...toGrid(at)), startKp: sheetRange(template, index).start * 1000, toGrid });
+      setDrag({
+        type: "frame",
+        index,
+        startChain: nearestChainage(route, ...toGrid(at)),
+        startKp: sheetRange(template, index).start * 1000,
+        toGrid,
+      });
       return;
     }
 
     if (imgHandle) {
-      const id = imgHandle.getAttribute('data-img-handle')!;
-      const [sx, sy] = imgHandle.getAttribute('data-dir')!.split(',').map(Number);
+      const id = imgHandle.getAttribute("data-img-handle")!;
+      const [sx, sy] = imgHandle
+        .getAttribute("data-dir")!
+        .split(",")
+        .map(Number);
       const img = images.find((x) => x.id === id)!;
       store().beginGesture();
-      setDrag({ type: 'imgResize', start: at, id, sx, sy, origin: img });
+      setDrag({ type: "imgResize", start: at, id, sx, sy, origin: img });
       return;
     }
 
     if (edgeEl) {
-      const panelId = edgeEl.getAttribute('data-panel')!;
-      const edges = edgeEl.getAttribute('data-edge')!.split(',') as Edge[];
+      const panelId = edgeEl.getAttribute("data-panel")!;
+      const edges = edgeEl.getAttribute("data-edge")!.split(",") as Edge[];
       const p = template.panels.find((x) => x.id === panelId)!;
       if (p.locked) return;
-      if (!selectedPanelIds.has(panelId)) store().select({ kind: 'panel', id: panelId });
-      const origin = { left: p.x, right: p.x + p.w, top: p.y, bottom: p.y + p.h };
+      if (!selectedPanelIds.has(panelId))
+        store().select({ kind: "panel", id: panelId });
+      const origin = {
+        left: p.x,
+        right: p.x + p.w,
+        top: p.y,
+        bottom: p.y + p.h,
+      };
       store().beginGesture();
-      setDrag({ type: 'edge', start: at, panelId, edges, origin });
+      setDrag({ type: "edge", start: at, panelId, edges, origin });
       return;
     }
     if (itemEl) {
-      const kind = itemEl.getAttribute('data-kind') as Selection['kind'];
-      const id = itemEl.getAttribute('data-item')!;
+      const kind = itemEl.getAttribute("data-kind") as Selection["kind"];
+      const id = itemEl.getAttribute("data-item")!;
       const hit: Selection = { kind, id };
       const wasSelected = isSelected(hit);
       if (e.shiftKey) {
@@ -262,15 +437,34 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       // Ctrl+click without moving toggles the item in the selection, as in Windows.
       const toggle = e.ctrlKey || e.metaKey;
       if (!wasSelected && !toggle) store().select(hit);
-      const sel = wasSelected ? store().selection : toggle ? [...store().selection, hit] : [hit];
-      const panelIds = toggle ? sel.filter((s) => s.kind === 'panel').map((s) => s.id).filter((pid) => !template.panels.find((p) => p.id === pid)?.locked) : [];
-      const textIds = sel.filter((s) => s.kind === 'text').map((s) => s.id);
-      const imageIds = sel.filter((s) => s.kind === 'image').map((s) => s.id);
+      const sel = wasSelected
+        ? store().selection
+        : toggle
+          ? [...store().selection, hit]
+          : [hit];
+      const panelIds = toggle
+        ? sel
+            .filter((s) => s.kind === "panel")
+            .map((s) => s.id)
+            .filter((pid) => !template.panels.find((p) => p.id === pid)?.locked)
+        : [];
+      const textIds = sel.filter((s) => s.kind === "text").map((s) => s.id);
+      const imageIds = sel.filter((s) => s.kind === "image").map((s) => s.id);
       store().beginGesture();
-      setDrag({ type: 'move', start: at, panelIds, textIds, imageIds, moved: false, wasSelected, hit, toggle });
+      setDrag({
+        type: "move",
+        start: at,
+        panelIds,
+        textIds,
+        imageIds,
+        moved: false,
+        wasSelected,
+        hit,
+        toggle,
+      });
       return;
     }
-    setDrag({ type: 'marquee', start: at, cur: at, additive: e.shiftKey });
+    setDrag({ type: "marquee", start: at, cur: at, additive: e.shiftKey });
   }
 
   /** Pointer down inside the plan view while editing its drawing. */
@@ -279,9 +473,17 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     const ctx = de.ctx!;
     const grid = toGrid(ctx, planSets());
     const h = rotateHandle(ctx, de.selected);
-    if (h && Math.hypot(at.x - h.x, at.y - h.y) <= Math.max(2.2, 9 / pxPerMm())) {
+    if (
+      h &&
+      Math.hypot(at.x - h.x, at.y - h.y) <= Math.max(2.2, 9 / pxPerMm())
+    ) {
       const g = grid(at.x, at.y);
-      setDrag({ type: 'drawRotate', cE: h.cE, cN: h.cN, startAngle: Math.atan2(g[1] - h.cN, g[0] - h.cE) });
+      setDrag({
+        type: "drawRotate",
+        cE: h.cE,
+        cN: h.cN,
+        startAngle: Math.atan2(g[1] - h.cN, g[0] - h.cE),
+      });
       return;
     }
     const pick = pickObject(ctx, at.x, at.y, 6 / pxPerMm());
@@ -290,57 +492,85 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       const isSel = cur.includes(pick.group);
       if (e.shiftKey) {
         // Shift+click adds an object to the choice, or takes it out.
-        const next = isSel ? cur.filter((g) => g !== pick.group) : [...cur, pick.group];
+        const next = isSel
+          ? cur.filter((g) => g !== pick.group)
+          : [...cur, pick.group];
         de.select({ ...de.selected, [pick.id]: next });
         return;
       }
       if (!isSel) de.select({ [pick.id]: [pick.group] });
-      setDrag({ type: 'drawMove', start: at, moved: false });
+      setDrag({ type: "drawMove", start: at, moved: false });
       return;
     }
-    setDrag({ type: 'drawBox', start: at, shift: e.shiftKey });
+    setDrag({ type: "drawBox", start: at, shift: e.shiftKey });
   }
 
   function onPointerMove(e: React.PointerEvent) {
     const at = toMm(e.clientX, e.clientY);
     onCursor(at);
-    if (drag && (drag.type === 'drawMove' || drag.type === 'drawRotate' || drag.type === 'drawBox')) {
+    if (
+      drag &&
+      (drag.type === "drawMove" ||
+        drag.type === "drawRotate" ||
+        drag.type === "drawBox")
+    ) {
       const de = useDrawingEdit.getState();
       const ctx = de.ctx;
       if (!ctx) return;
       const grid = toGrid(ctx, planSets());
-      if (drag.type === 'drawBox') de.setPreview({ kind: 'box', x0: drag.start.x, y0: drag.start.y, x1: at.x, y1: at.y });
-      else if (drag.type === 'drawMove') {
-        if (!drag.moved && Math.hypot(at.x - drag.start.x, at.y - drag.start.y) * pxPerMm() < 3) return;
+      if (drag.type === "drawBox")
+        de.setPreview({
+          kind: "box",
+          x0: drag.start.x,
+          y0: drag.start.y,
+          x1: at.x,
+          y1: at.y,
+        });
+      else if (drag.type === "drawMove") {
+        if (
+          !drag.moved &&
+          Math.hypot(at.x - drag.start.x, at.y - drag.start.y) * pxPerMm() < 3
+        )
+          return;
         if (!drag.moved) setDrag({ ...drag, moved: true });
         const g0 = grid(drag.start.x, drag.start.y);
         const g1 = grid(at.x, at.y);
-        de.setPreview({ kind: 'move', dE: g1[0] - g0[0], dN: g1[1] - g0[1] });
+        de.setPreview({ kind: "move", dE: g1[0] - g0[0], dN: g1[1] - g0[1] });
       } else {
         const g = grid(at.x, at.y);
-        let angle = Math.atan2(g[1] - drag.cN, g[0] - drag.cE) - drag.startAngle;
-        if (e.shiftKey) angle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
-        de.setPreview({ kind: 'rotate', cE: drag.cE, cN: drag.cN, angle });
+        let angle =
+          Math.atan2(g[1] - drag.cN, g[0] - drag.cE) - drag.startAngle;
+        if (e.shiftKey)
+          angle = Math.round(angle / (Math.PI / 12)) * (Math.PI / 12);
+        de.setPreview({ kind: "rotate", cE: drag.cE, cN: drag.cN, angle });
       }
       return;
     }
     if (!drag) {
-      const edgeEl = (e.target as Element).closest('[data-edge]');
-      setHoverEdge(edgeEl ? `${edgeEl.getAttribute('data-panel')}:${edgeEl.getAttribute('data-edge')}` : null);
+      const edgeEl = (e.target as Element).closest("[data-edge]");
+      setHoverEdge(
+        edgeEl
+          ? `${edgeEl.getAttribute("data-panel")}:${edgeEl.getAttribute("data-edge")}`
+          : null,
+      );
       return;
     }
     const tol = SNAP_PX / pxPerMm();
-    if (drag.type === 'pan') {
+    if (drag.type === "pan") {
       // Zoom doesn't change while panning, so the current pixel size applies to the whole drag.
       const s = 1 / pxPerMm();
-      setView({ ...drag.startView, x: drag.startView.x - (e.clientX - drag.startClient.x) * s, y: drag.startView.y - (e.clientY - drag.startClient.y) * s });
+      setView({
+        ...drag.startView,
+        x: drag.startView.x - (e.clientX - drag.startClient.x) * s,
+        y: drag.startView.y - (e.clientY - drag.startClient.y) * s,
+      });
       return;
     }
-    if (drag.type === 'marquee') {
+    if (drag.type === "marquee") {
       setDrag({ ...drag, cur: at });
       return;
     }
-    if (drag.type === 'move') {
+    if (drag.type === "move") {
       let dx = at.x - drag.start.x;
       let dy = at.y - drag.start.y;
       if (!drag.moved && Math.hypot(dx, dy) * pxPerMm() < 3) return;
@@ -350,17 +580,29 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       const g: { x?: number; y?: number } = {};
       if (lead && !e.altKey) {
         const moving = new Set(drag.panelIds);
-        const others = base.panels.filter((p) => !moving.has(p.id) && !moving.has(p.parentId ?? ''));
-        const xs = [template.paper.frameInset, template.paper.width - template.paper.frameInset, ...others.flatMap((p) => [p.x, p.x + p.w])];
-        const ys = [template.paper.frameInset, template.paper.height - template.paper.frameInset, ...others.flatMap((p) => [p.y, p.y + p.h])];
+        const others = base.panels.filter(
+          (p) => !moving.has(p.id) && !moving.has(p.parentId ?? ""),
+        );
+        const xs = [
+          template.paper.frameInset,
+          template.paper.width - template.paper.frameInset,
+          ...others.flatMap((p) => [p.x, p.x + p.w]),
+        ];
+        const ys = [
+          template.paper.frameInset,
+          template.paper.height - template.paper.frameInset,
+          ...others.flatMap((p) => [p.y, p.y + p.h]),
+        ];
         const sl = snap(lead.x + dx, xs, tol);
         const sr = snap(lead.x + lead.w + dx, xs, tol);
         if (sl.guide !== undefined) [dx, g.x] = [sl.value - lead.x, sl.guide];
-        else if (sr.guide !== undefined) [dx, g.x] = [sr.value - lead.x - lead.w, sr.guide];
+        else if (sr.guide !== undefined)
+          [dx, g.x] = [sr.value - lead.x - lead.w, sr.guide];
         const st = snap(lead.y + dy, ys, tol);
         const sb = snap(lead.y + lead.h + dy, ys, tol);
         if (st.guide !== undefined) [dy, g.y] = [st.value - lead.y, st.guide];
-        else if (sb.guide !== undefined) [dy, g.y] = [sb.value - lead.y - lead.h, sb.guide];
+        else if (sb.guide !== undefined)
+          [dy, g.y] = [sb.value - lead.y - lead.h, sb.guide];
       }
       setGuides(g);
       const textIds = new Set(drag.textIds);
@@ -368,13 +610,17 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       store().updateGesture((t) => ({
         ...t,
         panels: movePanels(t.panels, drag.panelIds, dx, dy),
-        texts: t.texts.map((x) => (textIds.has(x.id) ? { ...x, x: x.x + dx, y: x.y + dy } : x)),
-        images: (t.images ?? []).map((x) => (imageIds.has(x.id) ? { ...x, x: x.x + dx, y: x.y + dy } : x)),
+        texts: t.texts.map((x) =>
+          textIds.has(x.id) ? { ...x, x: x.x + dx, y: x.y + dy } : x,
+        ),
+        images: (t.images ?? []).map((x) =>
+          imageIds.has(x.id) ? { ...x, x: x.x + dx, y: x.y + dy } : x,
+        ),
       }));
       if (!drag.moved) setDrag({ ...drag, moved: true });
       return;
     }
-    if (drag.type === 'frame') {
+    if (drag.type === "frame") {
       const route = useSurvey.getState().route;
       if (!route) return;
       let c = nearestChainage(route, ...drag.toGrid(at));
@@ -384,32 +630,48 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       store().updateGesture((t) => editSheet(t, drag.index, { start }));
       return;
     }
-    if (drag.type === 'mapPan') {
-      const panU = Math.round((drag.panU - (at.x - drag.start.x) * drag.k) * 10) / 10;
-      const panV = Math.round((drag.panV + (at.y - drag.start.y) * drag.k) * 10) / 10;
+    if (drag.type === "mapPan") {
+      const panU =
+        Math.round((drag.panU - (at.x - drag.start.x) * drag.k) * 10) / 10;
+      const panV =
+        Math.round((drag.panV + (at.y - drag.start.y) * drag.k) * 10) / 10;
       store().updateGesture((t) => editSheet(t, drag.index, { panU, panV }));
       if (!drag.moved) setDrag({ ...drag, moved: true });
       return;
     }
-    if (drag.type === 'north') {
+    if (drag.type === "north") {
       store().updateGesture((t) => ({
         ...t,
         panels: t.panels.map((p) =>
-          p.id === drag.panelId ? { ...p, plan: { ...planStyle(p), northX: clamp01((at.x - p.x) / p.w), northY: clamp01((at.y - p.y) / p.h) } } : p,
+          p.id === drag.panelId
+            ? {
+                ...p,
+                plan: {
+                  ...planStyle(p),
+                  northX: clamp01((at.x - p.x) / p.w),
+                  northY: clamp01((at.y - p.y) / p.h),
+                },
+              }
+            : p,
         ),
       }));
       return;
     }
-    if (drag.type === 'rotate') {
+    if (drag.type === "rotate") {
       const g = drag.toGrid(at);
-      let deg = drag.startRot + ((Math.atan2(g[1] - drag.centre[1], g[0] - drag.centre[0]) - drag.startAngle) * 180) / Math.PI;
+      let deg =
+        drag.startRot +
+        ((Math.atan2(g[1] - drag.centre[1], g[0] - drag.centre[0]) -
+          drag.startAngle) *
+          180) /
+          Math.PI;
       deg = ((deg + 540) % 360) - 180;
       // Shift = free; otherwise half-degree steps, snapping to square.
       if (!e.shiftKey) deg = Math.abs(deg) < 1 ? 0 : Math.round(deg * 2) / 2;
       store().updateGesture((t) => editSheet(t, drag.index, { rotation: deg }));
       return;
     }
-    if (drag.type === 'imgResize') {
+    if (drag.type === "imgResize") {
       const o = drag.origin;
       let w = Math.max(3, o.w + drag.sx * (at.x - drag.start.x));
       let h = Math.max(3, o.h + drag.sy * (at.y - drag.start.y));
@@ -421,23 +683,38 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       }
       const x = drag.sx < 0 ? o.x + o.w - w : o.x;
       const y = drag.sy < 0 ? o.y + o.h - h : o.y;
-      store().updateGesture((t) => ({ ...t, images: (t.images ?? []).map((im) => (im.id === drag.id ? { ...im, x, y, w, h } : im)) }));
+      store().updateGesture((t) => ({
+        ...t,
+        images: (t.images ?? []).map((im) =>
+          im.id === drag.id ? { ...im, x, y, w, h } : im,
+        ),
+      }));
       return;
     }
-    if (drag.type === 'edge') {
+    if (drag.type === "edge") {
       const base = useEditor.getState().gestureBase!;
       const g: { x?: number; y?: number } = {};
       store().updateGesture((t) => {
         let panels = t.panels;
         for (const edge of drag.edges) {
-          const vertical = edge === 'left' || edge === 'right';
-          const raw = drag.origin[edge] + (vertical ? at.x - drag.start.x : at.y - drag.start.y);
+          const vertical = edge === "left" || edge === "right";
+          const raw =
+            drag.origin[edge] +
+            (vertical ? at.x - drag.start.x : at.y - drag.start.y);
           const others = base.panels.filter((p) => p.id !== drag.panelId);
           const cands = vertical
-            ? [template.paper.frameInset, template.paper.width - template.paper.frameInset, ...others.flatMap((p) => [p.x, p.x + p.w])]
-            : [template.paper.frameInset, template.paper.height - template.paper.frameInset, ...others.flatMap((p) => [p.y, p.y + p.h])];
+            ? [
+                template.paper.frameInset,
+                template.paper.width - template.paper.frameInset,
+                ...others.flatMap((p) => [p.x, p.x + p.w]),
+              ]
+            : [
+                template.paper.frameInset,
+                template.paper.height - template.paper.frameInset,
+                ...others.flatMap((p) => [p.y, p.y + p.h]),
+              ];
           const s = e.altKey ? { value: raw } : snap(raw, cands, tol);
-          if (s.guide !== undefined) g[vertical ? 'x' : 'y'] = s.guide;
+          if (s.guide !== undefined) g[vertical ? "x" : "y"] = s.guide;
           panels = resizeEdge(panels, drag.panelId, edge, s.value, !e.altKey);
         }
         return { ...t, panels };
@@ -446,22 +723,43 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     }
   }
 
-  function drawingUp(e: React.PointerEvent, d: Extract<Drag, { type: 'drawMove' | 'drawRotate' | 'drawBox' }>) {
+  function drawingUp(
+    e: React.PointerEvent,
+    d: Extract<Drag, { type: "drawMove" | "drawRotate" | "drawBox" }>,
+  ) {
     const de = useDrawingEdit.getState();
     const pv = de.preview;
     de.setPreview(null);
     const ids = Object.keys(de.selected).filter((id) => de.selected[id].length);
-    if (d.type === 'drawMove' && pv?.kind === 'move') de.change(ids, (lw, id) => moveGroups(lw, new Set(de.selected[id]), pv.dE, pv.dN));
-    else if (d.type === 'drawRotate' && pv?.kind === 'rotate' && Math.abs(pv.angle) > 1e-6) de.change(ids, (lw, id) => rotateGroups(lw, new Set(de.selected[id]), pv.cE, pv.cN, pv.angle));
-    else if (d.type === 'drawBox') {
+    if (d.type === "drawMove" && pv?.kind === "move")
+      de.change(ids, (lw, id) =>
+        moveGroups(lw, new Set(de.selected[id]), pv.dE, pv.dN),
+      );
+    else if (
+      d.type === "drawRotate" &&
+      pv?.kind === "rotate" &&
+      Math.abs(pv.angle) > 1e-6
+    )
+      de.change(ids, (lw, id) =>
+        rotateGroups(lw, new Set(de.selected[id]), pv.cE, pv.cN, pv.angle),
+      );
+    else if (d.type === "drawBox") {
       const at = toMm(e.clientX, e.clientY);
       if (Math.hypot(at.x - d.start.x, at.y - d.start.y) * pxPerMm() < 3) {
         if (!d.shift) de.select({});
       } else if (de.ctx) {
-        const hit = pickInBox(de.ctx, d.start.x, d.start.y, at.x, at.y, at.x < d.start.x);
+        const hit = pickInBox(
+          de.ctx,
+          d.start.x,
+          d.start.y,
+          at.x,
+          at.y,
+          at.x < d.start.x,
+        );
         if (d.shift) {
           const merged: Record<string, number[]> = { ...de.selected };
-          for (const [id, g] of Object.entries(hit)) merged[id] = [...new Set([...(merged[id] ?? []), ...g])];
+          for (const [id, g] of Object.entries(hit))
+            merged[id] = [...new Set([...(merged[id] ?? []), ...g])];
           de.select(merged);
         } else de.select(hit);
       }
@@ -471,12 +769,16 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
   function onPointerUp(e: React.PointerEvent) {
     if (!drag) return;
     svgRef.current!.releasePointerCapture?.(e.pointerId);
-    if (drag.type === 'drawMove' || drag.type === 'drawRotate' || drag.type === 'drawBox') {
+    if (
+      drag.type === "drawMove" ||
+      drag.type === "drawRotate" ||
+      drag.type === "drawBox"
+    ) {
       drawingUp(e, drag);
       setDrag(null);
       return;
     }
-    if (drag.type === 'move') {
+    if (drag.type === "move") {
       store().endGesture();
       if (drag.toggle) {
         // Ctrl+click toggles; Ctrl+drag of an unselected item adds it to what moved.
@@ -489,19 +791,29 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       if (!drag.moved && drag.wasSelected && store().selection.length === 1) {
         clearRenameTimer();
         const hit = drag.hit;
-        if (hit.kind !== 'image')
+        if (hit.kind !== "image")
           renameTimer.current = window.setTimeout(() => {
             renameTimer.current = null;
-            store().startEdit(hit.kind === 'text' ? { kind: 'text', id: hit.id } : { kind: 'panelTitle', id: hit.id });
+            store().startEdit(
+              hit.kind === "text"
+                ? { kind: "text", id: hit.id }
+                : { kind: "panelTitle", id: hit.id },
+            );
           }, SLOW_CLICK_MS);
       }
-    } else if (drag.type === 'mapPan') {
+    } else if (drag.type === "mapPan") {
       store().endGesture();
       // Shift+click on the plan view without dragging still adds it to the selection.
       if (!drag.moved && drag.hit) store().select(drag.hit, true);
-    } else if (drag.type === 'edge' || drag.type === 'imgResize' || drag.type === 'frame' || drag.type === 'rotate' || drag.type === 'north') {
+    } else if (
+      drag.type === "edge" ||
+      drag.type === "imgResize" ||
+      drag.type === "frame" ||
+      drag.type === "rotate" ||
+      drag.type === "north"
+    ) {
       store().endGesture();
-    } else if (drag.type === 'marquee') {
+    } else if (drag.type === "marquee") {
       const x0 = Math.min(drag.start.x, drag.cur.x);
       const x1 = Math.max(drag.start.x, drag.cur.x);
       const y0 = Math.min(drag.start.y, drag.cur.y);
@@ -509,15 +821,20 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
       if ((x1 - x0) * pxPerMm() < 3 && (y1 - y0) * pxPerMm() < 3) {
         if (!drag.additive) store().select(null);
       } else {
-        const inside = (p: Panel) => p.x >= x0 && p.y >= y0 && p.x + p.w <= x1 && p.y + p.h <= y1;
-        const hits: Selection[] = template.panels.filter(inside).map((p) => ({ kind: 'panel', id: p.id }));
+        const inside = (p: Panel) =>
+          p.x >= x0 && p.y >= y0 && p.x + p.w <= x1 && p.y + p.h <= y1;
+        const hits: Selection[] = template.panels
+          .filter(inside)
+          .map((p) => ({ kind: "panel", id: p.id }));
         for (const tx of template.texts) {
           const pos = textPos(tx, template);
-          if (pos.x >= x0 && pos.x <= x1 && pos.y >= y0 && pos.y <= y1) hits.push({ kind: 'text', id: tx.id });
+          if (pos.x >= x0 && pos.x <= x1 && pos.y >= y0 && pos.y <= y1)
+            hits.push({ kind: "text", id: tx.id });
         }
         for (const im of images) {
           const r = imageRect(im, template);
-          if (r.x >= x0 && r.y >= y0 && r.x + r.w <= x1 && r.y + r.h <= y1) hits.push({ kind: 'image', id: im.id });
+          if (r.x >= x0 && r.y >= y0 && r.x + r.w <= x1 && r.y + r.h <= y1)
+            hits.push({ kind: "image", id: im.id });
         }
         store().select(hits, drag.additive);
       }
@@ -530,31 +847,56 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     clearRenameTimer();
     // The svg holds pointer capture from the first click, so e.target is the svg itself.
     // Resize grips drawn on the selection sit over cells at the panel edge, so look beneath them.
-    const el = document.elementsFromPoint(e.clientX, e.clientY).find((x) => !x.closest('[data-edge],[data-img-handle]')) ?? (e.target as Element);
-    const itemEl = el.closest('[data-item]');
+    const el =
+      document
+        .elementsFromPoint(e.clientX, e.clientY)
+        .find((x) => !x.closest("[data-edge],[data-img-handle]")) ??
+      (e.target as Element);
+    const itemEl = el.closest("[data-item]");
     // Double-click in a plan view that has a drawing switches to editing the drawing's objects.
     const pp = planPanel(template);
     const dblAt = toMm(e.clientX, e.clientY);
-    if (pp && dblAt.x >= pp.x && dblAt.x <= pp.x + pp.w && dblAt.y >= pp.y && dblAt.y <= pp.y + pp.h && !el.closest('[data-north]') && planSets().length) {
+    if (
+      pp &&
+      dblAt.x >= pp.x &&
+      dblAt.x <= pp.x + pp.w &&
+      dblAt.y >= pp.y &&
+      dblAt.y <= pp.y + pp.h &&
+      !el.closest("[data-north]") &&
+      planSets().length
+    ) {
       if (!useDrawingEdit.getState().active) {
         useDrawingEdit.getState().enter(pp.id);
-        store().select({ kind: 'panel', id: pp.id });
+        store().select({ kind: "panel", id: pp.id });
       }
       return;
     }
     // Double-click anywhere without text to edit zooms to fit, like a CAD viewport.
     if (!itemEl) return fit();
-    const kind = itemEl.getAttribute('data-kind');
-    const id = itemEl.getAttribute('data-item')!;
-    if (kind === 'text') return store().startEdit({ kind: 'text', id });
-    if (kind === 'image') return fit();
-    const rev = el.closest('[data-rev]');
-    if (rev) return store().startEdit({ kind: 'revision', id, rowId: rev.getAttribute('data-rev')!, col: rev.getAttribute('data-col')! });
-    const field = el.closest('[data-field]');
-    if (field) return store().startEdit({ kind: 'field', id, col: field.getAttribute('data-field')! });
-    if (el.closest('[data-body2]')) return store().startEdit({ kind: 'panelBody2', id });
+    const kind = itemEl.getAttribute("data-kind");
+    const id = itemEl.getAttribute("data-item")!;
+    if (kind === "text") return store().startEdit({ kind: "text", id });
+    if (kind === "image") return fit();
+    const rev = el.closest("[data-rev]");
+    if (rev)
+      return store().startEdit({
+        kind: "revision",
+        id,
+        rowId: rev.getAttribute("data-rev")!,
+        col: rev.getAttribute("data-col")!,
+      });
+    const field = el.closest("[data-field]");
+    if (field)
+      return store().startEdit({
+        kind: "field",
+        id,
+        col: field.getAttribute("data-field")!,
+      });
+    if (el.closest("[data-body2]"))
+      return store().startEdit({ kind: "panelBody2", id });
     const p = template.panels.find((x) => x.id === id);
-    if (p && p.body !== undefined) return store().startEdit({ kind: 'panelBody', id });
+    if (p && p.body !== undefined)
+      return store().startEdit({ kind: "panelBody", id });
     fit();
   }
 
@@ -564,23 +906,43 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     if (!files.length) return;
     const at = toMm(e.clientX, e.clientY);
     // Go by extension: some systems label .dxf as image/vnd.dxf.
-    const isPicture = (f: File) => /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name);
+    const isPicture = (f: File) =>
+      /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(f.name);
     // Drop onto the innermost panel under the cursor; logos fit inside its box.
     const target = [...template.panels]
       .reverse()
-      .find((p) => at.x >= p.x && at.x <= p.x + p.w && at.y >= p.y && at.y <= p.y + p.h && p.type !== 'chartInfo');
+      .find(
+        (p) =>
+          at.x >= p.x &&
+          at.x <= p.x + p.w &&
+          at.y >= p.y &&
+          at.y <= p.y + p.h &&
+          p.type !== "chartInfo",
+      );
     // Pictures dropped on a logo panel go straight in; everything else opens the import window.
-    const onLogo = target?.type === 'logo';
+    const onLogo = target?.type === "logo";
     const imagesIn = onLogo ? files.filter(isPicture) : [];
     const other = files.filter((f) => !imagesIn.includes(f));
     if (other.length) useImport.getState().request(other, target?.type);
     for (const [i, f] of imagesIn.entries()) {
       try {
         const img = await readImageFile(f);
-        const top = target!.titlePosition === 'inside' ? titleInsideHeight(target!) : 1;
-        const box = { x: 1.5, y: top, w: target!.w - 3, h: target!.h - top - 1.5 };
+        const top =
+          target!.titlePosition === "inside" ? titleInsideHeight(target!) : 1;
+        const box = {
+          x: 1.5,
+          y: top,
+          w: target!.w - 3,
+          h: target!.h - top - 1.5,
+        };
         const r = fitInto(img.width, img.height, box);
-        store().addImage({ panelId: target!.id, ...r, x: r.x + i * 4, src: img.src, name: f.name });
+        store().addImage({
+          panelId: target!.id,
+          ...r,
+          x: r.x + i * 4,
+          src: img.src,
+          name: f.name,
+        });
       } catch (err) {
         onNotice((err as Error).message);
       }
@@ -591,20 +953,39 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
     e.preventDefault();
     clearRenameTimer();
     const at = toMm(e.clientX, e.clientY);
-    const rowEl = (e.target as Element).closest('[data-row]');
-    const itemEl = (e.target as Element).closest('[data-item]');
+    // Editing the drawing: the menu works on the objects, texts and their look.
+    const de = useDrawingEdit.getState();
+    if (
+      de.active &&
+      de.ctx &&
+      at.x >= de.ctx.rect.x &&
+      at.x <= de.ctx.rect.x + de.ctx.rect.w &&
+      at.y >= de.ctx.rect.y &&
+      at.y <= de.ctx.rect.y + de.ctx.rect.h
+    ) {
+      const pick = pickObject(de.ctx, at.x, at.y, 6 / pxPerMm());
+      if (pick && !(de.selected[pick.id] ?? []).includes(pick.group))
+        de.select({ [pick.id]: [pick.group] });
+      return onContextMenu(e.clientX, e.clientY, at, { kind: "drawing" });
+    }
+    const rowEl = (e.target as Element).closest("[data-row]");
+    const itemEl = (e.target as Element).closest("[data-item]");
     if (rowEl && itemEl) {
-      const id = itemEl.getAttribute('data-item')!;
-      if (!selectedPanelIds.has(id)) store().select({ kind: 'panel', id });
-      return onContextMenu(e.clientX, e.clientY, at, { kind: 'row', id, rowId: rowEl.getAttribute('data-row')! });
+      const id = itemEl.getAttribute("data-item")!;
+      if (!selectedPanelIds.has(id)) store().select({ kind: "panel", id });
+      return onContextMenu(e.clientX, e.clientY, at, {
+        kind: "row",
+        id,
+        rowId: rowEl.getAttribute("data-row")!,
+      });
     }
     if (itemEl) {
-      const kind = itemEl.getAttribute('data-kind') as Selection['kind'];
-      const id = itemEl.getAttribute('data-item')!;
+      const kind = itemEl.getAttribute("data-kind") as Selection["kind"];
+      const id = itemEl.getAttribute("data-item")!;
       if (!isSelected({ kind, id })) store().select({ kind, id });
       return onContextMenu(e.clientX, e.clientY, at, { kind, id });
     }
-    onContextMenu(e.clientX, e.clientY, at, { kind: 'sheet' });
+    onContextMenu(e.clientX, e.clientY, at, { kind: "sheet" });
   }
 
   const px = pxPerMm();
@@ -625,10 +1006,20 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
   }, [template.panels]);
 
   const panMap = useEditor((s) => s.panMap);
-  const cursor = drag?.type === 'pan' || drag?.type === 'mapPan' ? 'grabbing' : spaceDown.current || panMap ? 'grab' : undefined;
+  const cursor =
+    drag?.type === "pan" || drag?.type === "mapPan"
+      ? "grabbing"
+      : spaceDown.current || panMap
+        ? "grab"
+        : undefined;
 
   return (
-    <div className={`sheet-wrap${dark ? ' dark' : ''}`} ref={wrapRef} onDragOver={(e) => e.preventDefault()} onDrop={onDrop}>
+    <div
+      className={`sheet-wrap${dark ? " dark" : ""}`}
+      ref={wrapRef}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDrop}
+    >
       <svg
         ref={svgRef}
         className="sheet"
@@ -640,9 +1031,18 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
         onPointerLeave={() => onCursor(null)}
         onDoubleClick={onDoubleClick}
         onContextMenu={handleContextMenu}
-        style={{ cursor, fontFamily: `${template.fontFamily ?? 'Arial'}, Arial, Helvetica, sans-serif` }}
+        style={{
+          cursor,
+          fontFamily: `${template.fontFamily ?? "Arial"}, Arial, Helvetica, sans-serif`,
+        }}
       >
-        <rect className="paper" x={0} y={0} width={template.paper.width} height={template.paper.height} />
+        <rect
+          className="paper"
+          x={0}
+          y={0}
+          width={template.paper.width}
+          height={template.paper.height}
+        />
         <rect
           className="frame"
           x={template.paper.frameInset}
@@ -660,19 +1060,49 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
             hitW={hitW}
             handle={handle}
             hoverEdge={hoverEdge}
-            editingTitle={editing?.kind === 'panelTitle' && editing.id === p.id}
+            editingTitle={editing?.kind === "panelTitle" && editing.id === p.id}
             hasImage={images.some((im) => im.panelId === p.id)}
           />
         ))}
         {images.map((im) => (
-          <ImageView key={im.id} im={im} template={template} selected={selectedImageIds.has(im.id)} handle={handle} />
+          <ImageView
+            key={im.id}
+            im={im}
+            template={template}
+            selected={selectedImageIds.has(im.id)}
+            handle={handle}
+          />
         ))}
         {template.texts.map((tx) => (
-          <TextView key={tx.id} tx={tx} template={template} tokens={tokens} selected={selectedTextIds.has(tx.id)} editing={editing?.kind === 'text' && editing.id === tx.id} px={px} />
+          <TextView
+            key={tx.id}
+            tx={tx}
+            template={template}
+            tokens={tokens}
+            selected={selectedTextIds.has(tx.id)}
+            editing={editing?.kind === "text" && editing.id === tx.id}
+            px={px}
+          />
         ))}
-        {guides.x !== undefined && <line className="guide" x1={guides.x} y1={view.y} x2={guides.x} y2={view.y + view.h} />}
-        {guides.y !== undefined && <line className="guide" x1={view.x} y1={guides.y} x2={view.x + view.w} y2={guides.y} />}
-        {drag?.type === 'marquee' && (
+        {guides.x !== undefined && (
+          <line
+            className="guide"
+            x1={guides.x}
+            y1={view.y}
+            x2={guides.x}
+            y2={view.y + view.h}
+          />
+        )}
+        {guides.y !== undefined && (
+          <line
+            className="guide"
+            x1={view.x}
+            y1={guides.y}
+            x2={view.x + view.w}
+            y2={guides.y}
+          />
+        )}
+        {drag?.type === "marquee" && (
           <rect
             className="marquee"
             x={Math.min(drag.start.x, drag.cur.x)}
@@ -682,7 +1112,9 @@ export function SheetView({ onContextMenu, onCursor, onNotice, fitSignal, dark }
           />
         )}
       </svg>
-      {editing && svgRef.current && <InlineEditor svg={svgRef.current} wrap={wrapRef.current!} />}
+      {editing && svgRef.current && (
+        <InlineEditor svg={svgRef.current} wrap={wrapRef.current!} />
+      )}
     </div>
   );
 }
@@ -693,33 +1125,74 @@ export function imageRect(im: ImageItem, t: ChartTemplate) {
 }
 
 const IMAGE_HANDLE_CURSORS: Record<string, string> = {
-  '-1,-1': 'nwse-resize',
-  '1,1': 'nwse-resize',
-  '1,-1': 'nesw-resize',
-  '-1,1': 'nesw-resize',
-  '0,-1': 'ns-resize',
-  '0,1': 'ns-resize',
-  '-1,0': 'ew-resize',
-  '1,0': 'ew-resize',
+  "-1,-1": "nwse-resize",
+  "1,1": "nwse-resize",
+  "1,-1": "nesw-resize",
+  "-1,1": "nesw-resize",
+  "0,-1": "ns-resize",
+  "0,1": "ns-resize",
+  "-1,0": "ew-resize",
+  "1,0": "ew-resize",
 };
 
 /** Logos stay movable and resizable even when their panel is locked: the lock is for the layout. */
-function ImageView({ im, template, selected, handle }: { im: ImageItem; template: ChartTemplate; selected: boolean; handle: number }) {
+function ImageView({
+  im,
+  template,
+  selected,
+  handle,
+}: {
+  im: ImageItem;
+  template: ChartTemplate;
+  selected: boolean;
+  handle: number;
+}) {
   const r = imageRect(im, template);
   const corners = Object.entries(IMAGE_HANDLE_CURSORS).map(([dir, cur]) => {
-    const [sx, sy] = dir.split(',').map(Number);
-    return [sx, sy, r.x + ((sx + 1) / 2) * r.w, r.y + ((sy + 1) / 2) * r.h, cur] as const;
+    const [sx, sy] = dir.split(",").map(Number);
+    return [
+      sx,
+      sy,
+      r.x + ((sx + 1) / 2) * r.w,
+      r.y + ((sy + 1) / 2) * r.h,
+      cur,
+    ] as const;
   });
   return (
     <g className="image-item">
-      <g data-item={im.id} data-kind="image" style={{ cursor: 'move' }}>
-        <image href={im.src} x={r.x} y={r.y} width={r.w} height={r.h} preserveAspectRatio="xMidYMid meet" />
+      <g data-item={im.id} data-kind="image" style={{ cursor: "move" }}>
+        <image
+          href={im.src}
+          x={r.x}
+          y={r.y}
+          width={r.w}
+          height={r.h}
+          preserveAspectRatio="xMidYMid meet"
+        />
         <rect className="text-hit" x={r.x} y={r.y} width={r.w} height={r.h} />
       </g>
-      {selected && <rect className="sel-outline" x={r.x} y={r.y} width={r.w} height={r.h} />}
+      {selected && (
+        <rect
+          className="sel-outline"
+          x={r.x}
+          y={r.y}
+          width={r.w}
+          height={r.h}
+        />
+      )}
       {selected &&
         corners.map(([sx, sy, x, y, cur]) => (
-          <rect key={`${sx}${sy}`} className="handle" data-img-handle={im.id} data-dir={`${sx},${sy}`} x={x - handle / 2} y={y - handle / 2} width={handle} height={handle} style={{ cursor: cur }} />
+          <rect
+            key={`${sx}${sy}`}
+            className="handle"
+            data-img-handle={im.id}
+            data-dir={`${sx},${sy}`}
+            x={x - handle / 2}
+            y={y - handle / 2}
+            width={handle}
+            height={handle}
+            style={{ cursor: cur }}
+          />
         ))}
     </g>
   );
@@ -730,10 +1203,19 @@ export function textPos(tx: TextItem, t: ChartTemplate): Pt {
   return { x: (p?.x ?? 0) + tx.x, y: (p?.y ?? 0) + tx.y };
 }
 
-
-export function titleRect(p: Panel): { x: number; y: number; w: number; h: number } {
-  if (p.titlePosition === 'above') return { x: p.x, y: p.y - 6, w: p.w, h: 5 };
-  return { x: p.x + 1, y: p.y + 0.5, w: p.w - 2, h: titleInsideHeight(p) - 0.5 };
+export function titleRect(p: Panel): {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+} {
+  if (p.titlePosition === "above") return { x: p.x, y: p.y - 6, w: p.w, h: 5 };
+  return {
+    x: p.x + 1,
+    y: p.y + 0.5,
+    w: p.w - 2,
+    h: titleInsideHeight(p) - 0.5,
+  };
 }
 
 interface PanelViewProps {
@@ -748,42 +1230,78 @@ interface PanelViewProps {
   hasImage: boolean;
 }
 
-function PanelView({ p, template, tokens, selected, hitW, handle, hoverEdge, editingTitle, hasImage }: PanelViewProps) {
+function PanelView({
+  p,
+  template,
+  tokens,
+  selected,
+  hitW,
+  handle,
+  hoverEdge,
+  editingTitle,
+  hasImage,
+}: PanelViewProps) {
   const startEdit = useEditor((s) => s.startEdit);
   const title = resolveTokens(p.title, tokens);
-  const edges: Array<{ e: Edge; x1: number; y1: number; x2: number; y2: number }> = [
-    { e: 'left', x1: p.x, y1: p.y, x2: p.x, y2: p.y + p.h },
-    { e: 'right', x1: p.x + p.w, y1: p.y, x2: p.x + p.w, y2: p.y + p.h },
-    { e: 'top', x1: p.x, y1: p.y, x2: p.x + p.w, y2: p.y },
-    { e: 'bottom', x1: p.x, y1: p.y + p.h, x2: p.x + p.w, y2: p.y + p.h },
+  const edges: Array<{
+    e: Edge;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+  }> = [
+    { e: "left", x1: p.x, y1: p.y, x2: p.x, y2: p.y + p.h },
+    { e: "right", x1: p.x + p.w, y1: p.y, x2: p.x + p.w, y2: p.y + p.h },
+    { e: "top", x1: p.x, y1: p.y, x2: p.x + p.w, y2: p.y },
+    { e: "bottom", x1: p.x, y1: p.y + p.h, x2: p.x + p.w, y2: p.y + p.h },
   ];
   const corners: Array<{ es: Edge[]; x: number; y: number; cursor: string }> = [
-    { es: ['left', 'top'], x: p.x, y: p.y, cursor: 'nwse-resize' },
-    { es: ['right', 'top'], x: p.x + p.w, y: p.y, cursor: 'nesw-resize' },
-    { es: ['left', 'bottom'], x: p.x, y: p.y + p.h, cursor: 'nesw-resize' },
-    { es: ['right', 'bottom'], x: p.x + p.w, y: p.y + p.h, cursor: 'nwse-resize' },
+    { es: ["left", "top"], x: p.x, y: p.y, cursor: "nwse-resize" },
+    { es: ["right", "top"], x: p.x + p.w, y: p.y, cursor: "nesw-resize" },
+    { es: ["left", "bottom"], x: p.x, y: p.y + p.h, cursor: "nesw-resize" },
+    {
+      es: ["right", "bottom"],
+      x: p.x + p.w,
+      y: p.y + p.h,
+      cursor: "nwse-resize",
+    },
   ];
-  const isContainer = p.type === 'chartInfo';
+  const isContainer = p.type === "chartInfo";
   return (
-    <g className={`panel type-${p.type}${selected ? ' selected' : ''}${p.locked ? ' locked' : ''}`}>
+    <g
+      className={`panel type-${p.type}${selected ? " selected" : ""}${p.locked ? " locked" : ""}`}
+    >
       <g data-item={p.id} data-kind="panel">
-        <rect className={isContainer ? 'panel-box container' : 'panel-box'} x={p.x} y={p.y} width={p.w} height={p.h} style={p.fill ? { fill: p.fill } : undefined} />
-        {p.titlePosition !== 'none' && !editingTitle && (
+        <rect
+          className={isContainer ? "panel-box container" : "panel-box"}
+          x={p.x}
+          y={p.y}
+          width={p.w}
+          height={p.h}
+          style={p.fill ? { fill: p.fill } : undefined}
+        />
+        {p.titlePosition !== "none" && !editingTitle && (
           <text
-            className={p.titlePosition === 'above' ? 'panel-title above' : 'panel-title'}
-            x={p.titlePosition === 'above' ? p.x + p.w / 2 : p.x + 2}
-            y={p.titlePosition === 'above' ? p.y - 2 : p.y + 3.4}
-            fontSize={fontSize(p.titlePosition === 'above' ? 2.5 : TITLE_CAP)}
-            textAnchor={p.titlePosition === 'above' ? 'middle' : 'start'}
+            className={
+              p.titlePosition === "above" ? "panel-title above" : "panel-title"
+            }
+            x={p.titlePosition === "above" ? p.x + p.w / 2 : p.x + 2}
+            y={p.titlePosition === "above" ? p.y - 2 : p.y + 3.4}
+            fontSize={fontSize(p.titlePosition === "above" ? 2.5 : TITLE_CAP)}
+            textAnchor={p.titlePosition === "above" ? "middle" : "start"}
             onDoubleClick={(e) => {
               e.stopPropagation();
-              startEdit({ kind: 'panelTitle', id: p.id });
+              startEdit({ kind: "panelTitle", id: p.id });
             }}
           >
-            {p.titlePosition === 'above'
+            {p.titlePosition === "above"
               ? title
               : titleLines(p, title).map((l, i) => (
-                  <tspan key={i} x={p.x + 2} dy={i === 0 ? 0 : titleLineHeight()}>
+                  <tspan
+                    key={i}
+                    x={p.x + 2}
+                    dy={i === 0 ? 0 : titleLineHeight()}
+                  >
                     {l}
                   </tspan>
                 ))}
@@ -794,14 +1312,16 @@ function PanelView({ p, template, tokens, selected, hitW, handle, hoverEdge, edi
           template={template}
           tokens={tokens}
           hasImage={hasImage}
-          onRowDoubleClick={(panelId, rowId) => startEdit({ kind: 'row', id: panelId, rowId })}
+          onRowDoubleClick={(panelId, rowId) =>
+            startEdit({ kind: "row", id: panelId, rowId })
+          }
         />
       </g>
       {!p.locked &&
         edges.map((ed) => (
           <line
             key={ed.e}
-            className={`edge-hit${hoverEdge === `${p.id}:${ed.e}` ? ' hover' : ''}`}
+            className={`edge-hit${hoverEdge === `${p.id}:${ed.e}` ? " hover" : ""}`}
             data-edge={ed.e}
             data-panel={p.id}
             x1={ed.x1}
@@ -809,17 +1329,28 @@ function PanelView({ p, template, tokens, selected, hitW, handle, hoverEdge, edi
             x2={ed.x2}
             y2={ed.y2}
             strokeWidth={hitW}
-            style={{ cursor: ed.e === 'left' || ed.e === 'right' ? 'ew-resize' : 'ns-resize' }}
+            style={{
+              cursor:
+                ed.e === "left" || ed.e === "right" ? "ew-resize" : "ns-resize",
+            }}
           />
         ))}
-      {selected && <rect className="sel-outline" x={p.x} y={p.y} width={p.w} height={p.h} />}
+      {selected && (
+        <rect
+          className="sel-outline"
+          x={p.x}
+          y={p.y}
+          width={p.w}
+          height={p.h}
+        />
+      )}
       {selected &&
         !p.locked &&
         corners.map((c) => (
           <rect
             key={c.es.join()}
             className="handle"
-            data-edge={c.es.join(',')}
+            data-edge={c.es.join(",")}
             data-panel={p.id}
             x={c.x - handle / 2}
             y={c.y - handle / 2}
@@ -832,23 +1363,62 @@ function PanelView({ p, template, tokens, selected, hitW, handle, hoverEdge, edi
   );
 }
 
-function TextView({ tx, template, tokens, selected, editing, px }: { tx: TextItem; template: ChartTemplate; tokens: Record<string, string>; selected: boolean; editing: boolean; px: number }) {
+function TextView({
+  tx,
+  template,
+  tokens,
+  selected,
+  editing,
+  px,
+}: {
+  tx: TextItem;
+  template: ChartTemplate;
+  tokens: Record<string, string>;
+  selected: boolean;
+  editing: boolean;
+  px: number;
+}) {
   const pos = textPos(tx, template);
   const text = resolveTokens(tx.text, tokens);
   const w = approxTextWidth(text, tx.size);
   const h = fontSize(tx.size);
-  const x0 = tx.anchor === 'middle' ? -w / 2 : tx.anchor === 'end' ? -w : 0;
+  const x0 = tx.anchor === "middle" ? -w / 2 : tx.anchor === "end" ? -w : 0;
   const pad = 2 / px;
   return (
-    <g data-item={tx.id} data-kind="text" className={`text-item${selected ? ' selected' : ''}`} transform={`translate(${pos.x} ${pos.y}) rotate(${tx.rotation ?? 0})`}>
-      <rect className="text-hit" x={x0 - pad} y={-h * 0.8 - pad} width={w + 2 * pad} height={h + 2 * pad} />
+    <g
+      data-item={tx.id}
+      data-kind="text"
+      className={`text-item${selected ? " selected" : ""}`}
+      transform={`translate(${pos.x} ${pos.y}) rotate(${tx.rotation ?? 0})`}
+    >
+      <rect
+        className="text-hit"
+        x={x0 - pad}
+        y={-h * 0.8 - pad}
+        width={w + 2 * pad}
+        height={h + 2 * pad}
+      />
       {!editing && (
-        <text x={0} y={0} fontSize={h} textAnchor={tx.anchor} fontWeight={tx.bold ? 'bold' : undefined} style={tx.color ? { fill: tx.color } : undefined}>
+        <text
+          x={0}
+          y={0}
+          fontSize={h}
+          textAnchor={tx.anchor}
+          fontWeight={tx.bold ? "bold" : undefined}
+          style={tx.color ? { fill: tx.color } : undefined}
+        >
           {text}
         </text>
       )}
-      {selected && <rect className="sel-outline" x={x0 - pad} y={-h * 0.8 - pad} width={w + 2 * pad} height={h + 2 * pad} />}
+      {selected && (
+        <rect
+          className="sel-outline"
+          x={x0 - pad}
+          y={-h * 0.8 - pad}
+          width={w + 2 * pad}
+          height={h + 2 * pad}
+        />
+      )}
     </g>
   );
 }
-

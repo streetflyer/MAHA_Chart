@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Linework } from '../model/dxf';
+import type { DxfText, Linework } from '../model/dxf';
 import { useSurvey } from './surveyData';
 
 type Pt = [number, number];
@@ -27,7 +27,15 @@ interface Snapshot {
   lw: Record<string, Linework>;
 }
 
+/** A text's look, for copy/paste of format (like AutoCAD's match properties). */
+export type TextFormat = Pick<DxfText, 'h' | 'color' | 'font' | 'bold' | 'italic' | 'rot'>;
+
 interface DrawingEdit {
+  /** Copied texts (positions kept), ready to paste. */
+  textClip: Omit<DxfText, 'group'>[] | null;
+  format: TextFormat | null;
+  setTextClip(t: Omit<DxfText, 'group'>[] | null): void;
+  setFormat(f: TextFormat | null): void;
   active: boolean;
   panelId: string | null;
   /** Chosen objects by dataset id. */
@@ -55,6 +63,10 @@ function lineworkOf(id: string): Linework | null {
 }
 
 export const useDrawingEdit = create<DrawingEdit>((set, get) => ({
+  textClip: null,
+  format: null,
+  setTextClip: (textClip) => set({ textClip }),
+  setFormat: (format) => set({ format }),
   active: false,
   panelId: null,
   selected: {},

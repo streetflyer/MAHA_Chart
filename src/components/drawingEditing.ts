@@ -1,15 +1,24 @@
-import { boundsOfGroups, deleteGroups, groupBoxes, moveGroups, nearestGroup, type Box } from '../model/drawingOps';
-import { lineworkFor } from '../model/datasets';
-import type { DxfText } from '../model/dxf';
-import { useDrawingEdit, type PlanContext } from '../state/drawingEdit';
-import { useSurvey } from '../state/surveyData';
-import { layerShown, placeText, type LineworkSet } from './LineworkLayer';
-import { approxTextWidth, fontSize } from './svgText';
+import {
+  boundsOfGroups,
+  deleteGroups,
+  groupBoxes,
+  moveGroups,
+  nearestGroup,
+  type Box,
+} from "../model/drawingOps";
+import { lineworkFor } from "../model/datasets";
+import type { DxfText } from "../model/dxf";
+import { useDrawingEdit, type PlanContext } from "../state/drawingEdit";
+import { useSurvey } from "../state/surveyData";
+import { layerShown, placeText, type LineworkSet } from "./LineworkLayer";
+import { copyTexts, pasteTextsAt } from "./drawingMenu";
+import { approxTextWidth, fontSize } from "./svgText";
 
 type Pt = [number, number];
 
 /** The drawings shown in the plan view. */
-export const planSets = (): LineworkSet[] => lineworkFor(useSurvey.getState().datasets, 'plan');
+export const planSets = (): LineworkSet[] =>
+  lineworkFor(useSurvey.getState().datasets, "plan");
 
 /** A grid point near the drawings, so paper↔grid maps don't lose precision to the large coordinates. */
 function anchorOf(sets: LineworkSet[]): Pt {
@@ -18,7 +27,10 @@ function anchorOf(sets: LineworkSet[]): Pt {
 }
 
 /** Paper millimetres in the plan view back to grid metres. */
-export function toGrid(ctx: PlanContext, sets: LineworkSet[]): (x: number, y: number) => Pt {
+export function toGrid(
+  ctx: PlanContext,
+  sets: LineworkSet[],
+): (x: number, y: number) => Pt {
   const [ae, an] = anchorOf(sets);
   const a = ctx.project(ae, an);
   const bx = ctx.project(ae + 1, an);
@@ -28,12 +40,21 @@ export function toGrid(ctx: PlanContext, sets: LineworkSet[]): (x: number, y: nu
   return (x, y) => {
     const dx = x - a[0];
     const dy = y - a[1];
-    return [ae + (m[3] * dx - m[2] * dy) / det, an + (-m[1] * dx + m[0] * dy) / det];
+    return [
+      ae + (m[3] * dx - m[2] * dy) / det,
+      an + (-m[1] * dx + m[0] * dy) / det,
+    ];
   };
 }
 
 /** Is the text under this paper point? 0 when inside its box, else null. */
-function textHitAt(d: LineworkSet, t: DxfText, ctx: PlanContext, px: number, py: number): number | null {
+function textHitAt(
+  d: LineworkSet,
+  t: DxfText,
+  ctx: PlanContext,
+  px: number,
+  py: number,
+): number | null {
   const pl = placeText(d, t, ctx.project, ctx.mmPerM, ctx.uAngle);
   if (!pl) return null;
   const rad = (-pl.ang * Math.PI) / 180;
@@ -41,16 +62,26 @@ function textHitAt(d: LineworkSet, t: DxfText, ctx: PlanContext, px: number, py:
   const dy = py - pl.y;
   const lx = dx * Math.cos(rad) - dy * Math.sin(rad);
   const ly = dx * Math.sin(rad) + dy * Math.cos(rad);
-  const lines = t.text.split('\n');
+  const lines = t.text.split("\n");
   const w = Math.max(...lines.map((l) => approxTextWidth(l, pl.cap)));
-  const x0 = pl.anchor === 'middle' ? -w / 2 : pl.anchor === 'end' ? -w : 0;
+  const x0 = pl.anchor === "middle" ? -w / 2 : pl.anchor === "end" ? -w : 0;
   const pad = pl.cap * 0.3;
   const h = pl.cap + (lines.length - 1) * fontSize(pl.cap) * 1.2;
-  return lx >= x0 - pad && lx <= x0 + w + pad && ly >= -pl.cap - pad && ly <= h - pl.cap + pad ? 0 : null;
+  return lx >= x0 - pad &&
+    lx <= x0 + w + pad &&
+    ly >= -pl.cap - pad &&
+    ly <= h - pl.cap + pad
+    ? 0
+    : null;
 }
 
 /** The object under a paper point, as {dataset, group}. */
-export function pickObject(ctx: PlanContext, px: number, py: number, tolMm: number): { id: string; group: number } | null {
+export function pickObject(
+  ctx: PlanContext,
+  px: number,
+  py: number,
+  tolMm: number,
+): { id: string; group: number } | null {
   const sets = planSets();
   const grid = toGrid(ctx, sets);
   const [e, n] = grid(px, py);
@@ -75,7 +106,14 @@ export function pickObject(ctx: PlanContext, px: number, py: number, tolMm: numb
 }
 
 /** Objects inside (or, when `crossing`, touching) a paper rectangle. */
-export function pickInBox(ctx: PlanContext, x0: number, y0: number, x1: number, y1: number, crossing: boolean): Record<string, number[]> {
+export function pickInBox(
+  ctx: PlanContext,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  crossing: boolean,
+): Record<string, number[]> {
   const out: Record<string, number[]> = {};
   const minX = Math.min(x0, x1);
   const maxX = Math.max(x0, x1);
@@ -84,11 +122,19 @@ export function pickInBox(ctx: PlanContext, x0: number, y0: number, x1: number, 
   for (const d of planSets()) {
     const ids: number[] = [];
     const visible = new Set<number>();
-    d.lw.layers.forEach((l, i) => layerShown(d, l) && visible.add(d.lw.groups[i]));
-    for (const t of d.lw.texts) if (layerShown(d, t.layer)) visible.add(t.group);
+    d.lw.layers.forEach(
+      (l, i) => layerShown(d, l) && visible.add(d.lw.groups[i]),
+    );
+    for (const t of d.lw.texts)
+      if (layerShown(d, t.layer)) visible.add(t.group);
     for (const [g, b] of groupBoxes(d.lw)) {
       if (!visible.has(g)) continue;
-      const px = [ctx.project(b.minE, b.minN), ctx.project(b.maxE, b.minN), ctx.project(b.minE, b.maxN), ctx.project(b.maxE, b.maxN)];
+      const px = [
+        ctx.project(b.minE, b.minN),
+        ctx.project(b.maxE, b.minN),
+        ctx.project(b.minE, b.maxN),
+        ctx.project(b.maxE, b.maxN),
+      ];
       const bx0 = Math.min(...px.map((p) => p[0]));
       const bx1 = Math.max(...px.map((p) => p[0]));
       const by0 = Math.min(...px.map((p) => p[1]));
@@ -110,29 +156,61 @@ export function selectionBox(selected: Record<string, number[]>): Box | null {
     if (!g?.length) continue;
     const x = boundsOfGroups(d.lw, new Set(g));
     if (!x) continue;
-    b = b ? { minE: Math.min(b.minE, x.minE), maxE: Math.max(b.maxE, x.maxE), minN: Math.min(b.minN, x.minN), maxN: Math.max(b.maxN, x.maxN) } : x;
+    b = b
+      ? {
+          minE: Math.min(b.minE, x.minE),
+          maxE: Math.max(b.maxE, x.maxE),
+          minN: Math.min(b.minN, x.minN),
+          maxN: Math.max(b.maxN, x.maxN),
+        }
+      : x;
   }
   return b;
 }
 
 /** Where the rotate handle sits on paper: above the middle of the chosen objects. */
-export function rotateHandle(ctx: PlanContext, selected: Record<string, number[]>): { x: number; y: number; cx: number; cy: number; cE: number; cN: number } | null {
+export function rotateHandle(
+  ctx: PlanContext,
+  selected: Record<string, number[]>,
+): {
+  x: number;
+  y: number;
+  cx: number;
+  cy: number;
+  cE: number;
+  cN: number;
+} | null {
   const b = selectionBox(selected);
   if (!b) return null;
   const cE = (b.minE + b.maxE) / 2;
   const cN = (b.minN + b.maxN) / 2;
-  const corners = [ctx.project(b.minE, b.minN), ctx.project(b.maxE, b.minN), ctx.project(b.minE, b.maxN), ctx.project(b.maxE, b.maxN)];
+  const corners = [
+    ctx.project(b.minE, b.minN),
+    ctx.project(b.maxE, b.minN),
+    ctx.project(b.minE, b.maxN),
+    ctx.project(b.maxE, b.maxN),
+  ];
   const [cx, cy] = ctx.project(cE, cN);
   const top = Math.min(...corners.map((c) => c[1]));
   // Kept inside the plan view so it can always be reached, even when the objects run off its edge.
   const r = ctx.rect;
-  return { x: Math.min(r.x + r.w - 3, Math.max(r.x + 3, cx)), y: Math.min(r.y + r.h - 3, Math.max(r.y + 3, top - 6)), cx, cy, cE, cN };
+  return {
+    x: Math.min(r.x + r.w - 3, Math.max(r.x + 3, cx)),
+    y: Math.min(r.y + r.h - 3, Math.max(r.y + 3, top - 6)),
+    cx,
+    cy,
+    cE,
+    cN,
+  };
 }
 
-export const selectionCount = (sel: Record<string, number[]>) => Object.values(sel).reduce((n, g) => n + g.length, 0);
+export const selectionCount = (sel: Record<string, number[]>) =>
+  Object.values(sel).reduce((n, g) => n + g.length, 0);
 
 /** Anything chosen that is a text? Its datasets and groups. */
-export function selectedTexts(sel: Record<string, number[]>): { d: LineworkSet; texts: DxfText[] }[] {
+export function selectedTexts(
+  sel: Record<string, number[]>,
+): { d: LineworkSet; texts: DxfText[] }[] {
   const out: { d: LineworkSet; texts: DxfText[] }[] = [];
   for (const d of planSets()) {
     const g = new Set(sel[d.id] ?? []);
@@ -150,7 +228,12 @@ export const editing = () => useDrawingEdit.getState().active;
 export function deleteSelected() {
   const de = useDrawingEdit.getState();
   const ids = Object.keys(de.selected).filter((id) => de.selected[id].length);
-  if (ids.length) de.change(ids, (lw, id) => deleteGroups(lw, new Set(de.selected[id])), false);
+  if (ids.length)
+    de.change(
+      ids,
+      (lw, id) => deleteGroups(lw, new Set(de.selected[id])),
+      false,
+    );
 }
 
 /** Move the chosen objects by a step on paper (mm, paper axes). */
@@ -161,7 +244,10 @@ export function nudgeSelected(dxMm: number, dyMm: number) {
   const g0 = grid(0, 0);
   const g1 = grid(dxMm, dyMm);
   const ids = Object.keys(de.selected).filter((id) => de.selected[id].length);
-  if (ids.length) de.change(ids, (lw, id) => moveGroups(lw, new Set(de.selected[id]), g1[0] - g0[0], g1[1] - g0[1]));
+  if (ids.length)
+    de.change(ids, (lw, id) =>
+      moveGroups(lw, new Set(de.selected[id]), g1[0] - g0[0], g1[1] - g0[1]),
+    );
 }
 
 /** Keys while editing the drawing. True when the key was used. */
@@ -169,15 +255,26 @@ export function drawingKey(e: KeyboardEvent): boolean {
   const de = useDrawingEdit.getState();
   const mod = e.ctrlKey || e.metaKey;
   const k = e.key.toLowerCase();
-  if (mod && k === 'z' && !e.shiftKey) de.undo();
-  else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) de.redo();
-  else if (e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
-  else if (e.key === 'Escape') {
+  if (mod && k === "z" && !e.shiftKey) de.undo();
+  else if (mod && k === "c") copyTexts();
+  else if (mod && k === "v") {
+    const r = de.ctx?.rect;
+    if (r) pasteTextsAt({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+  } else if (mod && (k === "y" || (k === "z" && e.shiftKey))) de.redo();
+  else if (e.key === "Delete" || e.key === "Backspace") deleteSelected();
+  else if (e.key === "Escape") {
     if (selectionCount(de.selected)) de.select({});
     else de.exit();
-  } else if (e.key.startsWith('Arrow') && selectionCount(de.selected)) {
+  } else if (e.key.startsWith("Arrow") && selectionCount(de.selected)) {
     const step = e.shiftKey ? 5 : 0.5;
-    const d = ({ ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] } as Record<string, number[]>)[e.key];
+    const d = (
+      {
+        ArrowLeft: [-step, 0],
+        ArrowRight: [step, 0],
+        ArrowUp: [0, -step],
+        ArrowDown: [0, step],
+      } as Record<string, number[]>
+    )[e.key];
     nudgeSelected(d[0], d[1]);
   } else return false;
   return true;

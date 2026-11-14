@@ -1,3 +1,5 @@
+import { DEFAULT_MATCHLINES } from "../model/matchlines";
+import type { MatchlineStyle } from "../model/types";
 import { ColourBox } from "./ColourBox";
 import { useEffect, useState } from "react";
 import { newId } from "../model/ids";
@@ -1372,16 +1374,111 @@ function KeyplanEditor({ p }: { p: Panel }) {
   );
 }
 
+function MatchlineControls({
+  st,
+  onChange,
+}: {
+  st: MatchlineStyle;
+  onChange(p: Partial<MatchlineStyle>): void;
+}) {
+  const txt = (label: string, key: "prefix" | "suffix" | "extra") => (
+    <Field
+      label={label}
+      value={st[key]}
+      onCommit={(v) => onChange({ [key]: v })}
+    />
+  );
+  return (
+    <>
+      <label
+        className="check"
+        title="Draw a line across the plan view wherever it meets the next or previous chart"
+      >
+        <input
+          type="checkbox"
+          checked={st.on}
+          onChange={(e) => onChange({ on: e.target.checked })}
+        />{" "}
+        Show matchlines
+      </label>
+      {st.on && (
+        <>
+          <label className="field">
+            <span>Lines at</span>
+            <select
+              value={st.mode}
+              onChange={(e) =>
+                onChange({ mode: e.target.value as MatchlineStyle["mode"] })
+              }
+            >
+              <option value="overlap">
+                Overlap: where the neighbouring charts begin and end
+              </option>
+              <option value="profile">
+                Profile limits: this chart's own start and end KP
+              </option>
+            </select>
+          </label>
+          <div className="row2">
+            {txt("Label prefix", "prefix")}
+            {txt("Label suffix", "suffix")}
+          </div>
+          {txt("Extra text (other side)", "extra")}
+          <div className="row2">
+            <label className="field colour-field">
+              <span>Colour</span>
+              <ColourBox
+                value={st.color}
+                onChange={(c) => onChange({ color: c })}
+              />
+            </label>
+            <Field
+              label="Width"
+              type="number"
+              step={0.05}
+              suffix="mm"
+              value={st.width}
+              onCommit={(v) => num(v) > 0 && onChange({ width: num(v) })}
+            />
+          </div>
+          <div className="row2">
+            <Field
+              label="Text height"
+              type="number"
+              step={0.1}
+              suffix="mm"
+              value={st.textSize}
+              onCommit={(v) => num(v) > 0 && onChange({ textSize: num(v) })}
+            />
+            <label className="field">
+              <span>Line style</span>
+              <select
+                value={st.dash}
+                onChange={(e) => onChange({ dash: e.target.value })}
+              >
+                <option value="">Continuous</option>
+                <option value="4 1.5 0.8 1.5">Dash-dot</option>
+                <option value="4 2">Dashed</option>
+                <option value="0.8 1.2">Dotted</option>
+              </select>
+            </label>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 function PlanStyleEditor({ p }: { p: Panel }) {
   const s = useEditor.getState();
   const st = planStyle(p);
   const set = (patch: Partial<PlanStyle>) =>
     s.updatePanel(p.id, { plan: { ...st, ...patch } });
   type ColourKey = {
-    [K in keyof PlanStyle]: PlanStyle[K] extends string ? K : never;
+    [K in keyof PlanStyle]-?: PlanStyle[K] extends string ? K : never;
   }[keyof PlanStyle];
   type NumberKey = {
-    [K in keyof PlanStyle]: PlanStyle[K] extends number ? K : never;
+    [K in keyof PlanStyle]-?: PlanStyle[K] extends number ? K : never;
   }[keyof PlanStyle];
   const colour = (label: string, key: ColourKey) => (
     <label className="field">
@@ -1404,6 +1501,11 @@ function PlanStyleEditor({ p }: { p: Panel }) {
       <p className="hint">
         Runline and As Built colours and widths are set under Data above.
       </p>
+      <h4>Matchlines</h4>
+      <MatchlineControls
+        st={{ ...DEFAULT_MATCHLINES, ...st.match }}
+        onChange={(m) => set({ match: { ...st.match, ...m } })}
+      />
       <h4>KP blocks</h4>
       <label className="check">
         <input
@@ -1730,16 +1832,31 @@ function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
             </>
           )}
           {d.kind === "trans" && (
-            <Field
-              label="Draw a profile every"
-              type="number"
-              step={10}
-              suffix="m (0 = auto)"
-              value={d.every}
-              onCommit={(v) =>
-                num(v) >= 0 && sv.updateDataset(d.id, { every: num(v) })
-              }
-            />
+            <>
+              <Field
+                label="Draw a profile every"
+                type="number"
+                step={10}
+                suffix="m (0 = auto)"
+                value={d.every}
+                onCommit={(v) =>
+                  num(v) >= 0 && sv.updateDataset(d.id, { every: num(v) })
+                }
+              />
+              <label
+                className="check"
+                title="Draw the pipe as a true circle at the lateral scale, so the vertical scale does not make it oval"
+              >
+                <input
+                  type="checkbox"
+                  checked={!!d.pipeRound}
+                  onChange={(e) =>
+                    sv.updateDataset(d.id, { pipeRound: e.target.checked })
+                  }
+                />
+                Keep the pipe diameter ratio (round pipe)
+              </label>
+            </>
           )}
           {d.kind === "cp" && <CpReadings d={d} />}
           {d.kind === "events" && <EventList d={d} />}

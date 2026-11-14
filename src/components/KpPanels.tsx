@@ -146,7 +146,8 @@ function kpSpan(
       hi = Math.max(hi, kp);
     }
   }
-  return lo <= hi ? [lo, hi] : null;
+  // The scan is in steps, so the true edge can lie up to a step beyond: pad so a reading right on the edge is kept (the panel clips it).
+  return lo <= hi ? [lo - 2 * step, hi + 2 * step] : null;
 }
 
 /** Data drawn in the longitudinal, transverse, events and CP panels for the current chart. */
@@ -650,7 +651,7 @@ function TransProfiles({
             <ellipse
               cx={x0}
               cy={cy}
-              rx={Math.max(0.4, (pr.diameter / 2) * kV)}
+              rx={Math.max(0.4, (pr.diameter / 2) * (d.pipeRound ? kL : kV))}
               ry={Math.max(0.4, (pr.diameter / 2) * kL)}
               fill={d.pipeFill}
               stroke={d.pipeColor}

@@ -1,4 +1,4 @@
-import type { DxfText, Linework } from './dxf';
+import type { DxfText, Linework } from "./dxf";
 
 /**
  * Editing a drawing's objects, the way AutoCAD does: an object is a whole
@@ -9,22 +9,47 @@ import type { DxfText, Linework } from './dxf';
 export type GroupSet = ReadonlySet<number>;
 
 /** Move objects by (dE, dN) grid metres. */
-export function moveGroups(lw: Linework, groups: GroupSet, dE: number, dN: number): Linework {
+export function moveGroups(
+  lw: Linework,
+  groups: GroupSet,
+  dE: number,
+  dN: number,
+): Linework {
   return mapGroups(lw, groups, (e, n) => [e + dE, n + dN], 0);
 }
 
 /** Turn objects about (cE, cN) by `angle` radians anticlockwise. */
-export function rotateGroups(lw: Linework, groups: GroupSet, cE: number, cN: number, angle: number): Linework {
+export function rotateGroups(
+  lw: Linework,
+  groups: GroupSet,
+  cE: number,
+  cN: number,
+  angle: number,
+): Linework {
   const c = Math.cos(angle);
   const s = Math.sin(angle);
-  return mapGroups(lw, groups, (e, n) => [cE + (e - cE) * c - (n - cN) * s, cN + (e - cE) * s + (n - cN) * c], (angle * 180) / Math.PI);
+  return mapGroups(
+    lw,
+    groups,
+    (e, n) => [
+      cE + (e - cE) * c - (n - cN) * s,
+      cN + (e - cE) * s + (n - cN) * c,
+    ],
+    (angle * 180) / Math.PI,
+  );
 }
 
-function mapGroups(lw: Linework, groups: GroupSet, f: (e: number, n: number) => [number, number], dRot: number): Linework {
+function mapGroups(
+  lw: Linework,
+  groups: GroupSet,
+  f: (e: number, n: number) => [number, number],
+  dRot: number,
+): Linework {
   const lines = lw.lines.map((l, i) => {
     if (!groups.has(lw.groups[i])) return l;
     const out = new Float64Array(l.length);
-    for (let k = 0; k < l.length; k += 2) [out[k], out[k + 1]] = f(l[k], l[k + 1]);
+    for (let k = 0; k < l.length; k += 2)
+      [out[k], out[k + 1]] = f(l[k], l[k + 1]);
     return out;
   });
   const texts = lw.texts.map((t) => {
@@ -39,7 +64,7 @@ function mapGroups(lw: Linework, groups: GroupSet, f: (e: number, n: number) => 
 export function deleteGroups(lw: Linework, groups: GroupSet): Linework {
   const keep = lw.lines.map((_, i) => !groups.has(lw.groups[i]));
   const texts = lw.texts.filter((t) => !groups.has(t.group));
-  const pick = <T,>(a: T[]) => a.filter((_, i) => keep[i]);
+  const pick = <T>(a: T[]) => a.filter((_, i) => keep[i]);
   const layers = pick(lw.layers);
   const count = new Map<string, number>();
   for (const l of layers) count.set(l, (count.get(l) ?? 0) + 1);
@@ -51,16 +76,27 @@ export function deleteGroups(lw: Linework, groups: GroupSet): Linework {
     colors: pick(lw.colors),
     groups: pick(lw.groups),
     texts,
-    layerInfo: lw.layerInfo.map((l) => ({ ...l, count: count.get(l.name) ?? 0 })),
+    layerInfo: lw.layerInfo.map((l) => ({
+      ...l,
+      count: count.get(l.name) ?? 0,
+    })),
   };
 }
 
 /** Change the look or content of the texts among the objects. `scale` multiplies their height. */
-export function editTexts(lw: Linework, groups: GroupSet, patch: Partial<Pick<DxfText, 'text' | 'rot' | 'color' | 'font' | 'bold' | 'italic'>> & { scale?: number }): Linework {
+export function editTexts(
+  lw: Linework,
+  groups: GroupSet,
+  patch: Partial<
+    Pick<DxfText, "text" | "rot" | "color" | "font" | "bold" | "italic">
+  > & { scale?: number },
+): Linework {
   const { scale, ...rest } = patch;
   return {
     ...lw,
-    texts: lw.texts.map((t) => (groups.has(t.group) ? { ...t, ...rest, h: scale ? t.h * scale : t.h } : t)),
+    texts: lw.texts.map((t) =>
+      groups.has(t.group) ? { ...t, ...rest, h: scale ? t.h * scale : t.h } : t,
+    ),
   };
 }
 
@@ -96,17 +132,33 @@ export function boundsOfGroups(lw: Linework, groups: GroupSet): Box | null {
   let b: Box | null = null;
   for (const [g, x] of groupBoxes(lw)) {
     if (!groups.has(g)) continue;
-    b = b ? { minE: Math.min(b.minE, x.minE), maxE: Math.max(b.maxE, x.maxE), minN: Math.min(b.minN, x.minN), maxN: Math.max(b.maxN, x.maxN) } : { ...x };
+    b = b
+      ? {
+          minE: Math.min(b.minE, x.minE),
+          maxE: Math.max(b.maxE, x.maxE),
+          minN: Math.min(b.minN, x.minN),
+          maxN: Math.max(b.maxN, x.maxN),
+        }
+      : { ...x };
   }
   return b;
 }
 
 /** Distance from (px, py) to the segment a–b. */
-export function distToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+export function distToSegment(
+  px: number,
+  py: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+): number {
   const dx = bx - ax;
   const dy = by - ay;
   const len2 = dx * dx + dy * dy;
-  const t = len2 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+  const t = len2
+    ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2))
+    : 0;
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
 }
 
@@ -114,7 +166,14 @@ export function distToSegment(px: number, py: number, ax: number, ay: number, bx
  * The object nearest to a grid point within `tol` metres. `visible(i)` says
  * whether line i is drawn; `textHit` gives a distance for a text (0 when inside), or null.
  */
-export function nearestGroup(lw: Linework, e: number, n: number, tol: number, visible: (layer: string) => boolean, textHit: (t: DxfText) => number | null): number | null {
+export function nearestGroup(
+  lw: Linework,
+  e: number,
+  n: number,
+  tol: number,
+  visible: (layer: string) => boolean,
+  textHit: (t: DxfText) => number | null,
+): number | null {
   let best = Infinity;
   let bestGroup: number | null = null;
   for (let i = 0; i < lw.lines.length; i++) {
@@ -142,4 +201,38 @@ export function nearestGroup(lw: Linework, e: number, n: number, tol: number, vi
     }
   }
   return bestGroup;
+}
+
+/** Add texts as new objects. Returns the new drawing and the new objects' group numbers. */
+export function addTexts(
+  lw: Linework,
+  add: Omit<DxfText, "group">[],
+): { lw: Linework; groups: number[] } {
+  let next = 1 + Math.max(0, ...lw.groups, ...lw.texts.map((t) => t.group));
+  const groups: number[] = [];
+  const texts = add.map((t) => {
+    const g = next++;
+    groups.push(g);
+    return { ...t, group: g };
+  });
+  const count = new Map(lw.layerInfo.map((l) => [l.name, l]));
+  const layerInfo = [...lw.layerInfo];
+  for (const t of texts) {
+    const l = count.get(t.layer);
+    if (l) {
+      const idx = layerInfo.findIndex((x) => x.name === t.layer);
+      layerInfo[idx] = { ...layerInfo[idx], count: layerInfo[idx].count + 1 };
+      count.set(t.layer, layerInfo[idx]);
+    } else {
+      const created = {
+        name: t.layer,
+        color: "",
+        count: 1,
+        off: false,
+      } as (typeof lw.layerInfo)[number];
+      layerInfo.push(created);
+      count.set(t.layer, created);
+    }
+  }
+  return { lw: { ...lw, texts: [...lw.texts, ...texts], layerInfo }, groups };
 }

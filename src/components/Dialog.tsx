@@ -10,6 +10,7 @@ interface Request {
   kind: "text" | "confirm" | "choice" | "codes";
   choices?: string[];
   items?: { code: string; note: string }[];
+  single?: boolean;
   title: string;
   message?: string;
   initial?: string;
@@ -84,6 +85,7 @@ export function askCodes(
   message: string,
   items: { code: string; note: string }[],
   okLabel = "Add",
+  single = false,
 ): Promise<string[] | null> {
   return new Promise((resolve) =>
     useDialog.setState({
@@ -92,6 +94,7 @@ export function askCodes(
         title,
         message,
         items,
+        single,
         okLabel,
         resolve: (v) => resolve(Array.isArray(v) ? v : null),
       },
@@ -102,10 +105,12 @@ export function askCodes(
 function CodePicker({
   items,
   okLabel,
+  single,
   onDone,
 }: {
   items: { code: string; note: string }[];
   okLabel: string;
+  single?: boolean;
   onDone(v: string[] | null): void;
 }) {
   const [find, setFind] = useState("");
@@ -119,6 +124,7 @@ function CodePicker({
   );
   const toggle = (c: string) =>
     setPicked((s) => {
+      if (single) return new Set(s.has(c) ? [] : [c]);
       const n = new Set(s);
       n.has(c) ? n.delete(c) : n.add(c);
       return n;
@@ -152,12 +158,14 @@ function CodePicker({
         ))}
       </ul>
       <div className="dialog-actions">
-        <button
-          type="button"
-          onClick={() => setPicked(new Set(shown.map((i) => i.code)))}
-        >
-          Tick all shown
-        </button>
+        {!single && (
+          <button
+            type="button"
+            onClick={() => setPicked(new Set(shown.map((i) => i.code)))}
+          >
+            Tick all shown
+          </button>
+        )}
         <button type="button" onClick={() => onDone(null)}>
           Cancel
         </button>
@@ -240,6 +248,7 @@ export function DialogHost() {
           <CodePicker
             items={req.items ?? []}
             okLabel={req.okLabel}
+            single={req.single}
             onDone={close}
           />
         )}

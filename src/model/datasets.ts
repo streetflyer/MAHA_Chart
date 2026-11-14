@@ -253,7 +253,7 @@ export type Dataset =
   /** Pipe drawn between the top and bottom series; the rest are seabed lines. */
   | (Base & { kind: 'long'; kp: Float64Array; series: LongSeries[]; top?: number; bop?: number; fill: string; opts?: LongOpts })
   /** Profiles sorted by KP; one is drawn every `every` metres (0: chosen from the scale). */
-  | (Base & { kind: 'trans'; kp: Float64Array; profiles: CrossProfile[]; every: number; pipeColor: string; pipeFill: string })
+  | (Base & { kind: 'trans'; kp: Float64Array; profiles: CrossProfile[]; every: number; pipeColor: string; pipeFill: string; /** Draw the pipe as a true circle at the lateral scale, whatever the vertical scale. */ pipeRound?: boolean })
   | (Base & { kind: 'events'; records: EventRecord[]; labels: boolean; font: DataFont; links: EventLink[]; layout?: EventLayout })
   | (Base & { kind: 'cp'; kp: Float64Array; mv: Float64Array; style: 'line' | 'ticks'; font: DataFont; symbol: CpSymbol; look?: CpLook });
 
