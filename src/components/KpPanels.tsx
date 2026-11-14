@@ -1,30 +1,59 @@
-import { useMemo, type ReactElement } from 'react';
-import { nearestProfile } from '../model/crossProfile';
-import { DEFAULT_LONG_OPTS, type CpSymbol, type DataFont, type Dataset, type LabelPos } from '../model/datasets';
-import { codeMatcher, isKpRow, rowCodes, splitRanges, type EventMark, type EventRange, type LinkedEvent } from '../model/events';
-import { kpInterval, planStyle } from '../model/planStyle';
-import { chartGeometry, gridToPlan, pointAt, type Route } from '../model/route';
-import { planPanel, sheetRange } from '../model/scale';
-import type { ChartTemplate, Panel } from '../model/types';
-import { useSurvey } from '../state/surveyData';
-import { niceGrid } from './Keyplan';
-import { fontSize, measureText } from './svgText';
+import { useMemo, type ReactElement } from "react";
+import { nearestProfile } from "../model/crossProfile";
+import {
+  DEFAULT_CP_LOOK,
+  DEFAULT_EVENT_LAYOUT,
+  DEFAULT_FONT,
+  DEFAULT_LONG_OPTS,
+  type CpSymbol,
+  type DataFont,
+  type Dataset,
+  type EventLayout,
+  type LabelPos,
+} from "../model/datasets";
+import {
+  codeMatcher,
+  isKpRow,
+  rowCodes,
+  splitRanges,
+  type EventMark,
+  type EventRange,
+  type LinkedEvent,
+} from "../model/events";
+import { kpInterval, planStyle } from "../model/planStyle";
+import { chartGeometry, gridToPlan, pointAt, type Route } from "../model/route";
+import { planPanel, sheetRange } from "../model/scale";
+import type { ChartTemplate, Panel } from "../model/types";
+import { useSurvey } from "../state/surveyData";
+import { niceGrid } from "./Keyplan";
+import { fontSize, measureText } from "./svgText";
 
 /**
  * Paper x of a KP (metres) for one chart. With a route loaded it is where that KP
  * falls in the plan view, so every KP-aligned panel lines up under the plan view;
  * without one it runs evenly across the chart's KP range.
  */
-export function kpToX(t: ChartTemplate, route: Route | null, sheetIndex: number): ((kp: number) => number) | null {
+export function kpToX(
+  t: ChartTemplate,
+  route: Route | null,
+  sheetIndex: number,
+): ((kp: number) => number) | null {
   const plan = planPanel(t);
   if (!plan) return null;
-  const k0 = (parseFloat(t.fields.START_KP ?? '0') || 0) * 1000;
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
   if (route) {
     const g = chartGeometry(t, route, sheetIndex);
     if (!g) return null;
     const project = gridToPlan(g, plan);
     const { start, end } = sheetRange(t, sheetIndex);
-    return monotonicKp(start * 1000, end * 1000, k0, k0 + route.length, (plan.w * t.scale.horizontal) / 1000, (kp) => project(...pointAt(route, kp - k0))[0]);
+    return monotonicKp(
+      start * 1000,
+      end * 1000,
+      k0,
+      k0 + route.length,
+      (plan.w * t.scale.horizontal) / 1000,
+      (kp) => project(...pointAt(route, kp - k0))[0],
+    );
   }
   const { start, end } = sheetRange(t, sheetIndex);
   return (kp) => plan.x + ((kp / 1000 - start) / (end - start)) * plan.w;
@@ -37,7 +66,14 @@ export function kpToX(t: ChartTemplate, route: Route | null, sheetIndex: number)
  * fall inside the frame; they are left out, and any doubling back inside the chart's
  * own range is held at the furthest x reached. KPs outside the stretch map far off the panel.
  */
-export function monotonicKp(start: number, end: number, lineStart: number, lineEnd: number, along: number, raw: (kp: number) => number): (kp: number) => number {
+export function monotonicKp(
+  start: number,
+  end: number,
+  lineStart: number,
+  lineEnd: number,
+  along: number,
+  raw: (kp: number) => number,
+): (kp: number) => number {
   const a = Math.max(lineStart, start - along);
   const b = Math.min(lineEnd, end + along);
   const s0 = Math.min(Math.max(start, lineStart), lineEnd);
@@ -93,7 +129,13 @@ export function useKpToX(t: ChartTemplate, sheetIndex: number) {
 }
 
 /** Visible KP span of a panel, found by stepping the mapping (it may be non-linear on a turned chart). */
-function kpSpan(toX: (kp: number) => number, x0: number, x1: number, routeLen: number, k0: number): [number, number] | null {
+function kpSpan(
+  toX: (kp: number) => number,
+  x0: number,
+  x1: number,
+  routeLen: number,
+  k0: number,
+): [number, number] | null {
   let lo = Infinity;
   let hi = -Infinity;
   const step = Math.max(1, routeLen / 4000);
@@ -108,14 +150,22 @@ function kpSpan(toX: (kp: number) => number, x0: number, x1: number, routeLen: n
 }
 
 /** Data drawn in the longitudinal, transverse, events and CP panels for the current chart. */
-export function KpPanelData({ p, t, sheetIndex }: { p: Panel; t: ChartTemplate; sheetIndex: number }) {
+export function KpPanelData({
+  p,
+  t,
+  sheetIndex,
+}: {
+  p: Panel;
+  t: ChartTemplate;
+  sheetIndex: number;
+}) {
   const toX = useKpToX(t, sheetIndex);
   const datasets = useSurvey((s) => s.datasets);
   const route = useSurvey((s) => s.route);
   if (!toX) return null;
-  const x0 = p.type === 'events' ? p.x + (p.labelWidth ?? 30) : p.x;
+  const x0 = p.type === "events" ? p.x + (p.labelWidth ?? 30) : p.x;
   const clipId = `kp-clip-${p.id}`;
-  const k0 = (parseFloat(t.fields.START_KP ?? '0') || 0) * 1000;
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
   const len = route?.length ?? t.scale.routeLength;
   const span = kpSpan(toX, x0, p.x + p.w, len, k0);
   const mine = datasets.filter((d) => d.visible && targetPanel(d) === p.type);
@@ -129,30 +179,90 @@ export function KpPanelData({ p, t, sheetIndex }: { p: Panel; t: ChartTemplate; 
         </clipPath>
       </defs>
       <g clipPath={`url(#${clipId})`}>
-        {lines && p.type !== 'events' && ticks.map(([kp, x]) => <line key={kp} className="kp-line" x1={x} y1={p.y} x2={x} y2={p.y + p.h} />)}
+        {lines &&
+          p.type !== "events" &&
+          p.kpLines !== false &&
+          ticks.map(([kp, x]) => (
+            <line
+              key={kp}
+              className="kp-line"
+              x1={x}
+              y1={p.y}
+              x2={x}
+              y2={p.y + p.h}
+            />
+          ))}
         {span &&
           mine.map((d) => {
-            if (d.kind === 'long') return <LongProfile key={d.id} d={d} p={p} t={t} toX={toX} span={span} />;
-            if (d.kind === 'cp') return <Cp key={d.id} d={d} p={p} toX={toX} span={span} />;
-            if (d.kind === 'trans') return <TransProfiles key={d.id} d={d} p={p} t={t} toX={toX} span={span} />;
+            if (d.kind === "long")
+              return (
+                <LongProfile
+                  key={d.id}
+                  d={d}
+                  p={p}
+                  t={t}
+                  toX={toX}
+                  span={span}
+                />
+              );
+            if (d.kind === "cp")
+              return <Cp key={d.id} d={d} p={p} toX={toX} span={span} />;
+            if (d.kind === "trans")
+              return (
+                <TransProfiles
+                  key={d.id}
+                  d={d}
+                  p={p}
+                  t={t}
+                  toX={toX}
+                  span={span}
+                />
+              );
             return null;
           })}
-        {p.type === 'events' && span && <EventsPanel p={p} x0={x0} toX={toX} span={span} sets={mine.filter((d): d is EventsSet => d.kind === 'events')} ticks={ticks} routeEnd={k0 + len} />}
-        {lines && (p.type === 'longProfile' || p.type === 'transProfile') && <KpLabels ticks={ticks} y={p.y + p.h - 1.2} />}
+        {p.type === "events" && span && (
+          <EventsPanel
+            p={p}
+            x0={x0}
+            toX={toX}
+            span={span}
+            sets={mine.filter((d): d is EventsSet => d.kind === "events")}
+            ticks={ticks}
+            routeEnd={k0 + len}
+          />
+        )}
+        {lines &&
+          (p.type === "longProfile" ||
+            p.type === "transProfile" ||
+            p.type === "cp") &&
+          p.kpLabels !== false && (
+            <KpLabels ticks={ticks} y={p.y + p.h - 1.2} />
+          )}
       </g>
     </g>
   );
 }
 
-type EventsSet = Extract<Dataset, { kind: 'events' }>;
+type EventsSet = Extract<Dataset, { kind: "events" }>;
 
 /** KP values (m) at the plan view's KP interval, with their paper x, inside [x0, x1]. */
-function kpTicks(t: ChartTemplate, toX: (kp: number) => number, x0: number, x1: number, k0: number, len: number): [number, number][] {
+function kpTicks(
+  t: ChartTemplate,
+  toX: (kp: number) => number,
+  x0: number,
+  x1: number,
+  k0: number,
+  len: number,
+): [number, number][] {
   const plan = planPanel(t);
   if (!plan) return [];
   const interval = kpInterval(planStyle(plan), t.scale.horizontal);
   const out: [number, number][] = [];
-  for (let kp = Math.ceil((k0 - len * 0.05) / interval) * interval; kp <= k0 + len * 1.05 && out.length < 400; kp += interval) {
+  for (
+    let kp = Math.ceil((k0 - len * 0.05) / interval) * interval;
+    kp <= k0 + len * 1.05 && out.length < 400;
+    kp += interval
+  ) {
     const x = toX(kp);
     if (x >= x0 - 0.01 && x <= x1 + 0.01) out.push([kp, x]);
   }
@@ -165,7 +275,7 @@ const kpText = (kp: number) => (kp / 1000).toFixed(3);
 export const fontProps = (f: DataFont) => ({
   fontFamily: `${f.family}, Arial, Helvetica, sans-serif`,
   fontWeight: f.bold ? 700 : undefined,
-  fontStyle: f.italic ? 'italic' : undefined,
+  fontStyle: f.italic ? "italic" : undefined,
   fill: f.color,
 });
 
@@ -182,9 +292,15 @@ function KpLabels({ ticks, y }: { ticks: [number, number][]; y: number }) {
   );
 }
 
-const targetPanel = (d: Dataset) => ({ long: 'longProfile', trans: 'transProfile', events: 'events', cp: 'cp' })[d.target as string];
+const targetPanel = (d: Dataset) =>
+  ({ long: "longProfile", trans: "transProfile", events: "events", cp: "cp" })[
+    d.target as string
+  ];
 
-function indexRange(kp: Float64Array, [lo, hi]: [number, number]): [number, number] {
+function indexRange(
+  kp: Float64Array,
+  [lo, hi]: [number, number],
+): [number, number] {
   let a = 0;
   while (a < kp.length && kp[a] < lo) a++;
   let b = kp.length - 1;
@@ -200,23 +316,36 @@ interface AxisOpts {
   minor?: number;
   tickLen?: number;
   suffix?: string;
-  side?: 'left' | 'right' | 'both';
+  side?: "left" | "right" | "both";
 }
 
-const onStep = (v: number, step: number) => step > 0 && Math.abs(v / step - Math.round(v / step)) < 1e-6;
+const onStep = (v: number, step: number) =>
+  step > 0 && Math.abs(v / step - Math.round(v / step)) < 1e-6;
 
 /** Depth labels down the edges, with dotted guide lines and ticks, as on the reference charts. */
-function DepthAxis({ p, y, lo, hi, o }: { p: Panel; y: (v: number) => number; lo: number; hi: number; o: AxisOpts }) {
+function DepthAxis({
+  p,
+  y,
+  lo,
+  hi,
+  o,
+}: {
+  p: Panel;
+  y: (v: number) => number;
+  lo: number;
+  hi: number;
+  o: AxisOpts;
+}) {
   const out: ReactElement[] = [];
   const cap = 1.8;
   const label = o.label || o.line;
   const major = o.major || o.line;
   const minor = o.minor || 0;
   const len = o.tickLen ?? 1.5;
-  const side = o.side ?? 'both';
-  const unit = o.suffix ?? 'm';
-  const left = side !== 'right';
-  const right = side !== 'left';
+  const side = o.side ?? "both";
+  const unit = o.suffix ?? "m";
+  const left = side !== "right";
+  const right = side !== "left";
   // Walk the finest interval asked for and draw what falls on each.
   const fine = Math.min(...[o.line, label, major, minor].filter((x) => x > 0));
   if (!(fine > 0) || (hi - lo) / fine > 2000) return null;
@@ -232,16 +361,45 @@ function DepthAxis({ p, y, lo, hi, o }: { p: Panel; y: (v: number) => number; lo
     const text = `${Number(v.toFixed(2))}${unit}`;
     out.push(
       <g key={v}>
-        {isLine && <line className="depth-tick" x1={p.x} y1={yy} x2={p.x + p.w} y2={yy} />}
-        {t > 0 && left && <line className="depth-mark" x1={p.x} y1={yy} x2={p.x + t} y2={yy} />}
-        {t > 0 && right && <line className="depth-mark" x1={p.x + p.w - t} y1={yy} x2={p.x + p.w} y2={yy} />}
+        {isLine && (
+          <line
+            className="depth-tick"
+            x1={p.x}
+            y1={yy}
+            x2={p.x + p.w}
+            y2={yy}
+          />
+        )}
+        {t > 0 && left && (
+          <line className="depth-mark" x1={p.x} y1={yy} x2={p.x + t} y2={yy} />
+        )}
+        {t > 0 && right && (
+          <line
+            className="depth-mark"
+            x1={p.x + p.w - t}
+            y1={yy}
+            x2={p.x + p.w}
+            y2={yy}
+          />
+        )}
         {isLabel && left && (
-          <text x={p.x + len + 0.5} y={yy + fontSize(cap) * 0.35} fontSize={fontSize(cap)} className="depth-label">
+          <text
+            x={p.x + len + 0.5}
+            y={yy + fontSize(cap) * 0.35}
+            fontSize={fontSize(cap)}
+            className="depth-label"
+          >
             {text}
           </text>
         )}
         {isLabel && right && (
-          <text x={p.x + p.w - len - 0.5} y={yy + fontSize(cap) * 0.35} fontSize={fontSize(cap)} className="depth-label" textAnchor="end">
+          <text
+            x={p.x + p.w - len - 0.5}
+            y={yy + fontSize(cap) * 0.35}
+            fontSize={fontSize(cap)}
+            className="depth-label"
+            textAnchor="end"
+          >
             {text}
           </text>
         )}
@@ -252,15 +410,19 @@ function DepthAxis({ p, y, lo, hi, o }: { p: Panel; y: (v: number) => number; lo
 }
 
 /** Positive values are depths unless the data is mostly negative (levels). */
-export function depthSense(d: Extract<Dataset, { kind: 'long' }>): 1 | -1 {
-  const o = d.opts?.zSense ?? 'auto';
-  if (o === 'depth') return 1;
-  if (o === 'level') return -1;
+export function depthSense(d: Extract<Dataset, { kind: "long" }>): 1 | -1 {
+  const o = d.opts?.zSense ?? "auto";
+  if (o === "depth") return 1;
+  if (o === "level") return -1;
   const s = d.series[d.top ?? 0] ?? d.series[0];
   if (!s) return 1;
   let neg = 0;
   let pos = 0;
-  for (let i = 0; i < s.values.length; i += Math.max(1, Math.floor(s.values.length / 500))) {
+  for (
+    let i = 0;
+    i < s.values.length;
+    i += Math.max(1, Math.floor(s.values.length / 500))
+  ) {
     const v = s.values[i];
     if (v < 0) neg++;
     else if (v > 0) pos++;
@@ -274,7 +436,19 @@ export function depthSense(d: Extract<Dataset, { kind: 'long' }>): 1 | -1 {
  * depths or levels, optionally normalised on the top of pipe, placed upper / middle /
  * lower (or from a forced top value), with the depth grid and hatching chosen.
  */
-function LongProfile({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'long' }>; p: Panel; t: ChartTemplate; toX: (kp: number) => number; span: [number, number] }) {
+function LongProfile({
+  d,
+  p,
+  t,
+  toX,
+  span,
+}: {
+  d: Extract<Dataset, { kind: "long" }>;
+  p: Panel;
+  t: ChartTemplate;
+  toX: (kp: number) => number;
+  span: [number, number];
+}) {
   const o = { ...DEFAULT_LONG_OPTS, ...d.opts };
   const [a, b] = indexRange(d.kp, span);
   const sgn = depthSense(d);
@@ -298,41 +472,51 @@ function LongProfile({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'long
   const inner = p.h - 4;
   const dataH = (uMax - uMin) * k;
   let yTop: number;
-  if (o.forceTop !== null && Number.isFinite(o.forceTop)) yTop = p.y + (uMin - sgn * o.forceTop) * k;
-  else if (o.placement === 'upper') yTop = p.y + inner * 0.1;
-  else if (o.placement === 'lower') yTop = p.y + inner * 0.9 - dataH;
+  if (o.forceTop !== null && Number.isFinite(o.forceTop))
+    yTop = p.y + (uMin - sgn * o.forceTop) * k;
+  else if (o.placement === "upper") yTop = p.y + inner * 0.1;
+  else if (o.placement === "lower") yTop = p.y + inner * 0.9 - dataH;
   else yTop = p.y + (inner - dataH) / 2;
   const yU = (u: number) => yTop + (u - uMin) * k;
   const y = (v: number) => yU(sgn * v);
   const stride = Math.max(1, Math.floor((b - a) / 4000));
   const line = (vals: Float64Array, from: number, to: number, dir = 1) => {
-    let s = '';
+    let s = "";
     let pen = false;
-    for (let i = dir > 0 ? from : to; dir > 0 ? i <= to : i >= from; i += dir * stride) {
+    for (
+      let i = dir > 0 ? from : to;
+      dir > 0 ? i <= to : i >= from;
+      i += dir * stride
+    ) {
       const v = val(vals, i);
       if (!Number.isFinite(v)) {
         pen = false;
         continue;
       }
-      s += `${pen ? 'L' : 'M'}${toX(d.kp[i]).toFixed(2)} ${y(v).toFixed(2)}`;
+      s += `${pen ? "L" : "M"}${toX(d.kp[i]).toFixed(2)} ${y(v).toFixed(2)}`;
       pen = true;
     }
     return s;
   };
-  let band = '';
+  let band = "";
   if (o.hatchPipe && top && bop) {
     // Top forwards then bottom backwards, closed: the pipe body.
     const fwd = line(top.values, a, b);
-    const back = line(bop.values, a, b, -1).replace(/^M/, 'L');
-    band = fwd + back + 'Z';
+    const back = line(bop.values, a, b, -1).replace(/^M/, "L");
+    band = fwd + back + "Z";
   }
   // Hatch under a seabed line: down to the panel's foot (or top, for levels drawn upside down).
-  const under = o.hatchBelow ? d.series.find((s) => s.name === o.hatchBelow) : undefined;
-  let below = '';
+  const under = o.hatchBelow
+    ? d.series.find((s) => s.name === o.hatchBelow)
+    : undefined;
+  let below = "";
   if (under) {
     const l = line(under.values, a, b);
     const xs = [...l.matchAll(/[ML]([-\d.]+) /g)].map((m) => Number(m[1]));
-    if (xs.length > 1) below = l.replace(/M/g, 'L').replace(/^L/, 'M') + `L${xs[xs.length - 1]} ${p.y + p.h}L${xs[0]} ${p.y + p.h}Z`;
+    if (xs.length > 1)
+      below =
+        l.replace(/M/g, "L").replace(/^L/, "M") +
+        `L${xs[xs.length - 1]} ${p.y + p.h}L${xs[0]} ${p.y + p.h}Z`;
   }
   // The axis runs from the panel top to its foot.
   const u0 = uMin - (yTop - p.y) / k;
@@ -342,18 +526,43 @@ function LongProfile({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'long
   const auto = niceGrid(p.h / k) / 2;
   return (
     <g>
-      {o.hatchSea && <rect x={p.x} y={p.y} width={p.w} height={p.h} fill={o.seaColor} stroke="none" />}
+      {o.hatchSea && (
+        <rect
+          x={p.x}
+          y={p.y}
+          width={p.w}
+          height={p.h}
+          fill={o.seaColor}
+          stroke="none"
+        />
+      )}
       {below && <path d={below} fill={o.belowColor} stroke="none" />}
       <DepthAxis
         p={p}
         y={y}
         lo={lo}
         hi={hi}
-        o={{ line: o.gridLine || auto, label: o.gridLabel, major: o.majorTick, minor: o.minorTick, tickLen: o.tickLen, suffix: o.suffix, side: o.axisSide }}
+        o={{
+          line: o.gridLine || auto,
+          label: o.gridLabel,
+          major: o.majorTick,
+          minor: o.minorTick,
+          tickLen: o.tickLen,
+          suffix: o.suffix,
+          side: o.axisSide,
+        }}
       />
       {band && <path d={band} fill={d.fill} stroke="none" />}
       {d.series.map((s, j) => (
-        <path key={j} d={line(s.values, a, b)} fill="none" stroke={s.color} strokeWidth={s.width ?? (j === d.top || j === d.bop ? o.pipeWidth : o.lineWidth)} />
+        <path
+          key={j}
+          d={line(s.values, a, b)}
+          fill="none"
+          stroke={s.color}
+          strokeWidth={
+            s.width ?? (j === d.top || j === d.bop ? o.pipeWidth : o.lineWidth)
+          }
+        />
       ))}
     </g>
   );
@@ -364,7 +573,19 @@ function LongProfile({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'long
  * runs up the panel (5 m to -5 m) and height runs across, so each profile sits on
  * its KP with the pipe drawn as a circle on the centre line.
  */
-function TransProfiles({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'trans' }>; p: Panel; t: ChartTemplate; toX: (kp: number) => number; span: [number, number] }) {
+function TransProfiles({
+  d,
+  p,
+  t,
+  toX,
+  span,
+}: {
+  d: Extract<Dataset, { kind: "trans" }>;
+  p: Panel;
+  t: ChartTemplate;
+  toX: (kp: number) => number;
+  span: [number, number];
+}) {
   const every = d.every > 0 ? d.every : Math.max(1, t.scale.horizontal / 50);
   // Two scales, as in AutoChart: the vertical scale sets heights (drawn across the
   // panel), the lateral scale sets the scan width (drawn up it). Equal values give 1:1.
@@ -373,23 +594,42 @@ function TransProfiles({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'tr
   const labelRoom = 9;
   const cy = p.y + labelRoom + (p.h - labelRoom - 4) / 2;
   const picks: typeof d.profiles = [];
-  for (let kp = Math.ceil(span[0] / every) * every; kp <= span[1]; kp += every) {
+  for (
+    let kp = Math.ceil(span[0] / every) * every;
+    kp <= span[1];
+    kp += every
+  ) {
     const pr = nearestProfile(d.profiles, kp, Math.max(1, every / 10));
     if (pr) picks.push(pr);
   }
   // The first and last profiles of the survey are worth showing even off the interval.
   for (const pr of [d.profiles[0], d.profiles[d.profiles.length - 1]]) {
-    if (pr && pr.kp >= span[0] && pr.kp <= span[1] && picks.every((x) => Math.abs(x.kp - pr.kp) > every / 4)) picks.push(pr);
+    if (
+      pr &&
+      pr.kp >= span[0] &&
+      pr.kp <= span[1] &&
+      picks.every((x) => Math.abs(x.kp - pr.kp) > every / 4)
+    )
+      picks.push(pr);
   }
-  const room = Math.max(1, Math.abs(toX(span[0] + every) - toX(span[0])) * 0.45);
+  const room = Math.max(
+    1,
+    Math.abs(toX(span[0] + every) - toX(span[0])) * 0.45,
+  );
   const maxLat = (p.h - labelRoom - 4) / 2 / kL;
   const cap = 1.8;
   return (
     <g>
-      <DepthAxis p={p} y={(v) => cy - v * kL} lo={-maxLat} hi={maxLat} o={{ line: niceGrid(maxLat * 2) / 2 }} />
+      <DepthAxis
+        p={p}
+        y={(v) => cy - v * kL}
+        lo={-maxLat}
+        hi={maxLat}
+        o={{ line: niceGrid(maxLat * 2) / 2 }}
+      />
       {picks.map((pr) => {
         const x0 = toX(pr.kp);
-        let dots = '';
+        let dots = "";
         for (let i = 0; i < pr.pts.length; i += 2) {
           const lat = pr.pts[i];
           const h = pr.pts[i + 1];
@@ -400,10 +640,34 @@ function TransProfiles({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'tr
         }
         return (
           <g key={pr.kp}>
-            <path d={dots} stroke={d.color} strokeWidth={0.3} strokeLinecap="round" fill="none" />
-            <ellipse cx={x0} cy={cy} rx={Math.max(0.4, (pr.diameter / 2) * kV)} ry={Math.max(0.4, (pr.diameter / 2) * kL)} fill={d.pipeFill} stroke={d.pipeColor} strokeWidth={0.15} />
-            <line x1={x0} y1={p.y} x2={x0} y2={p.y + 1.5} stroke="currentColor" strokeWidth={0.15} />
-            <text fontSize={fontSize(cap)} transform={`translate(${x0 - fontSize(cap) * 0.35} ${p.y + 2}) rotate(90)`}>
+            <path
+              d={dots}
+              stroke={d.color}
+              strokeWidth={0.3}
+              strokeLinecap="round"
+              fill="none"
+            />
+            <ellipse
+              cx={x0}
+              cy={cy}
+              rx={Math.max(0.4, (pr.diameter / 2) * kV)}
+              ry={Math.max(0.4, (pr.diameter / 2) * kL)}
+              fill={d.pipeFill}
+              stroke={d.pipeColor}
+              strokeWidth={0.15}
+            />
+            <line
+              x1={x0}
+              y1={p.y}
+              x2={x0}
+              y2={p.y + 1.5}
+              stroke="currentColor"
+              strokeWidth={0.15}
+            />
+            <text
+              fontSize={fontSize(cap)}
+              transform={`translate(${x0 - fontSize(cap) * 0.35} ${p.y + 2}) rotate(90)`}
+            >
               {kpText(pr.kp)}
             </text>
           </g>
@@ -418,9 +682,28 @@ function TransProfiles({ d, p, t, toX, span }: { d: Extract<Dataset, { kind: 'tr
  * coating, video...) as grey bars carrying their description, single events as
  * ticks up from the row's foot, and the KP row with the KP labels.
  */
-function EventsPanel({ p, x0, toX, span, sets, ticks, routeEnd }: { p: Panel; x0: number; toX: (kp: number) => number; span: [number, number]; sets: EventsSet[]; ticks: [number, number][]; routeEnd: number }) {
+function EventsPanel({
+  p,
+  x0,
+  toX,
+  span,
+  sets,
+  ticks,
+  routeEnd,
+}: {
+  p: Panel;
+  x0: number;
+  toX: (kp: number) => number;
+  span: [number, number];
+  sets: EventsSet[];
+  ticks: [number, number][];
+  routeEnd: number;
+}) {
   const rows = p.rows ?? [];
-  const split = useMemo(() => sets.map((d) => ({ d, ...splitRanges(d.records, d.links) })), [sets]);
+  const split = useMemo(
+    () => sets.map((d) => ({ d, ...splitRanges(d.records, d.links) })),
+    [sets],
+  );
   if (!rows.length) return null;
   const rh = p.h / rows.length;
   const x1 = p.x + p.w;
@@ -432,8 +715,20 @@ function EventsPanel({ p, x0, toX, span, sets, ticks, routeEnd }: { p: Panel; x0
       for (const [kp, x] of ticks) {
         out.push(
           <g key={`kp${kp}`}>
-            <line x1={x} y1={y0 + rh - 1.2} x2={x} y2={y0 + rh} stroke="currentColor" strokeWidth={0.15} />
-            <text x={x} y={y0 + rh / 2 + fontSize(cap) * 0.35} fontSize={fontSize(cap)} textAnchor="middle">
+            <line
+              x1={x}
+              y1={y0 + rh - 1.2}
+              x2={x}
+              y2={y0 + rh}
+              stroke="currentColor"
+              strokeWidth={0.15}
+            />
+            <text
+              x={x}
+              y={y0 + rh / 2 + fontSize(cap) * 0.35}
+              fontSize={fontSize(cap)}
+              textAnchor="middle"
+            >
               {kpText(kp)}
             </text>
           </g>,
@@ -441,20 +736,118 @@ function EventsPanel({ p, x0, toX, span, sets, ticks, routeEnd }: { p: Panel; x0
       }
       return;
     }
+    if (r.textOnly) {
+      const font = split[0]?.d.font ?? DEFAULT_FONT;
+      const text = r.text ?? "";
+      if (!text.trim()) return;
+      const w = x1 - x0 - 4;
+      let cap = Math.min(font.size, rh * 0.6);
+      while (cap > 0.8 && measureText(text, cap, !!font.bold, font.family) > w)
+        cap -= 0.1;
+      const align = r.textAlign ?? "middle";
+      const tx =
+        align === "start" ? x0 + 2 : align === "end" ? x1 - 2 : (x0 + x1) / 2;
+      out.push(
+        <text
+          key={`t${r.id}`}
+          x={tx}
+          y={y0 + rh / 2 + fontSize(cap) * 0.35}
+          fontSize={fontSize(cap)}
+          {...fontProps(font)}
+          textAnchor={align}
+        >
+          {text}
+        </text>,
+      );
+      return;
+    }
     const match = codeMatcher(rowCodes(r));
     for (const { d, points, ranges, linked } of split) {
-      const rs = ranges.filter((e) => match(e.code) && (Number.isFinite(e.end) ? e.end : routeEnd) >= span[0] && e.kp <= span[1]);
-      rs.forEach((e, j) => out.push(<RangeBar key={`${r.id}-${d.id}-r${j}`} e={e} y0={y0} rh={rh} toX={toX} x0={x0} x1={x1} routeEnd={routeEnd} color={d.color} font={d.font} n={rs.length} j={j} />));
-      const ls = linked.filter((e) => match(e.startCode) && e.end >= span[0] && e.kp <= span[1]);
-      if (ls.length) out.push(<LinkedEvents key={`${r.id}-${d.id}-l`} list={ls} y0={y0} rh={rh} toX={toX} font={d.font} labels={d.labels} />);
-      const ps = points.filter((e) => match(e.code) && e.kp >= span[0] && e.kp <= span[1]);
-      out.push(<PointTicks key={`${r.id}-${d.id}-p`} list={ps} y0={y0} rh={rh} toX={toX} color={d.color} font={d.font} labels={d.labels} />);
+      const rs = ranges.filter(
+        (e) =>
+          match(e.code) &&
+          (Number.isFinite(e.end) ? e.end : routeEnd) >= span[0] &&
+          e.kp <= span[1],
+      );
+      rs.forEach((e, j) =>
+        out.push(
+          <RangeBar
+            key={`${r.id}-${d.id}-r${j}`}
+            e={e}
+            y0={y0}
+            rh={rh}
+            toX={toX}
+            x0={x0}
+            x1={x1}
+            routeEnd={routeEnd}
+            color={d.color}
+            font={d.font}
+            n={rs.length}
+            j={j}
+          />,
+        ),
+      );
+      const ls = linked.filter(
+        (e) => match(e.startCode) && e.end >= span[0] && e.kp <= span[1],
+      );
+      if (ls.length)
+        out.push(
+          <LinkedEvents
+            key={`${r.id}-${d.id}-l`}
+            list={ls}
+            y0={y0}
+            rh={rh}
+            toX={toX}
+            font={d.font}
+            labels={d.labels}
+          />,
+        );
+      const ps = points.filter(
+        (e) => match(e.code) && e.kp >= span[0] && e.kp <= span[1],
+      );
+      out.push(
+        <PointTicks
+          key={`${r.id}-${d.id}-p`}
+          list={ps}
+          y0={y0}
+          rh={rh}
+          toX={toX}
+          color={d.color}
+          font={d.font}
+          labels={d.labels}
+          layout={d.layout ?? DEFAULT_EVENT_LAYOUT}
+        />,
+      );
     }
   });
   return <g>{out}</g>;
 }
 
-function RangeBar({ e, y0, rh, toX, x0, x1, routeEnd, color, font, n, j }: { e: EventRange; y0: number; rh: number; toX: (kp: number) => number; x0: number; x1: number; routeEnd: number; color: string; font: DataFont; n: number; j: number }) {
+function RangeBar({
+  e,
+  y0,
+  rh,
+  toX,
+  x0,
+  x1,
+  routeEnd,
+  color,
+  font,
+  n,
+  j,
+}: {
+  e: EventRange;
+  y0: number;
+  rh: number;
+  toX: (kp: number) => number;
+  x0: number;
+  x1: number;
+  routeEnd: number;
+  color: string;
+  font: DataFont;
+  n: number;
+  j: number;
+}) {
   // Several bars in one row share it top to bottom.
   const slot = rh / Math.max(1, n);
   const bh = Math.min(slot * 0.5, 3.2);
@@ -463,16 +856,24 @@ function RangeBar({ e, y0, rh, toX, x0, x1, routeEnd, color, font, n, j }: { e: 
   const xb = Math.min(x1, toX(Number.isFinite(e.end) ? e.end : routeEnd));
   if (xb <= xa) return null;
   const cap = Math.min(font.size, slot * 0.4);
-  let text = e.value && e.value !== '0' ? e.value : e.code;
+  let text = e.value && e.value !== "0" ? e.value : e.code;
   const room = xb - xa - 2;
-  while (text.length > 3 && measureText(text, cap) > room) text = text.slice(0, -2);
-  if (text !== (e.value || e.code) && text.length > 3) text = text.slice(0, -1) + '…';
+  while (text.length > 3 && measureText(text, cap) > room)
+    text = text.slice(0, -2);
+  if (text !== (e.value || e.code) && text.length > 3)
+    text = text.slice(0, -1) + "…";
   return (
     <g>
       <rect x={xa} y={cy - bh / 2} width={xb - xa} height={bh} fill="#cfcfcf" />
       <line x1={xa} y1={cy} x2={xb} y2={cy} stroke={color} strokeWidth={0.12} />
       {room > 6 && (
-        <text x={(xa + xb) / 2} y={cy - bh / 2 - 0.5} fontSize={fontSize(cap)} {...fontProps(font)} textAnchor="middle">
+        <text
+          x={(xa + xb) / 2}
+          y={cy - bh / 2 - 0.5}
+          fontSize={fontSize(cap)}
+          {...fontProps(font)}
+          textAnchor="middle"
+        >
           {text}
         </text>
       )}
@@ -480,22 +881,56 @@ function RangeBar({ e, y0, rh, toX, x0, x1, routeEnd, color, font, n, j }: { e: 
   );
 }
 
-function PointTicks({ list, y0, rh, toX, color, font, labels }: { list: EventMark[]; y0: number; rh: number; toX: (kp: number) => number; color: string; font: DataFont; labels: boolean }) {
+function PointTicks({
+  list,
+  y0,
+  rh,
+  toX,
+  color,
+  font,
+  labels,
+  layout,
+}: {
+  list: EventMark[];
+  y0: number;
+  rh: number;
+  toX: (kp: number) => number;
+  color: string;
+  font: DataFont;
+  labels: boolean;
+  layout: EventLayout;
+}) {
   if (!list.length) return null;
-  const foot = y0 + rh;
-  const len = Math.min(rh * 0.25, 2.5);
+  const len = rh * layout.markLen;
+  // Ticks stand on the row's bottom line, or are centred in the row.
+  const top =
+    layout.markPos === "middle" ? y0 + rh / 2 - len / 2 : y0 + rh - len;
+  const bottom = top + len;
   const cap = Math.min(font.size, rh / 5);
   const fs = fontSize(cap);
-  let path = '';
+  const rot = layout.labelRotation;
+  const upright = Math.abs(Math.sin((rot * Math.PI) / 180)) > 0.7;
+  let path = "";
   const texts: ReactElement[] = [];
   let lastX = -Infinity;
   for (const e of list) {
     const x = toX(e.kp);
-    path += `M${x.toFixed(2)} ${foot.toFixed(2)}v${(-len).toFixed(2)}`;
+    path += `M${x.toFixed(2)} ${bottom.toFixed(2)}V${top.toFixed(2)}`;
     // Label sparse events with their code; dense ones (field joints) stay as ticks.
-    if (labels && x - lastX > fs * 1.15 && list.length <= 80) {
+    const room = upright
+      ? fs * 1.15
+      : measureText(e.code, cap, !!font.bold, font.family) + fs * 0.4;
+    if (labels && x - lastX > room && list.length <= 80) {
+      const ax = upright ? x + fs * 0.35 : x;
+      const ay = top - layout.labelGap;
       texts.push(
-        <text key={texts.length} fontSize={fs} {...fontProps(font)} transform={`translate(${(x + fs * 0.35).toFixed(2)} ${(foot - len - 0.4).toFixed(2)}) rotate(-90)`}>
+        <text
+          key={texts.length}
+          fontSize={fs}
+          {...fontProps(font)}
+          textAnchor={upright ? "start" : "middle"}
+          transform={`translate(${ax.toFixed(2)} ${ay.toFixed(2)}) rotate(${(-rot).toFixed(1)})`}
+        >
           {e.code}
         </text>,
       );
@@ -514,40 +949,99 @@ function PointTicks({ list, y0, rh, toX, color, font, labels }: { list: EventMar
  * Linked events (freespan, burial): a line at each end, a bar between them, the
  * length above and the height below by default, and the codes along the end lines.
  */
-function LinkedEvents({ list, y0, rh, toX, font, labels }: { list: LinkedEvent[]; y0: number; rh: number; toX: (kp: number) => number; font: DataFont; labels: boolean }) {
-  const fs = fontSize(Math.min(font.size, rh / 6));
-  const barTop = y0 + rh * 0.22;
-  const barBot = y0 + rh * 0.42;
-  const pos = (p: LabelPos) => (p === 'top' ? barTop - fs * 0.35 : y0 + rh * 0.62);
+function LinkedEvents({
+  list,
+  y0,
+  rh,
+  toX,
+  font,
+  labels,
+}: {
+  list: LinkedEvent[];
+  y0: number;
+  rh: number;
+  toX: (kp: number) => number;
+  font: DataFont;
+  labels: boolean;
+}) {
+  const cap = Math.min(font.size, rh / 6);
+  const fs = fontSize(cap);
   return (
     <g>
       {list.map((e, i) => {
+        const l = e.link;
         const xa = toX(e.kp);
         const xb = toX(e.end);
         const mid = (xa + xb) / 2;
-        const c = e.link.color;
+        const c = l.color;
         const t = { ...fontProps(font), fill: c };
-        const lines = `M${xa.toFixed(2)} ${(y0 + rh * 0.1).toFixed(2)}V${(y0 + rh).toFixed(2)}M${xb.toFixed(2)} ${(y0 + rh * 0.1).toFixed(2)}V${(y0 + rh).toFixed(2)}`;
+        const gap = l.textGap ?? 0.6;
+        // The bar sits where the user put it (the middle by default); the end lines are centred on it.
+        const centre = y0 + rh * (l.barPos ?? 0.5);
+        const bh = l.barHeight ?? Math.min(rh * 0.28, 2.2);
+        const barTop = centre - bh / 2;
+        const barBot = centre + bh / 2;
+        const half = (rh * (l.lineExtent ?? 0.8)) / 2;
+        const lineTop = Math.max(y0 + gap * 0.5, centre - half);
+        const lineBot = Math.min(y0 + rh - gap * 0.5, centre + half);
+        // Texts keep their gap from the bar and stay clear of the row's own lines.
+        const lengthY = Math.max(y0 + gap + cap, barTop - gap);
+        const heightY = Math.min(y0 + rh - gap, barBot + gap + cap);
+        const textY = (p: LabelPos) => (p === "top" ? lengthY : heightY);
+        const lines = `M${xa.toFixed(2)} ${lineTop.toFixed(2)}V${lineBot.toFixed(2)}M${xb.toFixed(2)} ${lineTop.toFixed(2)}V${lineBot.toFixed(2)}`;
         return (
           <g key={i}>
-            <rect x={xa} y={barTop} width={Math.max(0.1, xb - xa)} height={barBot - barTop} fill={c} />
-            <path d={lines} stroke={font.color} strokeWidth={0.12} fill="none" />
-            {e.link.lengthPos !== 'none' && (
-              <text x={mid} y={pos(e.link.lengthPos)} fontSize={fs} textAnchor="middle" {...t}>
+            <rect
+              x={xa}
+              y={barTop}
+              width={Math.max(0.1, xb - xa)}
+              height={bh}
+              fill={c}
+            />
+            <path
+              d={lines}
+              stroke={font.color}
+              strokeWidth={0.12}
+              fill="none"
+            />
+            {l.lengthPos !== "none" && (
+              <text
+                x={mid}
+                y={textY(l.lengthPos)}
+                fontSize={fs}
+                textAnchor="middle"
+                {...t}
+              >
                 {e.length.toFixed(2)}
               </text>
             )}
-            {e.link.heightPos !== 'none' && e.height !== undefined && (
-              <text x={mid} y={pos(e.link.heightPos)} fontSize={fs} textAnchor="middle" {...t}>
+            {l.heightPos !== "none" && e.height !== undefined && (
+              <text
+                x={mid}
+                y={textY(l.heightPos)}
+                fontSize={fs}
+                textAnchor="middle"
+                {...t}
+              >
                 {e.height.toFixed(2)}
               </text>
             )}
             {labels && xb - xa > fs * 2.2 && (
               <>
-                <text fontSize={fs} {...fontProps(font)} transform={`translate(${(xa - fs * 0.35).toFixed(2)} ${(barBot + 0.6).toFixed(2)}) rotate(90)`}>
+                <text
+                  fontSize={fs}
+                  {...fontProps(font)}
+                  transform={`translate(${(xa - fs * 0.35).toFixed(2)} ${(lineBot - gap).toFixed(2)}) rotate(-90)`}
+                  textAnchor="start"
+                >
                   {e.startCode}
                 </text>
-                <text fontSize={fs} {...fontProps(font)} transform={`translate(${(xb - fs * 0.35).toFixed(2)} ${(barBot + 0.6).toFixed(2)}) rotate(90)`}>
+                <text
+                  fontSize={fs}
+                  {...fontProps(font)}
+                  transform={`translate(${(xb + fs * 1.05).toFixed(2)} ${(lineBot - gap).toFixed(2)}) rotate(-90)`}
+                  textAnchor="start"
+                >
                   {e.endCode}
                 </text>
               </>
@@ -560,38 +1054,98 @@ function LinkedEvents({ list, y0, rh, toX, font, labels }: { list: LinkedEvent[]
 }
 
 /** A CP marker symbol centred on (x, y). */
-export function CpMark({ symbol, x, y, r, color }: { symbol: CpSymbol; x: number; y: number; r: number; color: string }) {
-  const fill = symbol.endsWith('Fill') ? color : 'none';
+export function CpMark({
+  symbol,
+  x,
+  y,
+  r,
+  color,
+}: {
+  symbol: CpSymbol;
+  x: number;
+  y: number;
+  r: number;
+  color: string;
+}) {
+  const fill = symbol.endsWith("Fill") ? color : "none";
   const st = { stroke: color, strokeWidth: 0.2, fill };
-  if (symbol === 'tick') return null;
-  if (symbol.startsWith('circle')) return <circle cx={x} cy={y} r={r} {...st} />;
-  if (symbol.startsWith('square')) return <rect x={x - r} y={y - r} width={2 * r} height={2 * r} {...st} />;
-  if (symbol.startsWith('triangle')) return <path d={`M${x} ${y - r}L${x + r} ${y + r * 0.8}L${x - r} ${y + r * 0.8}Z`} {...st} />;
-  return <path d={`M${x} ${y - r}L${x + r} ${y}L${x} ${y + r}L${x - r} ${y}Z`} {...st} />;
+  if (symbol === "tick") return null;
+  if (symbol.startsWith("circle"))
+    return <circle cx={x} cy={y} r={r} {...st} />;
+  if (symbol.startsWith("square"))
+    return <rect x={x - r} y={y - r} width={2 * r} height={2 * r} {...st} />;
+  if (symbol.startsWith("triangle"))
+    return (
+      <path
+        d={`M${x} ${y - r}L${x + r} ${y + r * 0.8}L${x - r} ${y + r * 0.8}Z`}
+        {...st}
+      />
+    );
+  return (
+    <path
+      d={`M${x} ${y - r}L${x + r} ${y}L${x} ${y + r}L${x - r} ${y}Z`}
+      {...st}
+    />
+  );
 }
 
 /** CP readings: ticks with the reading, like engineering events, or a gradient line. */
-function Cp({ d, p, toX, span }: { d: Extract<Dataset, { kind: 'cp' }>; p: Panel; toX: (kp: number) => number; span: [number, number] }) {
+function Cp({
+  d,
+  p,
+  toX,
+  span,
+}: {
+  d: Extract<Dataset, { kind: "cp" }>;
+  p: Panel;
+  toX: (kp: number) => number;
+  span: [number, number];
+}) {
   const [a, b] = indexRange(d.kp, span);
   if (b < a) return null;
-  if (d.style === 'ticks') {
+  if (d.style === "ticks") {
+    const look = { ...DEFAULT_CP_LOOK, ...d.look };
     const foot = p.y + p.h;
-    const len = Math.min(p.h * 0.25, 3);
-    const fs = fontSize(Math.min(d.font.size, p.h / 8));
-    const r = Math.max(0.4, fs * 0.35);
-    const top = d.symbol === 'tick' ? 0 : 2 * r;
+    const cy = p.y + p.h * look.posY;
+    const fs = fontSize(Math.min(d.font.size, p.h / 3));
+    const r = Math.max(0.2, look.symbolSize / 2);
+    const top = d.symbol === "tick" ? 0 : r;
     const out: ReactElement[] = [];
-    let path = '';
+    let path = "";
     let lastX = -Infinity;
+    const rot = look.textRotation;
+    const horizontal = Math.abs(Math.sin((rot * Math.PI) / 180)) < 0.5;
     for (let i = a; i <= b; i++) {
-      if (d.kp[i] < span[0] || d.kp[i] > span[1]) continue;
+      if (!(d.kp[i] >= span[0] && d.kp[i] <= span[1])) continue;
       const x = toX(d.kp[i]);
-      path += `M${x.toFixed(2)} ${foot.toFixed(2)}v${(-len).toFixed(2)}`;
-      out.push(<CpMark key={`m${i}`} symbol={d.symbol} x={x} y={foot - len - r} r={r} color={d.color} />);
-      if (x - lastX > fs * 1.15) {
+      if (d.symbol === "tick")
+        path += `M${x.toFixed(2)} ${(cy + r).toFixed(2)}V${(cy - r).toFixed(2)}`;
+      else if (look.stem)
+        path += `M${x.toFixed(2)} ${foot.toFixed(2)}V${cy.toFixed(2)}`;
+      out.push(
+        <CpMark
+          key={`m${i}`}
+          symbol={d.symbol}
+          x={x}
+          y={cy}
+          r={r}
+          color={d.color}
+        />,
+      );
+      if (!look.showText) continue;
+      const label = `${Math.round(d.mv[i])}${look.suffix}`;
+      const need = horizontal ? label.length * fs * 0.6 + 0.5 : fs * 1.15;
+      if (x - lastX > need) {
+        const gx = horizontal ? 0 : fs * 0.35;
         out.push(
-          <text key={i} fontSize={fs} {...fontProps(d.font)} transform={`translate(${(x + fs * 0.35).toFixed(2)} ${(foot - len - top - 0.4).toFixed(2)}) rotate(-90)`}>
-            {Math.round(d.mv[i])} mV
+          <text
+            key={i}
+            fontSize={fs}
+            {...fontProps(d.font)}
+            textAnchor={horizontal ? "middle" : "start"}
+            transform={`translate(${(x + gx).toFixed(2)} ${(cy - top - look.textGap).toFixed(2)}) rotate(${-rot})`}
+          >
+            {label}
           </text>,
         );
         lastX = x;
@@ -614,14 +1168,25 @@ function Cp({ d, p, toX, span }: { d: Extract<Dataset, { kind: 'cp' }>; p: Panel
   const lo = min - pad;
   const hi = max + pad;
   const y = (v: number) => p.y + p.h - ((v - lo) / (hi - lo)) * p.h;
-  let path = '';
-  for (let i = a; i <= b; i++) path += `${i === a ? 'M' : 'L'}${toX(d.kp[i]).toFixed(2)} ${y(d.mv[i]).toFixed(2)}`;
+  let path = "";
+  for (let i = a; i <= b; i++)
+    path += `${i === a ? "M" : "L"}${toX(d.kp[i]).toFixed(2)} ${y(d.mv[i]).toFixed(2)}`;
   return (
     <g>
-      <text x={p.x + 1} y={p.y + 3} fontSize={fontSize(1.4)} className="depth-label">
+      <text
+        x={p.x + 1}
+        y={p.y + 3}
+        fontSize={fontSize(1.4)}
+        className="depth-label"
+      >
         {Math.round(hi)} mV
       </text>
-      <text x={p.x + 1} y={p.y + p.h - 1} fontSize={fontSize(1.4)} className="depth-label">
+      <text
+        x={p.x + 1}
+        y={p.y + p.h - 1}
+        fontSize={fontSize(1.4)}
+        className="depth-label"
+      >
         {Math.round(lo)} mV
       </text>
       <path d={path} fill="none" stroke={d.color} strokeWidth={0.3} />

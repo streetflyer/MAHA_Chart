@@ -24,6 +24,10 @@ export interface EventRow {
   label: string;
   /** Event codes drawn in this row, comma separated, `*` wildcard. Unset: guessed from the label. */
   codes?: string;
+  /** Draw only `text` across the row, not events. */
+  textOnly?: boolean;
+  text?: string;
+  textAlign?: 'start' | 'middle' | 'end';
 }
 
 export interface Panel {
@@ -39,6 +43,10 @@ export interface Panel {
   parentId?: string;
   /** KP-aligned panels share the plan view's horizontal extent and scale. */
   kpAligned?: boolean;
+  /** Vertical KP lines in the profile and CP panels (default on). */
+  kpLines?: boolean;
+  /** KP values along the foot of the profile and CP panels (default on). */
+  kpLabels?: boolean;
   locked?: boolean;
   /** Free text body shown inside the panel (notes, geodetic parameters, ...). May contain {TOKENS}. */
   body?: string;
@@ -181,6 +189,16 @@ export interface LegendStyle {
   codeSize: number;
   bold?: boolean;
   italic?: boolean;
+  /** Font of the event code definitions; unset follows the legend text. */
+  codeFamily?: string;
+  codeBold?: boolean;
+  codeItalic?: boolean;
+  /** Event code definitions use the legend text height (default on). */
+  sameCodeSize?: boolean;
+  /** Definitions of every event code, or only of the codes on the chart being shown. */
+  codeScope?: 'all' | 'chart';
+  /** Heading wording, by group; unset keeps the standard heading. */
+  headings?: Partial<Record<LegendGroup | 'codes', string>>;
 }
 
 /** A legend panel's items built from the imported data: on/off, and the user's wording per item. */

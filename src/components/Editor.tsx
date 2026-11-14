@@ -1,26 +1,40 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { newId } from '../model/ids';
-import { PAPER_SIZES } from '../model/paper';
-import { BUILTIN_TEMPLATES } from '../model/builtinTemplates';
-import { autoSheets } from '../model/route';
-import { deleteSheet, editSheet, insertSheet, planPanel, sheetCount, sheetRange, sheetRotation } from '../model/scale';
-import { exportTemplateFile, importTemplateFile, listUserTemplates, saveUserTemplate } from '../model/storage';
-import type { ChartTemplate, PanelType, PaperSizeName } from '../model/types';
-import { ADDABLE_TYPES, PANEL_DEFAULTS } from '../state/panelDefaults';
-import { chartInfoLocked, useEditor } from '../state/store';
-import { useSurvey } from '../state/surveyData';
-import { fitInto, readImageFile } from './imageImport';
-import { titleInsideHeight } from './PanelContent';
-import { ContextMenu, type MenuItem } from './ContextMenu';
-import { askChoice, askConfirm, askText } from './Dialog';
-import { chartsToDxf } from '../model/dxfExport';
-import { ThemeButton } from './ThemeButton';
-import { ImportDialog, useImport } from './ImportDialog';
-import { PropertiesPanel } from './PropertiesPanel';
-import { ProjectPanel } from './ProjectPanel';
-import { SheetView, type ContextTarget } from './SheetView';
-import { useDrawingEdit } from '../state/drawingEdit';
-import { drawingKey } from './drawingEditing';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { newId } from "../model/ids";
+import { PAPER_SIZES } from "../model/paper";
+import { BUILTIN_TEMPLATES } from "../model/builtinTemplates";
+import { autoSheets } from "../model/route";
+import {
+  deleteSheet,
+  editSheet,
+  insertSheet,
+  planPanel,
+  sheetCount,
+  sheetRange,
+  sheetRotation,
+} from "../model/scale";
+import {
+  exportTemplateFile,
+  importTemplateFile,
+  listUserTemplates,
+  saveUserTemplate,
+} from "../model/storage";
+import type { ChartTemplate, PanelType, PaperSizeName } from "../model/types";
+import { ADDABLE_TYPES, PANEL_DEFAULTS } from "../state/panelDefaults";
+import { chartInfoLocked, useEditor } from "../state/store";
+import { useSurvey } from "../state/surveyData";
+import { fitInto, readImageFile } from "./imageImport";
+import { titleInsideHeight } from "./PanelContent";
+import { ContextMenu, type MenuItem } from "./ContextMenu";
+import { askChoice, askConfirm, askText } from "./Dialog";
+import { chartsToDxf } from "../model/dxfExport";
+import { chartsToPdf } from "../model/pdfExport";
+import { ThemeButton } from "./ThemeButton";
+import { ImportDialog, useImport } from "./ImportDialog";
+import { PropertiesPanel } from "./PropertiesPanel";
+import { ProjectPanel } from "./ProjectPanel";
+import { SheetView, type ContextTarget } from "./SheetView";
+import { useDrawingEdit } from "../state/drawingEdit";
+import { drawingKey } from "./drawingEditing";
 
 interface Menu {
   x: number;
@@ -30,7 +44,12 @@ interface Menu {
 
 const isTyping = (e: KeyboardEvent) => {
   const el = e.target as HTMLElement;
-  return el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement || el.isContentEditable;
+  return (
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLSelectElement ||
+    el.isContentEditable
+  );
 };
 
 export function Editor({ onExit }: { onExit(): void }) {
@@ -49,11 +68,22 @@ export function Editor({ onExit }: { onExit(): void }) {
   // Refit the charts to the line whenever the line, the scale or the plan view changes.
   useEffect(() => {
     const t = useEditor.getState().template;
-    if (t) useEditor.getState().setAutoSheets(route ? autoSheets(t, route) : undefined);
-  }, [route, template.scale.horizontal, template.scale.overlap, template.kind, plan?.w, plan?.h, template.fields.START_KP]);
+    if (t)
+      useEditor
+        .getState()
+        .setAutoSheets(route ? autoSheets(t, route) : undefined);
+  }, [
+    route,
+    template.scale.horizontal,
+    template.scale.overlap,
+    template.kind,
+    plan?.w,
+    plan?.h,
+    template.fields.START_KP,
+  ]);
   const [dark, setDark] = useState(() => {
     try {
-      return localStorage.getItem('mahachart.darkSheet') === '1';
+      return localStorage.getItem("mahachart.darkSheet") === "1";
     } catch {
       return false;
     }
@@ -69,7 +99,10 @@ export function Editor({ onExit }: { onExit(): void }) {
   const flash = (msg: string) => {
     setToast(msg);
     if (toastTimer.current) clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), Math.max(2500, msg.length * 45));
+    toastTimer.current = window.setTimeout(
+      () => setToast(null),
+      Math.max(2500, msg.length * 45),
+    );
   };
 
   const save = useCallback(
@@ -77,12 +110,21 @@ export function Editor({ onExit }: { onExit(): void }) {
       const t = s().template!;
       let name = t.name;
       if (asNew || t.builtIn) {
-        const answer = await askText('Save template as', t.builtIn ? `${t.name} (copy)` : t.name, 'Save');
+        const answer = await askText(
+          "Save template as",
+          t.builtIn ? `${t.name} (copy)` : t.name,
+          "Save",
+        );
         if (!answer) return;
         name = answer;
       }
-      const saved = saveUserTemplate({ ...t, id: asNew || t.builtIn ? newId('tpl') : t.id, name });
-      if (!saved) return flash('Could not save: browser storage is full or blocked.');
+      const saved = saveUserTemplate({
+        ...t,
+        id: asNew || t.builtIn ? newId("tpl") : t.id,
+        name,
+      });
+      if (!saved)
+        return flash("Could not save: browser storage is full or blocked.");
       s().markSaved(saved);
       flash(`Saved "${saved.name}"`);
     },
@@ -100,121 +142,267 @@ export function Editor({ onExit }: { onExit(): void }) {
       const mod = e.ctrlKey || e.metaKey;
       const k = e.key.toLowerCase();
       const sel = s().selection;
-      if (mod && k === 'z' && !e.shiftKey) s().undo();
-      else if (mod && (k === 'y' || (k === 'z' && e.shiftKey))) s().redo();
-      else if (mod && k === 'c') s().copySelection();
-      else if (mod && k === 'x') s().cutSelection();
-      else if (mod && k === 'v') s().paste();
-      else if (mod && k === 'd') s().duplicateSelection();
-      else if (mod && k === 's') save(e.shiftKey);
-      else if (mod && k === 'a') {
+      if (mod && k === "z" && !e.shiftKey) s().undo();
+      else if (mod && (k === "y" || (k === "z" && e.shiftKey))) s().redo();
+      else if (mod && k === "c") s().copySelection();
+      else if (mod && k === "x") s().cutSelection();
+      else if (mod && k === "v") s().paste();
+      else if (mod && k === "d") s().duplicateSelection();
+      else if (mod && k === "s") save(e.shiftKey);
+      else if (mod && k === "a") {
         const t = s().template!;
-        s().select([...t.panels.filter((p) => !p.parentId).map((p) => ({ kind: 'panel' as const, id: p.id })), ...t.texts.map((x) => ({ kind: 'text' as const, id: x.id }))]);
-      } else if (mod && k === '0') setFitSignal((n) => n + 1);
-      else if (e.key === 'Delete' || e.key === 'Backspace') s().deleteSelection();
-      else if (e.key === 'F2' && sel.length === 1) s().startEdit(sel[0].kind === 'text' ? { kind: 'text', id: sel[0].id } : { kind: 'panelTitle', id: sel[0].id });
-      else if (e.key === 'Escape') s().select(null);
-      else if (e.key.startsWith('Arrow') && sel.length) {
+        s().select([
+          ...t.panels
+            .filter((p) => !p.parentId)
+            .map((p) => ({ kind: "panel" as const, id: p.id })),
+          ...t.texts.map((x) => ({ kind: "text" as const, id: x.id })),
+        ]);
+      } else if (mod && k === "0") setFitSignal((n) => n + 1);
+      else if (e.key === "Delete" || e.key === "Backspace")
+        s().deleteSelection();
+      else if (e.key === "F2" && sel.length === 1)
+        s().startEdit(
+          sel[0].kind === "text"
+            ? { kind: "text", id: sel[0].id }
+            : { kind: "panelTitle", id: sel[0].id },
+        );
+      else if (e.key === "Escape") s().select(null);
+      else if (e.key.startsWith("Arrow") && sel.length) {
         const step = e.shiftKey ? 5 : 0.5;
-        const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key]!;
+        const d = {
+          ArrowLeft: [-step, 0],
+          ArrowRight: [step, 0],
+          ArrowUp: [0, -step],
+          ArrowDown: [0, step],
+        }[e.key]!;
         s().nudgeSelection(d[0], d[1]);
       } else return;
       e.preventDefault();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [s, save]);
 
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent) => {
       if (s().dirty) e.preventDefault();
     };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
   }, [s]);
 
-  function addPanelMenu(at?: { x: number; y: number }, parentId?: string): MenuItem[] {
-    const hasPlan = template.panels.some((p) => p.type === 'plan');
+  function addPanelMenu(
+    at?: { x: number; y: number },
+    parentId?: string,
+  ): MenuItem[] {
+    const hasPlan = template.panels.some((p) => p.type === "plan");
     return ADDABLE_TYPES.map((type: PanelType) => ({
       label: PANEL_DEFAULTS[type].label,
-      disabled: type === 'plan' && hasPlan,
+      disabled: type === "plan" && hasPlan,
       action: () => s().addPanel(type, at, parentId),
     }));
   }
 
-  function openMenu(clientX: number, clientY: number, at: { x: number; y: number }, target: ContextTarget) {
+  function openMenu(
+    clientX: number,
+    clientY: number,
+    at: { x: number; y: number },
+    target: ContextTarget,
+  ) {
     const st = s();
     const sel = st.selection;
-    const panel = target.id && target.kind !== 'text' ? template.panels.find((p) => p.id === target.id) : undefined;
+    const panel =
+      target.id && target.kind !== "text"
+        ? template.panels.find((p) => p.id === target.id)
+        : undefined;
     const common: MenuItem[] = [
-      { label: 'Cut', shortcut: 'Ctrl+X', disabled: !sel.length, action: () => st.cutSelection() },
-      { label: 'Copy', shortcut: 'Ctrl+C', disabled: !sel.length, action: () => st.copySelection() },
-      { label: 'Paste', shortcut: 'Ctrl+V', disabled: !st.clipboard, action: () => st.paste(at) },
-      { label: 'Duplicate', shortcut: 'Ctrl+D', disabled: !sel.length, action: () => st.duplicateSelection() },
-      { label: 'Delete', shortcut: 'Del', disabled: !sel.length, action: () => st.deleteSelection() },
+      {
+        label: "Cut",
+        shortcut: "Ctrl+X",
+        disabled: !sel.length,
+        action: () => st.cutSelection(),
+      },
+      {
+        label: "Copy",
+        shortcut: "Ctrl+C",
+        disabled: !sel.length,
+        action: () => st.copySelection(),
+      },
+      {
+        label: "Paste",
+        shortcut: "Ctrl+V",
+        disabled: !st.clipboard,
+        action: () => st.paste(at),
+      },
+      {
+        label: "Duplicate",
+        shortcut: "Ctrl+D",
+        disabled: !sel.length,
+        action: () => st.duplicateSelection(),
+      },
+      {
+        label: "Delete",
+        shortcut: "Del",
+        disabled: !sel.length,
+        action: () => st.deleteSelection(),
+      },
     ];
     let items: MenuItem[];
-    if (target.kind === 'sheet') {
+    if (target.kind === "sheet") {
       items = [
-        { label: 'Paste', shortcut: 'Ctrl+V', disabled: !st.clipboard, action: () => st.paste(at) },
-        'separator',
-        { label: 'Add panel', submenu: addPanelMenu(at) },
-        { label: 'Add text here', action: () => st.addText(at) },
-        'separator',
-        { label: 'Select all', shortcut: 'Ctrl+A', action: () => st.select([...template.panels.filter((p) => !p.parentId).map((p) => ({ kind: 'panel' as const, id: p.id }))]) },
-        { label: 'Undo', shortcut: 'Ctrl+Z', disabled: !st.past.length, action: () => st.undo() },
-        { label: 'Redo', shortcut: 'Ctrl+Y', disabled: !st.future.length, action: () => st.redo() },
-        'separator',
-        { label: 'Zoom to fit', shortcut: 'Ctrl+0', action: () => setFitSignal((n) => n + 1) },
-        { label: 'Template properties', action: () => st.select(null) },
+        {
+          label: "Paste",
+          shortcut: "Ctrl+V",
+          disabled: !st.clipboard,
+          action: () => st.paste(at),
+        },
+        "separator",
+        { label: "Add panel", submenu: addPanelMenu(at) },
+        { label: "Add text here", action: () => st.addText(at) },
+        "separator",
+        {
+          label: "Select all",
+          shortcut: "Ctrl+A",
+          action: () =>
+            st.select([
+              ...template.panels
+                .filter((p) => !p.parentId)
+                .map((p) => ({ kind: "panel" as const, id: p.id })),
+            ]),
+        },
+        {
+          label: "Undo",
+          shortcut: "Ctrl+Z",
+          disabled: !st.past.length,
+          action: () => st.undo(),
+        },
+        {
+          label: "Redo",
+          shortcut: "Ctrl+Y",
+          disabled: !st.future.length,
+          action: () => st.redo(),
+        },
+        "separator",
+        {
+          label: "Zoom to fit",
+          shortcut: "Ctrl+0",
+          action: () => setFitSignal((n) => n + 1),
+        },
+        { label: "Template properties", action: () => st.select(null) },
       ];
-    } else if (target.kind === 'image') {
-      items = [...common, 'separator', { label: 'Properties', action: focusProps }];
-    } else if (target.kind === 'text') {
+    } else if (target.kind === "image") {
       items = [
-        { label: 'Edit text', shortcut: 'F2', action: () => st.startEdit({ kind: 'text', id: target.id! }) },
-        'separator',
         ...common,
-        'separator',
-        { label: 'Properties', action: focusProps },
+        "separator",
+        { label: "Properties", action: focusProps },
+      ];
+    } else if (target.kind === "text") {
+      items = [
+        {
+          label: "Edit text",
+          shortcut: "F2",
+          action: () => st.startEdit({ kind: "text", id: target.id! }),
+        },
+        "separator",
+        ...common,
+        "separator",
+        { label: "Properties", action: focusProps },
       ];
     } else {
       const p = panel!;
       const rowItems: MenuItem[] =
-        target.kind === 'row' && p.rows
+        target.kind === "row" && p.rows
           ? [
-              { label: 'Rename row', action: () => st.startEdit({ kind: 'row', id: p.id, rowId: target.rowId }) },
-              { label: 'Insert row above', action: () => insertRow(p.id, target.rowId!, 0) },
-              { label: 'Insert row below', action: () => insertRow(p.id, target.rowId!, 1) },
-              { label: 'Delete row', action: () => st.updatePanel(p.id, { rows: p.rows!.filter((r) => r.id !== target.rowId) }) },
-              'separator',
+              {
+                label: "Rename row",
+                action: () =>
+                  st.startEdit({ kind: "row", id: p.id, rowId: target.rowId }),
+              },
+              {
+                label: "Insert row above",
+                action: () => insertRow(p.id, target.rowId!, 0),
+              },
+              {
+                label: "Insert row below",
+                action: () => insertRow(p.id, target.rowId!, 1),
+              },
+              {
+                label: "Delete row",
+                action: () =>
+                  st.updatePanel(p.id, {
+                    rows: p.rows!.filter((r) => r.id !== target.rowId),
+                  }),
+              },
+              "separator",
             ]
           : [];
       items = [
         ...rowItems,
-        { label: 'Rename', shortcut: 'F2', action: () => st.startEdit({ kind: 'panelTitle', id: p.id }) },
-        ...(p.body !== undefined ? [{ label: 'Edit text', action: () => st.startEdit({ kind: 'panelBody', id: p.id }) } as MenuItem] : []),
-        'separator',
-        ...common,
-        'separator',
-        { label: 'Split left / right', disabled: sel.length !== 1, action: () => st.splitSelected('vertical') },
-        { label: 'Split top / bottom', disabled: sel.length !== 1, action: () => st.splitSelected('horizontal') },
-        ...(p.type === 'chartInfo' || p.parentId ? [{ label: 'Add section', submenu: addPanelMenu(at, p.parentId ?? p.id) } as MenuItem] : []),
-        ...(p.rows ? [{ label: 'Add row', action: () => st.updatePanel(p.id, { rows: [...p.rows!, { id: newId('r'), label: 'NEW ROW' }] }) } as MenuItem] : []),
-        { label: 'Add text here', action: () => st.addText({ x: at.x - p.x, y: at.y - p.y }, p.id) },
         {
-          label: p.type === 'logo' ? 'Insert logo image…' : 'Insert image…',
+          label: "Rename",
+          shortcut: "F2",
+          action: () => st.startEdit({ kind: "panelTitle", id: p.id }),
+        },
+        ...(p.body !== undefined
+          ? [
+              {
+                label: "Edit text",
+                action: () => st.startEdit({ kind: "panelBody", id: p.id }),
+              } as MenuItem,
+            ]
+          : []),
+        "separator",
+        ...common,
+        "separator",
+        {
+          label: "Split left / right",
+          disabled: sel.length !== 1,
+          action: () => st.splitSelected("vertical"),
+        },
+        {
+          label: "Split top / bottom",
+          disabled: sel.length !== 1,
+          action: () => st.splitSelected("horizontal"),
+        },
+        ...(p.type === "chartInfo" || p.parentId
+          ? [
+              {
+                label: "Add section",
+                submenu: addPanelMenu(at, p.parentId ?? p.id),
+              } as MenuItem,
+            ]
+          : []),
+        ...(p.rows
+          ? [
+              {
+                label: "Add row",
+                action: () =>
+                  st.updatePanel(p.id, {
+                    rows: [...p.rows!, { id: newId("r"), label: "NEW ROW" }],
+                  }),
+              } as MenuItem,
+            ]
+          : []),
+        {
+          label: "Add text here",
+          action: () => st.addText({ x: at.x - p.x, y: at.y - p.y }, p.id),
+        },
+        {
+          label: p.type === "logo" ? "Insert logo image…" : "Insert image…",
           action: () => {
             imageTarget.current = p.id;
             imageInput.current?.click();
           },
         },
-        'separator',
-        { label: 'Bring to front', action: () => st.reorderSelection('front') },
-        { label: 'Send to back', action: () => st.reorderSelection('back') },
-        { label: p.locked ? 'Unlock' : 'Lock', action: () => st.toggleLockSelection() },
-        'separator',
-        { label: 'Properties', action: focusProps },
+        "separator",
+        { label: "Bring to front", action: () => st.reorderSelection("front") },
+        { label: "Send to back", action: () => st.reorderSelection("back") },
+        {
+          label: p.locked ? "Unlock" : "Lock",
+          action: () => st.toggleLockSelection(),
+        },
+        "separator",
+        { label: "Properties", action: focusProps },
       ];
     }
     setMenu({ x: clientX, y: clientY, items });
@@ -224,80 +412,167 @@ export function Editor({ onExit }: { onExit(): void }) {
     const p = s().template!.panels.find((x) => x.id === panelId)!;
     const rows = [...(p.rows ?? [])];
     const i = rows.findIndex((r) => r.id === rowId);
-    const id = newId('r');
-    rows.splice(i + offset, 0, { id, label: 'NEW ROW' });
+    const id = newId("r");
+    rows.splice(i + offset, 0, { id, label: "NEW ROW" });
     s().updatePanel(panelId, { rows });
-    s().startEdit({ kind: 'row', id: panelId, rowId: id });
+    s().startEdit({ kind: "row", id: panelId, rowId: id });
   }
 
   function focusProps() {
-    propsRef.current?.querySelector<HTMLInputElement>('input, select, textarea')?.focus();
+    propsRef.current
+      ?.querySelector<HTMLInputElement>("input, select, textarea")
+      ?.focus();
   }
 
   function setPaper(size: PaperSizeName) {
-    s().setPaper(size, template.paper.orientation, [template.paper.width, template.paper.height]);
+    s().setPaper(size, template.paper.orientation, [
+      template.paper.width,
+      template.paper.height,
+    ]);
   }
 
-  /** Chart(s) as DXF: the current one, or all of them side by side in one file. */
-  async function saveDxf() {
+  /** Chart(s) as PDF or DXF: the current one or all of them (PDF: one page each; DXF: side by side in one file). */
+  async function saveAs() {
     const n = sheetCount(template);
     const cur = s().sheetIndex;
+    const fmt = await askChoice(
+      "Save as",
+      "PDF is for printing and sending; DXF opens in AutoCAD. A DWG file cannot be written in the browser: open the DXF in AutoCAD, TrueView or the free ODA File Converter and save it as DWG there.",
+      ["PDF", "DXF"],
+    );
+    if (fmt === null) return;
     let sheets = [cur];
     if (n > 1) {
-      const pick = await askChoice('Save as DXF', `Save Chart ${cur + 1} only, or all ${n} charts side by side in one file (50 mm apart)?`, [`Chart ${cur + 1}`, `All ${n} charts`]);
+      const pick = await askChoice(
+        `Save as ${fmt ? "DXF" : "PDF"}`,
+        fmt
+          ? `Save Chart ${cur + 1} only, or all ${n} charts side by side in one file (50 mm apart)?`
+          : `Save Chart ${cur + 1} only, or all ${n} charts as one PDF with a page each?`,
+        [`Chart ${cur + 1}`, `All ${n} charts`],
+      );
       if (pick === null) return;
       if (pick === 1) sheets = Array.from({ length: n }, (_, i) => i);
     }
-    flash('Writing DXF…');
+    flash(fmt ? "Writing DXF…" : "Writing PDF…");
     const prevSel = s().selection;
     useEditor.setState({ selection: [] });
-    const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
-    const text = await chartsToDxf(template.paper.width, template.paper.height, sheets, async (i) => {
+    const frame = () =>
+      new Promise((r) => requestAnimationFrame(() => r(null)));
+    const draw = async (i: number) => {
       s().setSheet(i);
       await frame();
       await frame();
       await new Promise((r) => setTimeout(r, 60));
-      return document.querySelector<SVGSVGElement>('svg.sheet');
-    });
-    s().setSheet(cur);
-    useEditor.setState({ selection: prevSel });
-    const blob = new Blob([text], { type: 'application/dxf' });
-    const a = document.createElement('a');
+      return document.querySelector<SVGSVGElement>("svg.sheet");
+    };
+    let blob: Blob;
+    try {
+      blob = fmt
+        ? new Blob(
+            [
+              await chartsToDxf(
+                template.paper.width,
+                template.paper.height,
+                sheets,
+                draw,
+              ),
+            ],
+            { type: "application/dxf" },
+          )
+        : new Blob(
+            [
+              (await chartsToPdf(
+                template.paper.width,
+                template.paper.height,
+                sheets,
+                draw,
+              )) as BlobPart,
+            ],
+            { type: "application/pdf" },
+          );
+    } finally {
+      s().setSheet(cur);
+      useEditor.setState({ selection: prevSel });
+    }
+    const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    const base = (template.fields.DRAWING_NO || template.name).replace(/[^\w.-]+/g, '_');
-    a.download = sheets.length > 1 ? `${base}_all_charts.dxf` : `${base}_chart${cur + 1}.dxf`;
+    const base = (template.fields.DRAWING_NO || template.name).replace(
+      /[^\w.-]+/g,
+      "_",
+    );
+    const ext = fmt ? "dxf" : "pdf";
+    a.download =
+      sheets.length > 1
+        ? `${base}_all_charts.${ext}`
+        : `${base}_chart${cur + 1}.${ext}`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     flash(`Saved ${a.download}`);
   }
 
   async function reset() {
-    if (!(await askConfirm('Reset to template?', 'This puts the layout back the way it was when you opened it. You can undo this with Ctrl+Z.', 'Reset'))) return;
+    if (
+      !(await askConfirm(
+        "Reset to template?",
+        "This puts the layout back the way it was when you opened it. You can undo this with Ctrl+Z.",
+        "Reset",
+      ))
+    )
+      return;
     s().resetToOrigin();
     setFitSignal((n) => n + 1);
-    flash('Reset to the opened template');
+    flash("Reset to the opened template");
   }
 
   async function loadTemplate(t: ChartTemplate) {
     setShowLoad(false);
-    if (s().dirty && !(await askConfirm('Load another template?', 'Your changes to this template have not been saved.', 'Load anyway', true))) return;
+    if (
+      s().dirty &&
+      !(await askConfirm(
+        "Load another template?",
+        "Your changes to this template have not been saved.",
+        "Load anyway",
+        true,
+      ))
+    )
+      return;
     s().open(t);
     setFitSignal((n) => n + 1);
     flash(`Loaded "${t.name}"`);
   }
 
   async function insertImages(files: FileList | null) {
-    const target = imageTarget.current ? s().template!.panels.find((p) => p.id === imageTarget.current) : undefined;
+    const target = imageTarget.current
+      ? s().template!.panels.find((p) => p.id === imageTarget.current)
+      : undefined;
     for (const f of [...(files ?? [])]) {
       try {
         const img = await readImageFile(f);
         if (target) {
-          const top = target.titlePosition === 'inside' ? titleInsideHeight(target) : 1;
-          const r = fitInto(img.width, img.height, { x: 1.5, y: top, w: target.w - 3, h: target.h - top - 1.5 });
-          s().addImage({ panelId: target.id, ...r, src: img.src, name: f.name });
+          const top =
+            target.titlePosition === "inside" ? titleInsideHeight(target) : 1;
+          const r = fitInto(img.width, img.height, {
+            x: 1.5,
+            y: top,
+            w: target.w - 3,
+            h: target.h - top - 1.5,
+          });
+          s().addImage({
+            panelId: target.id,
+            ...r,
+            src: img.src,
+            name: f.name,
+          });
         } else {
           const t = s().template!;
-          s().addImage({ x: t.paper.width / 2 - 20, y: t.paper.height / 2 - 10, w: 40, h: (40 * img.height) / img.width, src: img.src, name: f.name });
+          s().addImage({
+            x: t.paper.width / 2 - 20,
+            y: t.paper.height / 2 - 10,
+            w: 40,
+            h: (40 * img.height) / img.width,
+            src: img.src,
+            name: f.name,
+          });
         }
       } catch (err) {
         flash((err as Error).message);
@@ -306,12 +581,21 @@ export function Editor({ onExit }: { onExit(): void }) {
   }
 
   async function exit() {
-    if (dirty && !(await askConfirm('Leave without saving?', 'Your changes to this template have not been saved.', 'Leave', true))) return;
+    if (
+      dirty &&
+      !(await askConfirm(
+        "Leave without saving?",
+        "Your changes to this template have not been saved.",
+        "Leave",
+        true,
+      ))
+    )
+      return;
     onExit();
   }
 
   const infoLocked = chartInfoLocked(template);
-  const hasInfo = template.panels.some((p) => p.type === 'chartInfo');
+  const hasInfo = template.panels.some((p) => p.type === "chartInfo");
 
   return (
     <div className="editor">
@@ -321,43 +605,72 @@ export function Editor({ onExit }: { onExit(): void }) {
         </button>
         <span className="tpl-name" title={template.name}>
           {template.name}
-          {dirty ? ' •' : ''}
+          {dirty ? " •" : ""}
         </span>
         <div className="group">
           <button onClick={() => save(false)} title="Save template (Ctrl+S)">
             Save
           </button>
-          <button onClick={() => save(true)} title="Save as a new template (Ctrl+Shift+S)">
+          <button
+            onClick={() => save(true)}
+            title="Save as a new template (Ctrl+Shift+S)"
+          >
             Save as…
           </button>
-          <button onClick={() => setShowLoad(true)} title="Open a saved or built-in template">
+          <button
+            onClick={() => setShowLoad(true)}
+            title="Open a saved or built-in template"
+          >
             Load…
           </button>
-          <button onClick={reset} title="Put the layout back the way it was when you opened it">
+          <button
+            onClick={reset}
+            title="Put the layout back the way it was when you opened it"
+          >
             Reset
           </button>
-          <button onClick={() => exportTemplateFile(template)} title="Download the template as a file to share">
+          <button
+            onClick={() => exportTemplateFile(template)}
+            title="Download the template as a file to share"
+          >
             Export file
           </button>
-          <button onClick={() => void saveDxf()} title="Save the chart as an AutoCAD DXF (paper millimetres)">
-            Save as DXF…
+          <button
+            onClick={() => void saveAs()}
+            title="Save the chart as a PDF or an AutoCAD DXF (DWG: save the DXF as DWG in AutoCAD)"
+          >
+            Save as PDF / DXF…
           </button>
-          <button onClick={() => useImport.getState().request()} title="Import survey data: route, plan view data, profiles, events, CP, logos, site plan">
+          <button
+            onClick={() => useImport.getState().request()}
+            title="Import survey data: route, plan view data, profiles, events, CP, logos, site plan"
+          >
             Import data…
           </button>
         </div>
         <div className="group">
-          <button onClick={() => s().undo()} disabled={!canUndo} title="Undo (Ctrl+Z)">
+          <button
+            onClick={() => s().undo()}
+            disabled={!canUndo}
+            title="Undo (Ctrl+Z)"
+          >
             Undo
           </button>
-          <button onClick={() => s().redo()} disabled={!canRedo} title="Redo (Ctrl+Y)">
+          <button
+            onClick={() => s().redo()}
+            disabled={!canRedo}
+            title="Redo (Ctrl+Y)"
+          >
             Redo
           </button>
         </div>
         <div className="group">
           <label>
-            Paper{' '}
-            <select value={template.paper.size} onChange={(e) => setPaper(e.target.value as PaperSizeName)}>
+            Paper{" "}
+            <select
+              value={template.paper.size}
+              onChange={(e) => setPaper(e.target.value as PaperSizeName)}
+            >
               {Object.keys(PAPER_SIZES).map((k) => (
                 <option key={k}>{k}</option>
               ))}
@@ -367,16 +680,43 @@ export function Editor({ onExit }: { onExit(): void }) {
           <ScaleQuick />
         </div>
         <div className="group">
-          <button onClick={(e) => setMenu({ x: e.clientX, y: e.clientY + 12, items: addPanelMenu() })}>+ Panel</button>
-          <button onClick={() => s().addText({ x: template.paper.width / 2, y: template.paper.height / 2 })}>+ Text</button>
+          <button
+            onClick={(e) =>
+              setMenu({
+                x: e.clientX,
+                y: e.clientY + 12,
+                items: addPanelMenu(),
+              })
+            }
+          >
+            + Panel
+          </button>
+          <button
+            onClick={() =>
+              s().addText({
+                x: template.paper.width / 2,
+                y: template.paper.height / 2,
+              })
+            }
+          >
+            + Text
+          </button>
           {hasInfo && (
             <label title="Lock the Chart Information panel and every section inside it">
-              <input type="checkbox" checked={infoLocked} onChange={(e) => s().setChartInfoLocked(e.target.checked)} /> Lock Chart Information
+              <input
+                type="checkbox"
+                checked={infoLocked}
+                onChange={(e) => s().setChartInfoLocked(e.target.checked)}
+              />{" "}
+              Lock Chart Information
             </label>
           )}
         </div>
         <div className="group right">
-          <button onClick={() => setFitSignal((n) => n + 1)} title="Zoom to fit (Ctrl+0 or double-click empty paper)">
+          <button
+            onClick={() => setFitSignal((n) => n + 1)}
+            title="Zoom to fit (Ctrl+0 or double-click empty paper)"
+          >
             Fit
           </button>
           <label title="Show the sheet like a CAD model space">
@@ -386,12 +726,15 @@ export function Editor({ onExit }: { onExit(): void }) {
               onChange={(e) => {
                 setDark(e.target.checked);
                 try {
-                  localStorage.setItem('mahachart.darkSheet', e.target.checked ? '1' : '0');
+                  localStorage.setItem(
+                    "mahachart.darkSheet",
+                    e.target.checked ? "1" : "0",
+                  );
                 } catch {
                   /* preference only */
                 }
               }}
-            />{' '}
+            />{" "}
             Dark sheet
           </label>
           <ThemeButton />
@@ -400,7 +743,13 @@ export function Editor({ onExit }: { onExit(): void }) {
       <div className="workspace">
         <ProjectPanel onNotice={flash} />
         <div className="sheet-col">
-          <SheetView onContextMenu={openMenu} onCursor={setCursor} onNotice={flash} fitSignal={fitSignal} dark={dark} />
+          <SheetView
+            onContextMenu={openMenu}
+            onCursor={setCursor}
+            onNotice={flash}
+            fitSignal={fitSignal}
+            dark={dark}
+          />
           <ChartTabs />
         </div>
         <div ref={propsRef} className="props-wrap">
@@ -408,11 +757,20 @@ export function Editor({ onExit }: { onExit(): void }) {
         </div>
       </div>
       <footer className="statusbar">
-        <span>{cursor ? `X ${cursor.x.toFixed(1)}  Y ${cursor.y.toFixed(1)} mm` : ' '}</span>
         <span>
-          {template.paper.size} {template.paper.width.toFixed(0)}×{template.paper.height.toFixed(0)} mm
+          {cursor
+            ? `X ${cursor.x.toFixed(1)}  Y ${cursor.y.toFixed(1)} mm`
+            : " "}
         </span>
-        <span className="hint-text">Drag an edge to resize (Alt = ignore shared dividers) · Drop a logo on a panel · Wheel to zoom · Double-click (or wheel double-click) to fit · F2 rename</span>
+        <span>
+          {template.paper.size} {template.paper.width.toFixed(0)}×
+          {template.paper.height.toFixed(0)} mm
+        </span>
+        <span className="hint-text">
+          Drag an edge to resize (Alt = ignore shared dividers) · Drop a logo on
+          a panel · Wheel to zoom · Double-click (or wheel double-click) to fit
+          · F2 rename
+        </span>
       </footer>
       <input
         ref={imageInput}
@@ -422,12 +780,32 @@ export function Editor({ onExit }: { onExit(): void }) {
         hidden
         onChange={(e) => {
           insertImages(e.target.files);
-          e.target.value = '';
+          e.target.value = "";
         }}
       />
-      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
-      {importOpen && <ImportDialog initial={importFiles} dropPanelType={importPanel} onClose={() => useImport.getState().close()} onNotice={flash} />}
-      {showLoad && <LoadDialog onLoad={loadTemplate} onClose={() => setShowLoad(false)} onError={flash} />}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menu.items}
+          onClose={() => setMenu(null)}
+        />
+      )}
+      {importOpen && (
+        <ImportDialog
+          initial={importFiles}
+          dropPanelType={importPanel}
+          onClose={() => useImport.getState().close()}
+          onNotice={flash}
+        />
+      )}
+      {showLoad && (
+        <LoadDialog
+          onLoad={loadTemplate}
+          onClose={() => setShowLoad(false)}
+          onError={flash}
+        />
+      )}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
@@ -446,7 +824,12 @@ function ChartTabs() {
         {Array.from({ length: n }, (_, i) => {
           const r = sheetRange(template, i);
           return (
-            <button key={i} className={i === current ? 'active' : ''} onClick={() => st().setSheet(i)} title={`KP ${r.start.toFixed(3)} to KP ${r.end.toFixed(3)}`}>
+            <button
+              key={i}
+              className={i === current ? "active" : ""}
+              onClick={() => st().setSheet(i)}
+              title={`KP ${r.start.toFixed(3)} to KP ${r.end.toFixed(3)}`}
+            >
               Chart {i + 1}
               <span>
                 KP {r.start.toFixed(3)}–{r.end.toFixed(3)}
@@ -461,27 +844,42 @@ function ChartTabs() {
           suffix="km"
           title="KP at the left edge of this chart's plan view. Chart 1 may start before KP 0."
           value={sheetRange(template, current).start.toFixed(3)}
-          onCommit={(v) => st().commit((t) => editSheet(t, current, { start: Math.round(v * 1000 * 1000) / 1000 }))}
+          onCommit={(v) =>
+            st().commit((t) =>
+              editSheet(t, current, {
+                start: Math.round(v * 1000 * 1000) / 1000,
+              }),
+            )
+          }
         />
         <ChartNumber
           label="Rotate"
           suffix="°"
           title="Turn this chart's frame, e.g. for a sharp bend. You can also drag the round grip in the key plan."
           value={String(sheetRotation(template, current))}
-          onCommit={(v) => st().commit((t) => editSheet(t, current, { rotation: v }))}
+          onCommit={(v) =>
+            st().commit((t) => editSheet(t, current, { rotation: v }))
+          }
         />
         <button
-          className={panMap ? 'active' : ''}
+          className={panMap ? "active" : ""}
           aria-pressed={panMap}
           onClick={() => st().setPanMap(!panMap)}
           title="Drag inside the plan view to move the map for this chart. Click again to go back to moving panels."
         >
           Pan map
         </button>
-        <button onClick={() => st().commit((t) => insertSheet(t, current))} title="Add a chart after this one, halfway along. Use it where the line turns sharply.">
+        <button
+          onClick={() => st().commit((t) => insertSheet(t, current))}
+          title="Add a chart after this one, halfway along. Use it where the line turns sharply."
+        >
           + Add chart
         </button>
-        <button disabled={n <= 1} onClick={() => st().commit((t) => deleteSheet(t, current))} title="Delete this chart">
+        <button
+          disabled={n <= 1}
+          onClick={() => st().commit((t) => deleteSheet(t, current))}
+          title="Delete this chart"
+        >
           Delete chart
         </button>
       </div>
@@ -489,7 +887,19 @@ function ChartTabs() {
   );
 }
 
-function ChartNumber({ label, suffix, title, value, onCommit }: { label: string; suffix: string; title: string; value: string; onCommit(v: number): void }) {
+function ChartNumber({
+  label,
+  suffix,
+  title,
+  value,
+  onCommit,
+}: {
+  label: string;
+  suffix: string;
+  title: string;
+  value: string;
+  onCommit(v: number): void;
+}) {
   const [draft, setDraft] = useState(value);
   useEffect(() => setDraft(value), [value]);
   return (
@@ -500,28 +910,41 @@ function ChartNumber({ label, suffix, title, value, onCommit }: { label: string;
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
-          const v = parseFloat(draft.replace(',', '.'));
+          const v = parseFloat(draft.replace(",", "."));
           if (Number.isFinite(v) && draft !== value) onCommit(v);
           else setDraft(value);
         }}
-        onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+        onKeyDown={(e) =>
+          e.key === "Enter" && (e.target as HTMLInputElement).blur()
+        }
       />
       {suffix}
     </label>
   );
 }
 
-function LoadDialog({ onLoad, onClose, onError }: { onLoad(t: ChartTemplate): void; onClose(): void; onError(msg: string): void }) {
+function LoadDialog({
+  onLoad,
+  onClose,
+  onError,
+}: {
+  onLoad(t: ChartTemplate): void;
+  onClose(): void;
+  onError(msg: string): void;
+}) {
   const users = listUserTemplates();
   const builtins = BUILTIN_TEMPLATES.map((f) => f());
   const all = [...users, ...builtins];
-  const [id, setId] = useState(all[0]?.id ?? '');
+  const [id, setId] = useState(all[0]?.id ?? "");
   const fileRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    document.getElementById('load-select')?.focus();
+    document.getElementById("load-select")?.focus();
   }, []);
   return (
-    <div className="dialog-backdrop" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div
+      className="dialog-backdrop"
+      onPointerDown={(e) => e.target === e.currentTarget && onClose()}
+    >
       <form
         className="dialog"
         role="dialog"
@@ -534,11 +957,20 @@ function LoadDialog({ onLoad, onClose, onError }: { onLoad(t: ChartTemplate): vo
         }}
         onKeyDown={(e) => {
           e.stopPropagation();
-          if (e.key === 'Escape') onClose();
+          if (e.key === "Escape") onClose();
         }}
       >
         <h3 id="load-title">Load template</h3>
-        <select id="load-select" size={Math.min(8, all.length + 2)} value={id} onChange={(e) => setId(e.target.value)} onDoubleClick={() => all.find((x) => x.id === id) && onLoad(all.find((x) => x.id === id)!)}>
+        <select
+          id="load-select"
+          size={Math.min(8, all.length + 2)}
+          value={id}
+          onChange={(e) => setId(e.target.value)}
+          onDoubleClick={() =>
+            all.find((x) => x.id === id) &&
+            onLoad(all.find((x) => x.id === id)!)
+          }
+        >
           {users.length > 0 && (
             <optgroup label="My templates">
               {users.map((t) => (
@@ -557,7 +989,11 @@ function LoadDialog({ onLoad, onClose, onError }: { onLoad(t: ChartTemplate): vo
           </optgroup>
         </select>
         <div className="dialog-actions">
-          <button type="button" className="push-left" onClick={() => fileRef.current?.click()}>
+          <button
+            type="button"
+            className="push-left"
+            onClick={() => fileRef.current?.click()}
+          >
             Import file…
           </button>
           <button type="button" onClick={onClose}>
@@ -574,7 +1010,7 @@ function LoadDialog({ onLoad, onClose, onError }: { onLoad(t: ChartTemplate): vo
           hidden
           onChange={async (e) => {
             const f = e.target.files?.[0];
-            e.target.value = '';
+            e.target.value = "";
             if (!f) return;
             try {
               onLoad(await importTemplateFile(f));
@@ -594,7 +1030,10 @@ function ScaleQuick() {
   const [draft, setDraft] = useState(String(scale.horizontal));
   const [route, setRoute] = useState((scale.routeLength / 1000).toFixed(3));
   useEffect(() => setDraft(String(scale.horizontal)), [scale.horizontal]);
-  useEffect(() => setRoute((scale.routeLength / 1000).toFixed(3)), [scale.routeLength]);
+  useEffect(
+    () => setRoute((scale.routeLength / 1000).toFixed(3)),
+    [scale.routeLength],
+  );
   const [overlap, setOverlap] = useState(String(scale.overlap));
   useEffect(() => setOverlap(String(scale.overlap)), [scale.overlap]);
   const hasRoute = useSurvey((s) => !!s.source);
@@ -610,12 +1049,18 @@ function ScaleQuick() {
           onChange={(e) => setDraft(e.target.value)}
           onBlur={() => {
             const v = parseFloat(draft);
-            if (v > 0 && v !== scale.horizontal) useEditor.getState().setHorizontalScale(v);
+            if (v > 0 && v !== scale.horizontal)
+              useEditor.getState().setHorizontalScale(v);
             else setDraft(String(scale.horizontal));
           }}
-          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          onKeyDown={(e) =>
+            e.key === "Enter" && (e.target as HTMLInputElement).blur()
+          }
         />
-        <span className="muted"> {(scale.kpPerSheet / 1000).toFixed(3)} km/chart</span>
+        <span className="muted">
+          {" "}
+          {(scale.kpPerSheet / 1000).toFixed(3)} km/chart
+        </span>
       </label>
       <label title="Survey line length. Filled in from the route file once data import arrives.">
         Route
@@ -625,10 +1070,13 @@ function ScaleQuick() {
           onChange={(e) => setRoute(e.target.value)}
           onBlur={() => {
             const v = parseFloat(route) * 1000;
-            if (v > 0 && v !== scale.routeLength) useEditor.getState().setScale({ routeLength: v });
+            if (v > 0 && v !== scale.routeLength)
+              useEditor.getState().setScale({ routeLength: v });
             else setRoute((scale.routeLength / 1000).toFixed(3));
           }}
-          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          onKeyDown={(e) =>
+            e.key === "Enter" && (e.target as HTMLInputElement).blur()
+          }
         />
         km
         <span className="muted"> = {sheetCount(template)} charts</span>
@@ -641,15 +1089,21 @@ function ScaleQuick() {
           onChange={(e) => setOverlap(e.target.value)}
           onBlur={() => {
             const v = parseFloat(overlap);
-            if (v >= 0 && v < scale.kpPerSheet && v !== scale.overlap) useEditor.getState().setScale({ overlap: v });
+            if (v >= 0 && v < scale.kpPerSheet && v !== scale.overlap)
+              useEditor.getState().setScale({ overlap: v });
             else setOverlap(String(scale.overlap));
           }}
-          onKeyDown={(e) => e.key === 'Enter' && (e.target as HTMLInputElement).blur()}
+          onKeyDown={(e) =>
+            e.key === "Enter" && (e.target as HTMLInputElement).blur()
+          }
         />
         m
       </label>
       {hasRoute && (
-        <label className="check" title="Run KP from the other end of the line. The first chart always starts at KP 0.">
+        <label
+          className="check"
+          title="Run KP from the other end of the line. The first chart always starts at KP 0."
+        >
           <input
             type="checkbox"
             checked={reversed}
@@ -661,7 +1115,11 @@ function ScaleQuick() {
           Reverse route
         </label>
       )}
-      <button disabled={!shifted} onClick={() => useEditor.getState().setScale({ sheets: undefined })} title="Undo hand-made frame changes and fit the charts to the line again">
+      <button
+        disabled={!shifted}
+        onClick={() => useEditor.getState().setScale({ sheets: undefined })}
+        title="Undo hand-made frame changes and fit the charts to the line again"
+      >
         Reset frames
       </button>
     </>

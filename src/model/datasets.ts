@@ -85,7 +85,29 @@ export interface EventLink {
   label: string;
   lengthPos: LabelPos;
   heightPos: LabelPos;
+  /** Where the bar sits in the row, as a fraction of its height from the top (0.5 = the middle). */
+  barPos?: number;
+  /** Bar thickness, mm; unset follows the row height. */
+  barHeight?: number;
+  /** Gap between the bar and its length / height text, and the margin kept from the row's lines, mm. */
+  textGap?: number;
+  /** Length of the end lines as a fraction of the row height, centred on the bar. */
+  lineExtent?: number;
 }
+
+/** Where the marks and codes of single events sit in their row. */
+export interface EventLayout {
+  /** Tick from the row's foot, or standing in the middle of the row. */
+  markPos: 'foot' | 'middle';
+  /** Tick length as a fraction of the row height. */
+  markLen: number;
+  /** Gap between a tick and its code, mm. */
+  labelGap: number;
+  /** Turn of the codes, degrees anticlockwise from horizontal (90 = reading upward). */
+  labelRotation: number;
+}
+
+export const DEFAULT_EVENT_LAYOUT: EventLayout = { markPos: 'foot', markLen: 0.25, labelGap: 0.4, labelRotation: 90 };
 
 export const newLink = (start = 'FS.FS', end = 'FS.FE'): EventLink => ({
   start,
@@ -94,6 +116,9 @@ export const newLink = (start = 'FS.FS', end = 'FS.FE'): EventLink => ({
   label: /B/.test(start.split('.')[1] ?? '') ? 'Flowline Status - Burial' : 'Flowline Status - Freespan',
   lengthPos: 'top',
   heightPos: 'bottom',
+  barPos: 0.5,
+  textGap: 0.6,
+  lineExtent: 0.8,
 });
 
 export type CpSymbol = 'tick' | 'circle' | 'circleFill' | 'square' | 'squareFill' | 'triangle' | 'triangleFill' | 'diamond' | 'diamondFill';
@@ -108,6 +133,25 @@ export const CP_SYMBOLS: Record<CpSymbol, string> = {
   diamond: 'Diamond',
   diamondFill: 'Diamond, filled',
 };
+
+/** Where and how CP readings are drawn in their panel. */
+export interface CpLook {
+  /** Height of the readings in the panel as a fraction from the top (0.5 = the middle). */
+  posY: number;
+  /** Symbol size (diameter or side), mm. */
+  symbolSize: number;
+  /** A stem from the symbol down to the panel's foot. */
+  stem: boolean;
+  showText: boolean;
+  /** Gap between the symbol and its reading, mm. */
+  textGap: number;
+  /** Turn of the readings, degrees anticlockwise from horizontal (90 = reading upward). */
+  textRotation: number;
+  /** Written after each value. */
+  suffix: string;
+}
+
+export const DEFAULT_CP_LOOK: CpLook = { posY: 0.5, symbolSize: 1.2, stem: false, showText: true, textGap: 0.6, textRotation: 90, suffix: ' mV' };
 
 /**
  * Longitudinal profile setup, after AutoChart's Create Profile dialog: which way
@@ -210,8 +254,8 @@ export type Dataset =
   | (Base & { kind: 'long'; kp: Float64Array; series: LongSeries[]; top?: number; bop?: number; fill: string; opts?: LongOpts })
   /** Profiles sorted by KP; one is drawn every `every` metres (0: chosen from the scale). */
   | (Base & { kind: 'trans'; kp: Float64Array; profiles: CrossProfile[]; every: number; pipeColor: string; pipeFill: string })
-  | (Base & { kind: 'events'; records: EventRecord[]; labels: boolean; font: DataFont; links: EventLink[] })
-  | (Base & { kind: 'cp'; kp: Float64Array; mv: Float64Array; style: 'line' | 'ticks'; font: DataFont; symbol: CpSymbol });
+  | (Base & { kind: 'events'; records: EventRecord[]; labels: boolean; font: DataFont; links: EventLink[]; layout?: EventLayout })
+  | (Base & { kind: 'cp'; kp: Float64Array; mv: Float64Array; style: 'line' | 'ticks'; font: DataFont; symbol: CpSymbol; look?: CpLook });
 
 /** Look settings the import window can set before a dataset exists. */
 export type DataStyle = Partial<{
@@ -225,6 +269,8 @@ export type DataStyle = Partial<{
   symbol: CpSymbol;
   labels: boolean;
   long: LongOpts;
+  layout: EventLayout;
+  cp: CpLook;
 }>;
 
 export const SERIES_COLOURS = ['#16a34a', '#2563eb', '#9333ea', '#ea580c', '#0891b2', '#64748b'];

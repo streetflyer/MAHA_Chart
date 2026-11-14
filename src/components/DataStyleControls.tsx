@@ -1,5 +1,5 @@
 import { ColourBox } from './ColourBox';
-import { CP_SYMBOLS, DEFAULT_FONT, DEFAULT_LONG_OPTS, type LongOpts, FONT_FAMILIES, newLink, type CpSymbol, type DataFont, type DataStyle, type Dataset, type EventLink, type ImportTarget, type LabelPos } from '../model/datasets';
+import { CP_SYMBOLS, DEFAULT_CP_LOOK, DEFAULT_EVENT_LAYOUT, DEFAULT_FONT, DEFAULT_LONG_OPTS, type CpLook, type EventLayout, type LongOpts, FONT_FAMILIES, newLink, type CpSymbol, type DataFont, type DataStyle, type Dataset, type EventLink, type ImportTarget, type LabelPos } from '../model/datasets';
 import { useEffect, useState } from 'react';
 import { DEFAULT_COLOURS } from '../model/importers';
 import { formatScale } from '../model/scale';
@@ -21,9 +21,9 @@ export function defaultStyle(target: ImportTarget): DataStyle {
     case 'trans':
       return { color, pipeColor: '#e00000', pipeFill: '#bdbdbd' };
     case 'events':
-      return { font: { ...DEFAULT_FONT }, labels: true };
+      return { font: { ...DEFAULT_FONT }, labels: true, layout: { ...DEFAULT_EVENT_LAYOUT } };
     case 'cp':
-      return { color: '#111111', symbol: 'circle', font: { ...DEFAULT_FONT } };
+      return { color: '#111111', symbol: 'circle', font: { ...DEFAULT_FONT }, cp: { ...DEFAULT_CP_LOOK } };
     default:
       return {};
   }
@@ -46,9 +46,9 @@ export function applyStyle(d: Dataset, s: DataStyle): Dataset {
     case 'trans':
       return { ...d, color: s.color ?? d.color, pipeColor: s.pipeColor ?? d.pipeColor, pipeFill: s.pipeFill ?? d.pipeFill };
     case 'events':
-      return { ...d, font: s.font ?? d.font, labels: s.labels ?? d.labels };
+      return { ...d, font: s.font ?? d.font, labels: s.labels ?? d.labels, layout: s.layout ?? d.layout };
     case 'cp':
-      return { ...d, color: s.color ?? d.color, symbol: s.symbol ?? d.symbol, font: s.font ?? d.font };
+      return { ...d, color: s.color ?? d.color, symbol: s.symbol ?? d.symbol, font: s.font ?? d.font, look: s.cp ?? d.look };
   }
 }
 
@@ -65,9 +65,9 @@ export function styleOf(d: Dataset): DataStyle {
     case 'trans':
       return { color: d.color, pipeColor: d.pipeColor, pipeFill: d.pipeFill };
     case 'events':
-      return { font: d.font, labels: d.labels };
+      return { font: d.font, labels: d.labels, layout: d.layout ?? DEFAULT_EVENT_LAYOUT };
     case 'cp':
-      return { color: d.color, symbol: d.symbol, font: d.font };
+      return { color: d.color, symbol: d.symbol, font: d.font, cp: d.look ?? DEFAULT_CP_LOOK };
   }
 }
 
@@ -303,11 +303,82 @@ export function StyleControls({ target, style, onChange, seriesNames = [] }: { t
       )}
       {(target === 'events' || target === 'cp') && <FontControls font={s.font ?? DEFAULT_FONT} onChange={(font) => onChange({ font })} />}
       {target === 'events' && (
-        <label className="check">
-          <input type="checkbox" checked={s.labels ?? true} onChange={(e) => onChange({ labels: e.target.checked })} />
-          Label single events with their code
-        </label>
+        <>
+          <label className="check">
+            <input type="checkbox" checked={s.labels ?? true} onChange={(e) => onChange({ labels: e.target.checked })} />
+            Label single events with their code
+          </label>
+          <EventLayoutControls layout={s.layout ?? DEFAULT_EVENT_LAYOUT} onChange={(layout) => onChange({ layout })} />
+        </>
       )}
+      {target === 'cp' && <CpLookControls look={s.cp ?? DEFAULT_CP_LOOK} onChange={(cp) => onChange({ cp })} />}
+    </div>
+  );
+}
+
+/** A number box that keeps any value typed (0 and negatives included) and commits on change. */
+function Any({ label, value, step, suffix, min, max, onChange }: { label: string; value: number; step: number; suffix: string; min?: number; max?: number; onChange(v: number): void }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <span className="with-suffix">
+        <input
+          type="number"
+          step={step}
+          min={min}
+          max={max}
+          value={Number.isFinite(value) ? value : 0}
+          onChange={(e) => {
+            const v = Number(e.target.value);
+            if (e.target.value !== '' && Number.isFinite(v)) onChange(v);
+          }}
+        />
+        <span className="suffix">{suffix}</span>
+      </span>
+    </label>
+  );
+}
+
+/** Where single events' ticks and codes sit in their row. */
+function EventLayoutControls({ layout, onChange }: { layout: EventLayout; onChange(l: EventLayout): void }) {
+  const set = (patch: Partial<EventLayout>) => onChange({ ...layout, ...patch });
+  return (
+    <div className="style-row">
+      <label className="field">
+        <span>Tick position</span>
+        <select value={layout.markPos} onChange={(e) => set({ markPos: e.target.value as EventLayout['markPos'] })}>
+          <option value="foot">Standing on the row's bottom line</option>
+          <option value="middle">Centred in the row</option>
+        </select>
+      </label>
+      <Any label="Tick length" value={Math.round(layout.markLen * 100)} step={5} min={5} max={100} suffix="% of row" onChange={(v) => set({ markLen: v / 100 })} />
+      <Any label="Code gap" value={layout.labelGap} step={0.1} min={0} suffix="mm" onChange={(labelGap) => set({ labelGap })} />
+      <Any label="Code turn" value={layout.labelRotation} step={15} suffix="° anticlockwise" onChange={(labelRotation) => set({ labelRotation })} />
+    </div>
+  );
+}
+
+/** Where and how CP readings are drawn: height in the panel, symbol size, stem and text. */
+function CpLookControls({ look, onChange }: { look: CpLook; onChange(l: CpLook): void }) {
+  const set = (patch: Partial<CpLook>) => onChange({ ...look, ...patch });
+  return (
+    <div className="style-row">
+      <Any label="Height in panel" value={Math.round(look.posY * 100)} step={5} min={0} max={100} suffix="% from top (50 = middle)" onChange={(v) => set({ posY: v / 100 })} />
+      <Any label="Symbol size" value={look.symbolSize} step={0.1} min={0.2} suffix="mm" onChange={(symbolSize) => set({ symbolSize })} />
+      <label className="check">
+        <input type="checkbox" checked={look.stem} onChange={(e) => set({ stem: e.target.checked })} />
+        Stem down to the panel's foot
+      </label>
+      <label className="check">
+        <input type="checkbox" checked={look.showText} onChange={(e) => set({ showText: e.target.checked })} />
+        Show the readings
+      </label>
+      <Any label="Reading gap" value={look.textGap} step={0.1} min={0} suffix="mm" onChange={(textGap) => set({ textGap })} />
+      <Any label="Reading turn" value={look.textRotation} step={15} suffix="° anticlockwise" onChange={(textRotation) => set({ textRotation })} />
+      <label className="field">
+        <span>After each value</span>
+        <input value={look.suffix} onChange={(e) => set({ suffix: e.target.value })} />
+      </label>
     </div>
   );
 }
@@ -395,6 +466,10 @@ export function LinksEditor({ links, onChange, codes }: { links: EventLink[]; on
               ))}
             </select>
           </label>
+          <Any label="Bar position" value={Math.round((l.barPos ?? 0.5) * 100)} step={5} min={0} max={100} suffix="% from row top" onChange={(v) => set(i, { barPos: v / 100 })} />
+          <Any label="Bar thickness" value={l.barHeight ?? 0} step={0.1} min={0} suffix="mm (0 = auto)" onChange={(v) => set(i, { barHeight: v > 0 ? v : undefined })} />
+          <Any label="Text gap" value={l.textGap ?? 0.6} step={0.1} min={0} suffix="mm from bar and row lines" onChange={(v) => set(i, { textGap: v })} />
+          <Any label="End line length" value={Math.round((l.lineExtent ?? 0.8) * 100)} step={5} min={10} max={100} suffix="% of row" onChange={(v) => set(i, { lineExtent: v / 100 })} />
           <label className="field wide">
             <span>Legend text</span>
             <input value={l.label} onChange={(e) => set(i, { label: e.target.value })} />
