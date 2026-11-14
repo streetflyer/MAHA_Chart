@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   parseVideoRows,
   productIn,
-  videoRange,
-  videoText,
+  autoVideoText,
+  periodsText,
 } from "./video";
 
 const rows = [
@@ -24,12 +24,20 @@ describe("video log", () => {
       end: "2026-10-31T03:03",
     });
   });
-  it("joins a product's rows and prints like the chart", () => {
+  it("joins close lines and lists separate periods", () => {
     const v = parseVideoRows(rows);
     expect(productIn(v, "33DJ100160-T1201-UMB1-CH-01")).toBe("UMB1");
-    const r = videoRange(v, "UMB1")!;
-    expect(videoText(r)).toBe(
-      "30 October 2026 21:21 PM to 31 October 2026 10:17 AM",
+    expect(
+      autoVideoText(v, { drawingNo: "X-UMB1-CH-01", folder: "", joinHours: 12 }),
+    ).toBe("30 October 2026 21:21 PM to 31 October 2026 10:17 AM");
+    expect(
+      periodsText([
+        { start: "2026-10-31T18:57", end: "2026-11-01T02:25" },
+        { start: "2026-11-02T14:11", end: "2026-11-02T17:12" },
+        { start: "2026-11-03T01:00", end: "2026-11-03T02:00" },
+      ]),
+    ).toBe(
+      "31 October 2026 18:57 PM to 1 November 2026 02:25 AM, 2 November 2026 14:11 PM to 2 November 2026 17:12 PM, and 3 November 2026 01:00 AM to 3 November 2026 02:00 AM",
     );
   });
   it("reads Excel serials", () => {

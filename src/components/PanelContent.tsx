@@ -909,34 +909,42 @@ function LegendSymbolView({
       );
     case "burial":
     case "freespan": {
+      // Two end lines, a light tint between them and a bold stripe: at the top for a freespan, at the foot for a burial.
       const cx = x + w / 2;
+      const xa = cx - 1.2;
+      const xb = cx + 1.2;
+      const top = cy - 1.3;
+      const bot = cy + 1.9;
+      const bold = 0.7;
+      const burial = it.symbol === "burial";
       return (
         <g>
           <text
             x={cx}
-            y={cy - 1.6}
+            y={cy - 2.1}
             fontSize={fontSize(0.9)}
             textAnchor="middle"
             style={{ fill: c }}
           >
             {it.symbolText}
           </text>
-          {it.id.startsWith("data:") && (
-            <rect
-              x={cx - 1.2}
-              y={cy - 0.4}
-              width={2.4}
-              height={1.4}
-              style={{ fill: c }}
-            />
-          )}
+          <rect
+            x={xa}
+            y={top}
+            width={xb - xa}
+            height={bot - top}
+            style={{ fill: c, fillOpacity: 0.45 }}
+          />
+          <rect
+            x={xa}
+            y={burial ? bot - bold : top}
+            width={xb - xa}
+            height={bold}
+            style={{ fill: c }}
+          />
           <path
-            d={`M${cx - 1.2} ${cy - 1} L${cx - 1.2} ${cy + 1.6} M${cx + 1.2} ${cy - 1} L${cx + 1.2} ${cy + 1.6} M${cx - 1.2} ${cy + 0.3} L${cx + 1.2} ${cy + 0.3}`}
-            style={
-              it.id.startsWith("data:")
-                ? { stroke: "#111", strokeWidth: 0.15, fill: "none" }
-                : st(it.symbol === "burial" ? 0.7 : 0.5)
-            }
+            d={`M${xa} ${top} V${bot} M${xb} ${top} V${bot}`}
+            style={{ stroke: c, strokeWidth: 0.25, fill: "none" }}
           />
         </g>
       );

@@ -5,9 +5,12 @@ import type { VideoRow } from "../model/video";
 /** The video log: when each product's video started and ended. Kept with the saved project. */
 interface VideoState {
   rows: VideoRow[];
+  /** Lines closer together than this many hours are one period. */
+  joinHours: number;
   /** A picture of the source table, kept to read from while rows are typed in. */
   image: { name: string; url: string } | null;
   setRows(rows: VideoRow[]): void;
+  setJoin(h: number): void;
   addRows(rows: VideoRow[]): void;
   update(id: string, patch: Partial<VideoRow>): void;
   remove(id: string): void;
@@ -17,7 +20,9 @@ interface VideoState {
 
 export const useVideo = create<VideoState>((set, get) => ({
   rows: [],
+  joinHours: 12,
   image: null,
+  setJoin: (joinHours) => set({ joinHours }),
   setRows: (rows) => set({ rows }),
   addRows: (rows) => set({ rows: [...get().rows, ...rows] }),
   update: (id, patch) =>

@@ -7,7 +7,7 @@ export const DEFAULT_LEGEND_STYLE: LegendStyle = {
   color: "#555555",
   headSize: 1.9,
   headColor: "#555555",
-  codeColor: "#f08080",
+  codeColor: "#000000",
   codeSize: 1.4,
 };
 

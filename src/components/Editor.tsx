@@ -525,7 +525,7 @@ export function Editor({ onExit }: { onExit(): void }) {
       await new Promise((r) => setTimeout(r, 60));
       return document.querySelector<SVGSVGElement>("svg.sheet");
     };
-    const base = (template.fields.DRAWING_NO || template.name).replace(
+    const base = (template.fields.CHART_NO || template.name).replace(
       /[^\w.-]+/g,
       "_",
     );

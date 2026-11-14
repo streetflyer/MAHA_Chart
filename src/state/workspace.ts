@@ -57,7 +57,7 @@ interface Header {
     selected: string | null;
     expanded: Record<string, boolean>;
   };
-  video?: { rows: VideoRow[]; image: { name: string; url: string } | null };
+  video?: { rows: VideoRow[]; joinHours?: number; image: { name: string; url: string } | null };
   storage: Record<string, string>;
 }
 
@@ -119,7 +119,7 @@ export async function workspaceBlob(): Promise<Blob> {
           expanded: pr.expanded,
         }
       : null,
-    video: { rows: useVideo.getState().rows, image: useVideo.getState().image },
+    video: { rows: useVideo.getState().rows, joinHours: useVideo.getState().joinHours, image: useVideo.getState().image },
     storage,
   };
   const json = JSON.stringify(header, function (_k, v) {
@@ -193,7 +193,7 @@ export async function loadWorkspace(file: File): Promise<string> {
   useEditor.getState().open(h.template);
   useEditor.setState({ sheetIndex: h.sheetIndex ?? 0 });
   useSurvey.getState().load(h.datasets, h.reversed);
-  useVideo.setState({ rows: h.video?.rows ?? [], image: h.video?.image ?? null });
+  useVideo.setState({ rows: h.video?.rows ?? [], joinHours: h.video?.joinHours ?? 12, image: h.video?.image ?? null });
   if (h.project)
     useProject.setState({
       ...h.project,

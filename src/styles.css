@@ -1566,3 +1566,18 @@ table.preview thead th.mapped {
   gap: 6px;
   align-items: center;
 }
+.video-join {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 12px;
+}
+.video-join input {
+  width: 48px;
+}
+.video-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}

@@ -2,7 +2,7 @@ import { Cp } from "./CpPanel";
 import { useEditor } from "../state/store";
 import { useProject } from "../state/project";
 import { useVideo } from "../state/video";
-import { productIn, productKeys, videoRange, videoText } from "../model/video";
+import { autoVideoText } from "../model/video";
 import { useMemo, type ReactElement } from "react";
 import { nearestProfile } from "../model/crossProfile";
 import {
@@ -876,9 +876,11 @@ function EventsPanel({
   routeEnd: number;
 }) {
   const rows = p.rows ?? [];
-  const drawingNo = useEditor((s) => s.template?.fields.DRAWING_NO ?? "");
+  const drawingNo = useEditor((s) => s.template?.fields.CHART_NO ?? "");
   const folder = useProject((s) => s.active ?? "");
   const video = useVideo((s) => s.rows);
+  const joinHours = useVideo((s) => s.joinHours);
+  const sheetIndex = useEditor((s) => s.sheetIndex);
   const split = useMemo(
     () => sets.map((d) => ({ d, ...splitRanges(d.records, d.links) })),
     [sets],
@@ -891,17 +893,27 @@ function EventsPanel({
     const y0 = p.y + ri * rh;
     // A video row prints "start to end" of its product, as a stripe along the row.
     let r = row;
-    if (isVideoRow(row) && !isKpRow(row)) {
-      const key =
-        row.videoProduct ||
-        productIn(video, drawingNo) ||
-        productIn(video, folder) ||
-        (productKeys(video).length === 1 ? productKeys(video)[0] : null);
-      const range = key ? videoRange(video, key) : null;
+    if (
+      isVideoRow(row) &&
+      !isKpRow(row) &&
+      (row.video === true ||
+        video.length > 0 ||
+        row.videoText ||
+        row.videoTexts)
+    ) {
+      const auto = autoVideoText(video, {
+        product: row.videoProduct,
+        drawingNo,
+        folder,
+        joinHours,
+      });
       r = {
         ...row,
         textOnly: true,
-        text: range ? videoText(range) : (row.text ?? ""),
+        text:
+          row.videoTexts?.[sheetIndex] ??
+          row.videoText ??
+          (auto || (row.text ?? "")),
         stripe: row.stripe ?? true,
         stripeColor: row.stripeColor ?? "#d9d9d9",
       };
@@ -935,14 +947,15 @@ function EventsPanel({
     if (r.textOnly) {
       const font = split[0]?.d.font ?? DEFAULT_FONT;
       const text = r.text ?? "";
+      const stripeH = Math.min(rh, Math.max(0.15, r.stripeWidth ?? rh - 2));
       if (r.stripe)
         out.push(
           <rect
             key={`z${r.id}`}
             x={x0 + 1}
-            y={y0 + rh / 2 - Math.max(0.15, ((rh - 2) * (r.stripeWidth ?? 100)) / 100) / 2}
+            y={y0 + rh / 2 - stripeH / 2}
             width={Math.max(0, x1 - x0 - 2)}
-            height={Math.max(0.15, ((rh - 2) * (r.stripeWidth ?? 100)) / 100)}
+            height={stripeH}
             style={{ fill: r.stripeColor ?? "#d9d9d9" }}
             fillOpacity={r.stripeOpacity ?? 1}
           />,
@@ -1157,6 +1170,10 @@ function PointTicks({
  * Linked events (freespan, burial): a line at each end, a bar between them, the
  * length above and the height below by default, and the codes along the end lines.
  */
+/** Burial links get the bold stripe at the foot, freespans at the top. */
+export const isBurialLink = (l: { label: string; start: string }) =>
+  /burial/i.test(l.label) || /B/i.test(l.start.split(".")[1] ?? "");
+
 function LinkedEvents({
   list,
   y0,
@@ -1187,23 +1204,34 @@ function LinkedEvents({
         // The bar sits where the user put it (the middle by default); the end lines are centred on it.
         const centre = y0 + rh * (l.barPos ?? 0.5);
         const bh = l.barHeight ?? Math.min(rh * 0.28, 2.2);
-        const barTop = centre - bh / 2;
-        const barBot = centre + bh / 2;
         const half = (rh * (l.lineExtent ?? 0.8)) / 2;
         const lineTop = Math.max(y0 + gap * 0.5, centre - half);
         const lineBot = Math.min(y0 + rh - gap * 0.5, centre + half);
-        // Texts keep their gap from the bar and stay clear of the row's own lines.
-        const lengthY = Math.max(y0 + gap + cap, barTop - gap);
-        const heightY = Math.min(y0 + rh - gap, barBot + gap + cap);
+        // Freespan: bold stripe along the top; burial: along the bottom; a light tint fills between the end lines.
+        const burial = isBurialLink(l);
+        const bold = Math.min(bh, (lineBot - lineTop) / 2);
+        const barTop = burial ? lineBot - bold : lineTop;
+        const barBot = burial ? lineBot : lineTop + bold;
+        // Texts keep their gap from the symbol and stay clear of the row's own lines.
+        const lengthY = Math.max(y0 + gap + cap, lineTop - gap);
+        const heightY = Math.min(y0 + rh - gap, lineBot + gap + cap);
         const textY = (p: LabelPos) => (p === "top" ? lengthY : heightY);
         const lines = `M${xa.toFixed(2)} ${lineTop.toFixed(2)}V${lineBot.toFixed(2)}M${xb.toFixed(2)} ${lineTop.toFixed(2)}V${lineBot.toFixed(2)}`;
         return (
           <g key={i}>
             <rect
               x={xa}
+              y={lineTop}
+              width={Math.max(0.1, xb - xa)}
+              height={Math.max(0.1, lineBot - lineTop)}
+              fill={c}
+              fillOpacity={0.45}
+            />
+            <rect
+              x={xa}
               y={barTop}
               width={Math.max(0.1, xb - xa)}
-              height={bh}
+              height={Math.max(0.1, barBot - barTop)}
               fill={c}
             />
             <path

@@ -45,9 +45,9 @@ export const rowCodes = (r: EventRow) => r.codes ?? defaultRowCodes(r.label);
 /** True for the row that carries the KP labels instead of events. */
 export const isKpRow = (r: EventRow) => /GRID KP|^KP\b/i.test(r.label);
 
-/** A row printing the video timing of its product (VIDEO rows do unless told otherwise). */
+/** A row printing the video timing of its product (VIDEO rows do once the video list has lines, unless told otherwise). */
 export const isVideoRow = (r: EventRow) =>
-  r.video ?? (/video/i.test(r.label) && !r.textOnly && !r.codes);
+  r.video ?? (/video/i.test(r.label) && !r.textOnly);
 
 export interface EventMark {
   kp: number;

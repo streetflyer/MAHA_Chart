@@ -3,6 +3,9 @@ import { parseDelimited, readXlsx } from "../model/tables";
 import { parseVideoRows } from "../model/video";
 import { useVideo } from "../state/video";
 import { askConfirm } from "./Dialog";
+import { ContextMenu, type MenuItem } from "./ContextMenu";
+import { productKey } from "../model/video";
+import { DraftNumber } from "./DataStyleControls";
 
 /**
  * Left-panel list of the products' video start and end. Drop or upload the survey summary
@@ -14,6 +17,33 @@ export function VideoTiming({ onNotice }: { onNotice(m: string): void }) {
   const input = useRef<HTMLInputElement>(null);
   const [over, setOver] = useState(false);
   const [open, setOpen] = useState(true);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    items: MenuItem[];
+  } | null>(null);
+
+  function rowMenu(e: React.MouseEvent, id: string) {
+    e.preventDefault();
+    const r = v.rows.find((x) => x.id === id)!;
+    const key = productKey(r.product);
+    const same = v.rows.filter((x) => productKey(x.product) === key);
+    setMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { label: "Remove this line", action: () => v.remove(id) },
+        {
+          label: `Remove all ${same.length} lines of ${key || "this product"}`,
+          disabled: same.length < 2,
+          action: () =>
+            v.setRows(v.rows.filter((x) => productKey(x.product) !== key)),
+        },
+        "separator",
+        { label: "Remove all lines", action: () => v.setRows([]) },
+      ],
+    });
+  }
 
   async function readFiles(files: File[]) {
     for (const f of files) {
@@ -61,7 +91,8 @@ export function VideoTiming({ onNotice }: { onNotice(m: string): void }) {
     try {
       const text = await navigator.clipboard.readText();
       const rows = parseVideoRows(parseDelimited(text, "pasted").rows);
-      if (!rows.length) return onNotice("The clipboard holds no table with dates.");
+      if (!rows.length)
+        return onNotice("The clipboard holds no table with dates.");
       v.addRows(rows);
       onNotice(`Added ${rows.length} lines from the clipboard.`);
     } catch {
@@ -114,13 +145,17 @@ export function VideoTiming({ onNotice }: { onNotice(m: string): void }) {
           </div>
           {!v.rows.length && (
             <p className="hint">
-              Drop the survey summary here (Excel or CSV with product, start
-              and end date and time).
+              Drop the survey summary here (Excel or CSV with product, start and
+              end date and time).
             </p>
           )}
           <ul className="video-list">
             {v.rows.map((r) => (
-              <li key={r.id}>
+              <li
+                key={r.id}
+                onContextMenu={(e) => rowMenu(e, r.id)}
+                title="Right-click to remove"
+              >
                 <input
                   className="v-product"
                   placeholder="Product, e.g. Umbilical UMB1"
@@ -160,6 +195,19 @@ export function VideoTiming({ onNotice }: { onNotice(m: string): void }) {
               </li>
             ))}
           </ul>
+          <label
+            className="video-join"
+            title="Lines of one product closer together than this are printed as one period"
+          >
+            <span>Join lines closer than</span>
+            <DraftNumber
+              step={1}
+              min={0}
+              value={v.joinHours}
+              onCommit={(h) => v.setJoin(h)}
+            />
+            <span>h</span>
+          </label>
           {v.image && (
             <figure className="video-image">
               <img src={v.image.url} alt={v.image.name} />
@@ -176,6 +224,14 @@ export function VideoTiming({ onNotice }: { onNotice(m: string): void }) {
             </figure>
           )}
         </>
+      )}
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={menu.items}
+          onClose={() => setMenu(null)}
+        />
       )}
       <input
         ref={input}

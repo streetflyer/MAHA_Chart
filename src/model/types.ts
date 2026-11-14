@@ -32,11 +32,15 @@ export interface EventRow {
   video?: boolean;
   /** Product key for a video row (UMB1); unset picks the one named in the drawing number or folder. */
   videoProduct?: string;
+  /** Typed over the automatic video text, for every chart. */
+  videoText?: string;
+  /** Typed over it for single charts (chart number from 0). */
+  videoTexts?: Record<number, string>;
   /** Zebra stripe: a coloured band behind the text along the row. */
   stripe?: boolean;
   stripeColor?: string;
   stripeOpacity?: number;
-  /** Band thickness as % of the row (0 = a thin line in the middle, 100 = the full row). */
+  /** Band thickness, mm (0 = a thin line in the middle); unset fills the row. */
   stripeWidth?: number;
 }
 

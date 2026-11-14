@@ -40,7 +40,8 @@ import {
   rowCodes,
 } from "../model/events";
 import { useVideo } from "../state/video";
-import { productKeys } from "../model/video";
+import { autoVideoText, productKeys } from "../model/video";
+import { useProject } from "../state/project";
 import { useImport } from "./ImportDialog";
 import { askCodes } from "./Dialog";
 import {
@@ -568,6 +569,8 @@ function RowsEditor({ p }: { p: Panel }) {
     setRows(rows.map((x) => (x.id === id ? { ...x, ...change } : x)));
   const datasets = useSurvey((x) => x.datasets);
   const videoRows = useVideo((x) => x.rows);
+  const sheetIndex = useEditor((x) => x.sheetIndex);
+  const rowH = p.h / Math.max(1, rows.length);
   const legendCodes = useEditor(
     (x) => x.template?.panels.find((q) => q.type === "legend")?.eventCodes,
   );
@@ -677,7 +680,9 @@ function RowsEditor({ p }: { p: Panel }) {
                       patch(r.id, { videoProduct: e.target.value || undefined })
                     }
                   >
-                    <option value="">Product named in the drawing number</option>
+                    <option value="">
+                      Product named in the drawing number
+                    </option>
                     {productKeys(videoRows).map((k) => (
                       <option key={k} value={k}>
                         {k}
@@ -686,19 +691,19 @@ function RowsEditor({ p }: { p: Panel }) {
                   </select>
                 )}
                 {!isVideoRow(r) && (
-                <label
-                  className="check"
-                  title="Show only the text typed here in this row, no imported events"
-                >
-                  <input
-                    type="checkbox"
-                    checked={!!r.textOnly}
-                    onChange={(e) =>
-                      patch(r.id, { textOnly: e.target.checked })
-                    }
-                  />
-                  Text only
-                </label>
+                  <label
+                    className="check"
+                    title="Show only the text typed here in this row, no imported events"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!!r.textOnly}
+                      onChange={(e) =>
+                        patch(r.id, { textOnly: e.target.checked })
+                      }
+                    />
+                    Text only
+                  </label>
                 )}
                 {(r.textOnly || isVideoRow(r)) && (
                   <select
@@ -749,28 +754,19 @@ function RowsEditor({ p }: { p: Panel }) {
                           }
                         />
                         <span className="muted">% opacity</span>
-                        <input
-                          type="range"
-                          min={0}
-                          max={100}
-                          step={1}
-                          title="Stripe width: 0 is a line in the middle of the row"
-                          value={r.stripeWidth ?? 100}
-                          onChange={(e) =>
-                            patch(r.id, { stripeWidth: Number(e.target.value) })
-                          }
-                        />
                         <DraftNumber
-                          step={5}
+                          step={0.1}
                           min={0}
                           className="small-num"
-                          title="Stripe width, % of the row"
-                          value={r.stripeWidth ?? 100}
+                          title="Stripe width in mm: 0 is a line in the middle of the row"
+                          value={r.stripeWidth ?? Math.max(0, rowH - 2)}
                           onCommit={(v) =>
-                            patch(r.id, { stripeWidth: Math.min(100, v) })
+                            patch(r.id, {
+                              stripeWidth: Math.round(v * 10) / 10,
+                            })
                           }
                         />
-                        <span className="muted">% width</span>
+                        <span className="muted">mm wide</span>
                       </>
                     )}
                   </div>
@@ -780,7 +776,14 @@ function RowsEditor({ p }: { p: Panel }) {
                     Add Events Code…
                   </button>
                 )}
-                {isVideoRow(r) ? null : r.textOnly ? (
+                {isVideoRow(r) ? (
+                  <VideoTextEditor
+                    key={`${r.id}:${sheetIndex}:${r.videoText ?? ""}:${r.videoTexts?.[sheetIndex] ?? ""}`}
+                    r={r}
+                    sheetIndex={sheetIndex}
+                    onChange={(c) => patch(r.id, c)}
+                  />
+                ) : r.textOnly ? (
                   <textarea
                     key={`${r.id}:t:${r.text ?? ""}`}
                     rows={2}
@@ -821,6 +824,72 @@ function RowsEditor({ p }: { p: Panel }) {
         Add row
       </button>
     </>
+  );
+}
+
+/** The text of a video row: automatic from the Video timing list, or typed over it for this chart or all. */
+function VideoTextEditor({
+  r,
+  sheetIndex,
+  onChange,
+}: {
+  r: EventRow;
+  sheetIndex: number;
+  onChange(c: Partial<EventRow>): void;
+}) {
+  const video = useVideo((x) => x.rows);
+  const joinHours = useVideo((x) => x.joinHours);
+  const drawingNo = useEditor((x) => x.template?.fields.CHART_NO ?? "");
+  const folder = useProject((x) => x.active ?? "");
+  const auto = autoVideoText(video, {
+    product: r.videoProduct,
+    drawingNo,
+    folder,
+    joinHours,
+  });
+  const own = r.videoTexts?.[sheetIndex];
+  const shown = own ?? r.videoText ?? auto;
+  const [scope, setScope] = useState<"chart" | "all">("chart");
+  const typed = own !== undefined || r.videoText !== undefined;
+  return (
+    <div className="video-text">
+      <textarea
+        rows={3}
+        title="The video text of this row. Edit it to override the automatic text."
+        defaultValue={shown}
+        onBlur={(e) => {
+          const v = e.target.value;
+          if (v === shown) return;
+          if (scope === "all")
+            onChange({
+              videoText: v === auto ? undefined : v,
+              videoTexts: undefined,
+            });
+          else
+            onChange({
+              videoTexts: { ...r.videoTexts, [sheetIndex]: v },
+            });
+        }}
+      />
+      <select
+        value={scope}
+        onChange={(e) => setScope(e.target.value as "chart" | "all")}
+        title="Where an edit of the text applies"
+      >
+        <option value="chart">Edit this chart ({sheetIndex + 1}) only</option>
+        <option value="all">Edit for all charts</option>
+      </select>
+      {typed && (
+        <button
+          type="button"
+          onClick={() =>
+            onChange({ videoText: undefined, videoTexts: undefined })
+          }
+        >
+          Back to automatic text
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1520,7 +1589,10 @@ function MatchlineControls({
             {txt("Label suffix", "suffix")}
           </div>
           {txt("Extra text (other side)", "extra")}
-          <label className="check" title="Turn the label text 180°. Single labels: right-click them">
+          <label
+            className="check"
+            title="Turn the label text 180°. Single labels: right-click them"
+          >
             <input
               type="checkbox"
               checked={!!st.flip}

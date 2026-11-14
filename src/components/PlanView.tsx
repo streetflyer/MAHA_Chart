@@ -317,7 +317,7 @@ function Matchlines({
         {!ov.hidden &&
           label(
             ov.text ??
-              matchLabel(st, m.chart, template.fields.DRAWING_NO ?? ""),
+              matchLabel(st, m.chart, template.fields.CHART_NO ?? ""),
             m.side,
             "l",
             true,
