@@ -2,9 +2,10 @@ import { Cp } from "./CpPanel";
 import { useEditor } from "../state/store";
 import { useProject } from "../state/project";
 import { useVideo } from "../state/video";
-import { smoothLocal } from "../model/smooth";
+import { useSmoothTool } from "../state/smoothTool";
+import { kpFinder } from "./CpPanel";
 import { autoVideoText } from "../model/video";
-import { useMemo, type ReactElement } from "react";
+import { useEffect, useMemo, type ReactElement } from "react";
 import { nearestProfile } from "../model/crossProfile";
 import {
   DEFAULT_EVENT_LAYOUT,
@@ -460,13 +461,10 @@ export function depthSense(d: Extract<Dataset, { kind: "long" }>): 1 | -1 {
 }
 
 /** The series with BOP replaced by TOP plus the median TOP-to-BOP gap (smooth, as a pipe is). */
-function smoothBop(
-  d: Extract<Dataset, { kind: "long" }>,
-  smooth = 0,
-): LongSeries[] {
+function smoothBop(d: Extract<Dataset, { kind: "long" }>): LongSeries[] {
   if (d.top === undefined) return d.series;
   const rawTop = d.series[d.top].values;
-  const top = smoothLocal(rawTop, smooth);
+  const top = d.topEdit ?? rawTop;
   const withTop = d.series.map((s, i) =>
     i === d.top ? { ...s, values: top } : s,
   );
@@ -510,11 +508,27 @@ function LongProfile({
   // BOP is TOP less the pipe diameter, so it is drawn as the TOP line moved by the
   // median gap: the survey's rounded BOP values would otherwise show as steps.
   const series = useMemo(
-    () => smoothBop(d, o.smooth),
-    [d.series, d.top, d.bop, o.smooth],
+    () => smoothBop(d),
+    [d.series, d.top, d.bop, d.topEdit],
   );
   const top = d.top !== undefined ? series[d.top] : undefined;
   const bop = d.bop !== undefined ? series[d.bop] : undefined;
+  // The smooth tool: the helper line follows TOP around the pointer; the editor finds nodes through this context.
+  const tool = useSmoothTool((s) =>
+    s.active && s.datasetId === d.id ? s : null,
+  );
+  const toolOn = !!tool;
+  useEffect(() => {
+    if (!toolOn) return;
+    useSmoothTool.getState().setCtx({
+      panelId: p.id,
+      rect: { x: p.x, y: p.y, w: p.w, h: p.h },
+      kpAt: kpFinder(toX, span),
+    });
+    return () => useSmoothTool.getState().setCtx(null);
+    // toX is rebuilt every render; it only changes when these do.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [toolOn, p.id, p.x, p.y, p.w, p.h, span[0], span[1]]);
   const ref = (i: number) => (o.normalise && top ? top.values[i] : 0);
   const val = (vals: Float64Array, i: number) => vals[i] - ref(i);
   // u runs down the page: depth, or minus the level.
@@ -649,6 +663,45 @@ function LongProfile({
             }
           />
         ))}
+        {tool && tool.hover !== null && top && (
+          <g pointerEvents="none">
+            {(() => {
+              const lo = Math.max(from, tool.hover - tool.n);
+              const hi = Math.min(to, tool.hover + tool.n);
+              let path = "";
+              const dots: ReactElement[] = [];
+              for (let i = lo; i <= hi; i++) {
+                const v = val(top.values, i);
+                if (!Number.isFinite(v)) continue;
+                const px = toX(d.kp[i]);
+                const py = y(v);
+                path += `${path ? "L" : "M"}${px.toFixed(2)} ${py.toFixed(2)}`;
+                dots.push(
+                  <circle
+                    key={i}
+                    cx={px}
+                    cy={py}
+                    r={i === tool.hover ? 0.7 : 0.45}
+                    fill={i === tool.hover ? "#ffb000" : "#12b800"}
+                    stroke="#fff"
+                    strokeWidth={0.1}
+                  />,
+                );
+              }
+              return (
+                <>
+                  <path
+                    d={path}
+                    stroke="#12b800"
+                    strokeWidth={0.5}
+                    fill="none"
+                  />
+                  {dots}
+                </>
+              );
+            })()}
+          </g>
+        )}
         {o.textFront && (
           <DepthAxis
             p={part}
@@ -1174,7 +1227,10 @@ function PointTicks({
   const upright = Math.abs(Math.sin((rot * Math.PI) / 180)) > 0.7;
   let path = "";
   const texts: ReactElement[] = [];
-  let lastX = -Infinity;
+  // Where the next label may start. A label that would overprint the one before it
+  // moves aside on a branch from its tick, so close events all keep their codes.
+  let free = -Infinity;
+  let branches = 0;
   for (const e of list) {
     const x = toX(e.kp);
     path += `M${x.toFixed(2)} ${bottom.toFixed(2)}V${top.toFixed(2)}`;
@@ -1182,22 +1238,38 @@ function PointTicks({
     const room = upright
       ? fs * 1.15
       : measureText(e.code, cap, !!font.bold, font.family) + fs * 0.4;
-    if (labels && x - lastX > room && list.length <= 80) {
-      const ax = upright ? x + fs * 0.35 : x;
-      const ay = top - layout.labelGap;
-      texts.push(
-        <text
-          key={texts.length}
-          fontSize={fs}
-          {...fontProps(font)}
-          textAnchor={upright ? "start" : "middle"}
-          transform={`translate(${ax.toFixed(2)} ${ay.toFixed(2)}) rotate(${(-rot).toFixed(1)})`}
-        >
-          {e.code}
-        </text>,
+    if (!labels || list.length > 80) continue;
+    const shift = Math.max(0, free - x);
+    if (shift > room * 3) continue;
+    const lx = x + shift;
+    const ax = upright ? lx + fs * 0.35 : lx;
+    let ay = top - layout.labelGap;
+    if (shift > 0) {
+      // Up from the tick, across to where the label stands, then up to the label.
+      const textLen = upright
+        ? measureText(e.code, cap, !!font.bold, font.family)
+        : fs;
+      const spare = top - y0 - layout.labelGap * 2 - textLen;
+      const rise = Math.max(
+        0.4,
+        Math.min(spare / 2, 1.5 * (1 + (branches++ % 2))),
       );
-      lastX = x;
+      const knee = top - rise;
+      path += `M${x.toFixed(2)} ${top.toFixed(2)}V${knee.toFixed(2)}H${lx.toFixed(2)}V${(knee - layout.labelGap).toFixed(2)}`;
+      ay = knee - layout.labelGap;
     }
+    texts.push(
+      <text
+        key={texts.length}
+        fontSize={fs}
+        {...fontProps(font)}
+        textAnchor={upright ? "start" : "middle"}
+        transform={`translate(${ax.toFixed(2)} ${ay.toFixed(2)}) rotate(${(-rot).toFixed(1)})`}
+      >
+        {e.code}
+      </text>,
+    );
+    free = lx + room;
   }
   return (
     <g>

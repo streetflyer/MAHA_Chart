@@ -41,6 +41,7 @@ import {
 import { approxTextWidth, fontSize } from "./svgText";
 import { useDrawingEdit } from "../state/drawingEdit";
 import { useCpEdit } from "../state/cpEdit";
+import { useSmoothTool } from "../state/smoothTool";
 import { cpDatasetFor, pickCp, pickCpInBox, moveChosen } from "./cpEditing";
 import { moveGroups, rotateGroups } from "../model/drawingOps";
 import {
@@ -322,6 +323,15 @@ export function SheetView({
       return;
     }
     if (e.button !== 0) return;
+    // Smooth tool: a click inside the profile smooths along the helper line.
+    const sm = useSmoothTool.getState();
+    if (sm.active) {
+      const i = smoothNodeAt(at);
+      if (i !== null && sm.datasetId) {
+        sm.apply(sm.datasetId, i - sm.n, i + sm.n);
+        return;
+      }
+    }
     // Matchline labels and the north arrow are picked before drawing objects, so they stay editable in edit mode.
     const pit = planItemUnder(e);
     if (pit) {
@@ -596,9 +606,31 @@ export function SheetView({
     setDrag({ type: "drawBox", start: at, shift: e.shiftKey });
   }
 
+  /** The profile node under the pointer while the smooth tool is on (null outside the panel). */
+  function smoothNodeAt(at: Pt): number | null {
+    const st = useSmoothTool.getState();
+    const r = st.ctx?.rect;
+    if (!st.active || !st.ctx || !r) return null;
+    if (at.x < r.x || at.x > r.x + r.w || at.y < r.y || at.y > r.y + r.h)
+      return null;
+    const d = useSurvey.getState().datasets.find((x) => x.id === st.datasetId);
+    if (d?.kind !== "long" || !d.kp.length) return null;
+    const kp = st.ctx.kpAt(at.x);
+    let lo = 0;
+    let hi = d.kp.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (d.kp[mid] < kp) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo > 0 && kp - d.kp[lo - 1] < d.kp[lo] - kp ? lo - 1 : lo;
+  }
+
   function onPointerMove(e: React.PointerEvent) {
     const at = toMm(e.clientX, e.clientY);
     onCursor(at);
+    if (useSmoothTool.getState().active && !drag)
+      useSmoothTool.getState().setHover(smoothNodeAt(at));
     if (
       drag &&
       (drag.type === "drawMove" ||

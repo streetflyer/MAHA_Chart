@@ -11,7 +11,7 @@ const BLUE = "#0a84ff";
 type CpSet = Extract<Dataset, { kind: "cp" }>;
 
 /** KP (m) at a paper x, by bisection over the span the panel shows (x grows with KP inside a chart). */
-function kpFinder(toX: (kp: number) => number, span: [number, number]) {
+export function kpFinder(toX: (kp: number) => number, span: [number, number]) {
   return (x: number) => {
     let lo = span[0];
     let hi = span[1];

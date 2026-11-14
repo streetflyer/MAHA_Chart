@@ -336,8 +336,6 @@ export interface LongOpts {
   /** Show the horizontal grid lines, and how they look. */
   /** Draw the depth text over the profile (the pipe and seabed stay behind it). */
   textFront: boolean;
-  /** Local smoothing of the TOP depth: nodes each side (0 = off). BOP follows. */
-  smooth: number;
   gridShow: boolean;
   gridColor: string;
   gridWidth: number;
@@ -374,7 +372,6 @@ export const DEFAULT_LONG_OPTS: LongOpts = {
   gridLine: 0,
   gridLabel: 0,
   textFront: true,
-  smooth: 0,
   gridShow: true,
   gridColor: "#8a8f96",
   gridWidth: 0.12,
@@ -462,6 +459,8 @@ export type Dataset =
       fill: string;
       opts?: LongOpts;
       /** Where each node came from in the imported file, so smoothed depths can be written back. */
+      /** TOP after smoothing (BOP follows it); unset = as imported. */
+      topEdit?: Float64Array;
       srcFile?: File;
       srcSheet?: number;
       /** Row (in the table's rows) and columns of TOP and BOP for each node. */

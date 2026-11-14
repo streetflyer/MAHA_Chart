@@ -1,5 +1,4 @@
 import type { Dataset } from "./datasets";
-import { smoothLocal } from "./smooth";
 import { dropComments, parseDelimited, patchXlsx } from "./tables";
 
 type Long = Extract<Dataset, { kind: "long" }>;
@@ -12,13 +11,12 @@ export const canWriteBack = (d: Long) =>
   d.top !== undefined;
 
 /**
- * The imported file again, with TOP smoothed over `n` nodes each side and BOP moved
+ * The imported file again, with the smoothed TOP (as shown on the chart) and BOP moved
  * by the same amount (so the pipe keeps its diameter). Excel files keep everything else
  * as it was; text listings come back as a CSV of the same rows.
  */
 export async function smoothedFile(
   d: Long,
-  n: number,
 ): Promise<{ blob: Blob; name: string; changed: number }> {
   if (!canWriteBack(d))
     throw new Error(
@@ -27,7 +25,7 @@ export async function smoothedFile(
   const file = d.srcFile!;
   const rows = d.srcRows!;
   const raw = d.series[d.top!].values;
-  const top = smoothLocal(raw, n);
+  const top = d.topEdit ?? raw;
   const bopRaw = d.bop !== undefined ? d.series[d.bop].values : undefined;
   const edits = new Map<number, Map<number, number>>();
   rows.forEach((r, i) => {

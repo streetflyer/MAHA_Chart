@@ -31,12 +31,7 @@ import type {
 import { PANEL_DEFAULTS } from "../state/panelDefaults";
 import { useEditor } from "../state/store";
 import { useSurvey } from "../state/surveyData";
-import {
-  DEFAULT_LONG_OPTS,
-  TARGETS,
-  targetInfo,
-  type Dataset,
-} from "../model/datasets";
+import { TARGETS, targetInfo, type Dataset } from "../model/datasets";
 import {
   codeMatcher,
   defaultRowCodes,
@@ -45,6 +40,8 @@ import {
   rowCodes,
 } from "../model/events";
 import { canWriteBack, smoothedFile } from "../model/writeBack";
+import { useSmoothTool } from "../state/smoothTool";
+import { sheetRange } from "../model/scale";
 import { downloadBlob } from "../state/workspace";
 import { useVideo } from "../state/video";
 import { autoVideoText, productKeys } from "../model/video";
@@ -916,29 +913,85 @@ function VideoTextEditor({
 
 /** Local smooth of the TOP depth, and writing the smoothed depths back to the source file. */
 function LongSmooth({ d }: { d: Extract<Dataset, { kind: "long" }> }) {
-  const sv = useSurvey.getState();
-  const n = d.opts?.smooth ?? 0;
+  const tool = useSmoothTool();
+  const template = useEditor((x) => x.template)!;
+  const sheetIndex = useEditor((x) => x.sheetIndex);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
-  const set = (smooth: number) =>
-    sv.updateDataset(d.id, {
-      opts: { ...DEFAULT_LONG_OPTS, ...d.opts, smooth },
-    });
+  const mine = tool.active && tool.datasetId === d.id;
+  const edited = !!d.topEdit;
+  const range = (all: boolean): [number, number] => {
+    if (all) return [0, d.kp.length - 1];
+    const r = sheetRange(template, sheetIndex);
+    let a = 0;
+    while (a < d.kp.length && d.kp[a] < r.start * 1000) a++;
+    let b = d.kp.length - 1;
+    while (b > 0 && d.kp[b] > r.end * 1000) b--;
+    return [a, b];
+  };
   return (
     <div className="long-smooth">
+      <b>Local smooth of the TOP depth</b>
       <label className="field">
-        <span>Local smooth of the TOP depth</span>
+        <span>Window</span>
         <span className="with-suffix">
           <DraftNumber
             step={1}
-            min={0}
-            value={n}
-            onCommit={(v) => set(Math.round(v))}
-            title="Nodes each side that are averaged into each node. 0 = off. BOP follows TOP."
+            min={1}
+            value={tool.n}
+            onCommit={(v) => tool.setN(v)}
+            title="Nodes each side of the helper line's centre that are averaged into each node. BOP follows TOP."
           />
           <span className="suffix">nodes each side</span>
         </span>
       </label>
+      <button
+        type="button"
+        className={mine ? "primary" : undefined}
+        onClick={() => (mine ? tool.stop() : tool.start(d.id))}
+        title="A green helper line follows the TOP line under the pointer, with the window's length each side of it. Click to smooth only along the helper line. Esc ends."
+      >
+        {mine ? "Stop smoothing (Esc)" : "Smooth with the helper line…"}
+      </button>
+      <div className="row2">
+        <button
+          type="button"
+          onClick={() => {
+            const [a, b] = range(false);
+            tool.apply(d.id, a, b);
+          }}
+          title="Smooth only the part shown on the current chart"
+        >
+          Smooth this chart's part
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const [a, b] = range(true);
+            tool.apply(d.id, a, b);
+          }}
+          title="Smooth the whole line"
+        >
+          Smooth the whole line
+        </button>
+      </div>
+      <div className="row2">
+        <button
+          type="button"
+          disabled={!tool.history[d.id]?.length}
+          onClick={() => tool.undo(d.id)}
+        >
+          Undo last smooth
+        </button>
+        <button
+          type="button"
+          disabled={!edited}
+          onClick={() => tool.reset(d.id)}
+          title="Back to the depths as imported"
+        >
+          Back to imported
+        </button>
+      </div>
       <button
         type="button"
         disabled={busy || !canWriteBack(d)}
@@ -950,7 +1003,7 @@ function LongSmooth({ d }: { d: Extract<Dataset, { kind: "long" }> }) {
         onClick={async () => {
           setBusy(true);
           try {
-            const r = await smoothedFile(d, n);
+            const r = await smoothedFile(d);
             downloadBlob(r.blob, r.name);
             setNote(`Saved ${r.name}: ${r.changed} cells changed.`);
           } catch (e) {

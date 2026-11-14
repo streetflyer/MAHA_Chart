@@ -34,6 +34,7 @@ import { ImportDialog, useImport } from "./ImportDialog";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { ProjectPanel } from "./ProjectPanel";
 import { downloadBlob, loadWorkspace, workspaceBlob } from "../state/workspace";
+import { useSmoothTool } from "../state/smoothTool";
 import { planItemMenu } from "./planItems";
 import { SheetView, type ContextTarget } from "./SheetView";
 import { useDrawingEdit } from "../state/drawingEdit";
@@ -180,6 +181,10 @@ export function Editor({ onExit }: { onExit(): void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || s().editing) return;
+      if (e.key === "Escape" && useSmoothTool.getState().active) {
+        useSmoothTool.getState().stop();
+        return;
+      }
       // Editing the drawing in the plan view takes the keys first (Delete removes drawing objects, not panels).
       if (useDrawingEdit.getState().active && drawingKey(e)) {
         e.preventDefault();

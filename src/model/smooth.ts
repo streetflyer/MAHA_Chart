@@ -33,3 +33,26 @@ export function smoothLocal(values: Float64Array, n: number): Float64Array {
   }
   return out;
 }
+
+/**
+ * A copy of `values` with nodes a..b (inclusive) smoothed over `n` nodes each side;
+ * the rest stays as it was. This is what the helper line of the smooth tool applies.
+ */
+export function smoothRange(
+  values: Float64Array,
+  a: number,
+  b: number,
+  n: number,
+): Float64Array {
+  const lo = Math.max(0, Math.min(a, b));
+  const hi = Math.min(values.length - 1, Math.max(a, b));
+  const out = Float64Array.from(values);
+  if (!(Math.round(n) > 0)) return out;
+  const full = smoothLocal(
+    values.subarray(Math.max(0, lo - Math.round(n)), hi + Math.round(n) + 1),
+    n,
+  );
+  const off = lo - Math.max(0, lo - Math.round(n));
+  for (let i = lo; i <= hi; i++) out[i] = full[i - lo + off];
+  return out;
+}
