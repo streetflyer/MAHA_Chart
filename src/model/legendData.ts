@@ -170,20 +170,26 @@ export function dataEventCodes(
   range?: [number, number],
   shown?: (code: string) => boolean,
 ): string {
+  // The wording of a code comes from all the events, so a chart whose own readings of it are
+  // long free text still shows the same definition as the properties panel; the range and the
+  // row filter only pick which codes are listed.
   const desc = new Map<string, Map<string, number>>();
+  const listed = new Set<string>();
   for (const d of datasets)
     if (d.kind === "events" && d.visible)
       for (const r of d.records) {
-        if (range && (r.kp < range[0] || r.kp > range[1])) continue;
-        if (shown && !shown(r.code)) continue;
         const c = r.code.toUpperCase();
         if (!desc.has(c)) desc.set(c, new Map());
         const v = r.value.trim();
         // Descriptions like "Pipeline Feature - Flange" define a code; free text (pipe specs, dates, 0) doesn't.
         if (v && v.length <= 48 && !/^-?[\d.]+$/.test(v))
           desc.get(c)!.set(v, (desc.get(c)!.get(v) ?? 0) + 1);
+        if (range && (r.kp < range[0] || r.kp > range[1])) continue;
+        if (shown && !shown(r.code)) continue;
+        listed.add(c);
       }
   return [...desc.entries()]
+    .filter(([c]) => listed.has(c))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([c, m]) => {
       const best = [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";

@@ -14,7 +14,7 @@ import type {
 import { scaleBarStyleOf } from "../model/types";
 import { BarShape } from "./scaleBars";
 import { Keyplan } from "./Keyplan";
-import { CpMark, KpPanelData } from "./KpPanels";
+import { CpMark, KpPanelData, kpToX, planKpRange } from "./KpPanels";
 import {
   DEFAULT_LEGEND_STYLE,
   dataEventCodes,
@@ -654,9 +654,19 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
 function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
   const k0 = parseFloat(tokens.KP_START) * 1000;
   const k1 = parseFloat(tokens.KP_END) * 1000;
+  // "This chart" means the KPs the plan view shows (a panned or turned chart can show other KPs than its nominal range).
+  const t = useEditor((s) => s.template);
+  const sheetIndex = useEditor((s) => s.sheetIndex);
+  const route = useSurvey((s) => s.route);
+  const shown = useMemo(() => {
+    if (!t) return null;
+    const toX = kpToX(t, route, sheetIndex);
+    return toX ? planKpRange(t, route, sheetIndex, toX) : null;
+  }, [t, route, sheetIndex]);
   const { items, codes: codeText } = useLegendItems(
     p,
-    Number.isFinite(k0) && Number.isFinite(k1) ? [k0, k1] : undefined,
+    shown ??
+      (Number.isFinite(k0) && Number.isFinite(k1) ? [k0, k1] : undefined),
   );
   const ls = { ...DEFAULT_LEGEND_STYLE, ...p.legendStyle };
   const headText = (g: LegendGroup | "codes") =>

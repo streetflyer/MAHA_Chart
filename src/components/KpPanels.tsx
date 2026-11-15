@@ -304,18 +304,18 @@ export function KpPanelData({
                 );
               return null;
             })}
-          {p.type === "events" && span && (
-            <EventsPanel
-              p={p}
-              x0={x0}
-              toX={toX}
-              span={span}
-              sets={mine.filter((d): d is EventsSet => d.kind === "events")}
-              ticks={ticks}
-              routeEnd={k0 + len}
-            />
-          )}
         </g>
+        {p.type === "events" && span && (
+          <EventsPanel
+            p={p}
+            x0={x0}
+            toX={toX}
+            span={span}
+            sets={mine.filter((d): d is EventsSet => d.kind === "events")}
+            ticks={ticks}
+            routeEnd={k0 + len}
+          />
+        )}
         {lines &&
           (p.type === "longProfile" ||
             p.type === "transProfile" ||
@@ -1298,6 +1298,7 @@ function EventsPanel({
           datasetId={d.id}
           edits={d.labelEdits}
           editing={editing}
+          minX={x0}
         />,
       );
     }
@@ -1375,6 +1376,7 @@ function PointTicks({
   datasetId,
   edits,
   editing,
+  minX = -Infinity,
 }: {
   list: EventMark[];
   y0: number;
@@ -1387,6 +1389,8 @@ function PointTicks({
   datasetId: string;
   edits?: Record<string, EventLabelEdit>;
   editing: boolean;
+  /** Left edge of the row's data area: a label is moved right so it is never cut there (an event at KP 0). */
+  minX?: number;
 }) {
   if (!list.length) return null;
   const len = rh * layout.markLen;
@@ -1416,7 +1420,9 @@ function PointTicks({
       const room = upright ? efs * 1.15 : textW(text, ecap) + efs * 0.4;
       const x = toX(e.kp);
       const manual = ed?.dx !== undefined || ed?.dy !== undefined;
-      const lx = manual ? x : Math.max(x, free);
+      // The label's left half must stay inside the row, so one at the panel's start steps right.
+      const half = upright ? efs * 0.5 : textW(text, ecap) / 2 + 0.4;
+      const lx = manual ? x : Math.max(x, free, minX + half);
       const shift = lx - x;
       if (!manual) {
         free = lx + room;
