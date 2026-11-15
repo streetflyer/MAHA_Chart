@@ -560,10 +560,16 @@ export function lineworkFor(
   datasets: Dataset[],
   where: "plan" | "siteplan",
 ): LineworkSet[] {
+  // A survey line copied into the runline is greyed out in the panel and never drawn (nor printed):
+  // the runline is drawn in its place.
+  const copied = datasets.some(
+    (d) => d.kind === "route" && /\(survey line as runline\)$/.test(d.name),
+  );
   return datasets.filter(
     (d): d is LineworkSet =>
       d.kind === "linework" &&
       d.visible &&
+      !(copied && d.target === "asbuilt") &&
       (d.target === where ||
         (where === "plan" && d.target === "asbuilt") ||
         !!d.both),

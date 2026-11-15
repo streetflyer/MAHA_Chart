@@ -2925,7 +2925,7 @@ function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
           </button>
           <input
             type="checkbox"
-            checked={d.visible}
+            checked={d.visible && !copied}
             title="Show"
             onChange={(e) =>
               sv.updateDataset(d.id, { visible: e.target.checked })

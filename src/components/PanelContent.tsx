@@ -816,7 +816,7 @@ function LegendSymbolView({
       const d = 2.2;
       return (
         <g>
-          <line x1={x} y1={cy + 2.6} x2={x + w} y2={cy + 2.6} style={st(0.6)} />
+          {/* The KP block alone: its stem, diamond and value (no line under it). */}
           <line x1={cx} y1={cy + 0.6} x2={cx} y2={cy + 2.6} style={st(0.3)} />
           <path
             d={`M${cx} ${cy - 1 - d} L${cx + d} ${cy - 1} L${cx} ${cy - 1 + d} L${cx - d} ${cy - 1} Z`}
