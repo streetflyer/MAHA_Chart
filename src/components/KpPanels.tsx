@@ -38,7 +38,7 @@ import {
   surveySessions,
   type SurveySession,
 } from "../model/events";
-import { kpInterval, planStyle } from "../model/planStyle";
+import { kpInterval, planStyle, withLineEnd } from "../model/planStyle";
 import { chartGeometry, gridToPlan, pointAt, type Route } from "../model/route";
 import { planPanel, sheetRange } from "../model/scale";
 import type { ChartTemplate, Panel } from "../model/types";
@@ -71,6 +71,7 @@ export function kpToX(
       k0 + route.length,
       (plan.w * t.scale.horizontal) / 1000,
       (kp) => project(...pointAt(route, kp - k0))[0],
+      1000 / t.scale.horizontal,
     );
   }
   const { start, end } = sheetRange(t, sheetIndex);
@@ -91,6 +92,8 @@ export function monotonicKp(
   lineEnd: number,
   along: number,
   raw: (kp: number) => number,
+  /** Paper mm per metre: KPs a little past the line's own start or end (an event at the tie-in) carry on at this rate. */
+  mmPerM = 0,
 ): (kp: number) => number {
   const a = Math.max(lineStart, start - along);
   const b = Math.min(lineEnd, end + along);
@@ -130,9 +133,16 @@ export function monotonicKp(
   }
   const kLo = kps[lo];
   const kHi = kps[hi];
+  const past = Math.min(along * 0.05, 50);
   return (kp) => {
-    if (kp < kLo - 1e-6) return -1e6;
-    if (kp > kHi + 1e-6) return 1e6;
+    if (kp < kLo - 1e-6)
+      return mmPerM > 0 && lo === 0 && a <= lineStart && kp >= kLo - past
+        ? xs[lo] - (kLo - kp) * mmPerM
+        : -1e6;
+    if (kp > kHi + 1e-6)
+      return mmPerM > 0 && hi === n && b >= lineEnd && kp <= kHi + past
+        ? xs[hi] + (kp - kHi) * mmPerM
+        : 1e6;
     const f = (kp - a) / step;
     const i = Math.max(lo, Math.min(hi - 1, Math.floor(f)));
     if (hi <= lo) return xs[lo];
@@ -237,7 +247,12 @@ export function KpPanelData({
   const clipId = `kp-clip-${p.id}`;
   const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
   const len = route?.length ?? t.scale.routeLength;
-  const shown = planKpRange(t, route, sheetIndex, toX);
+  const seen = planKpRange(t, route, sheetIndex, toX);
+  // Where the plan view shows the line's start or end, readings just past it (an event a metre beyond the last KP) still belong on this chart.
+  const shown: [number, number] | null = seen && [
+    seen[0] <= k0 + 1 ? -Infinity : seen[0],
+    seen[1] >= k0 + len - 1 ? Infinity : seen[1],
+  ];
   const fullSpan = kpSpan(toX, x0, p.x + p.w, len, k0);
   const span = cutToPlan(fullSpan, shown);
   // The data is clipped to the x of the plan view's stretch too, so a reading just past it does not draw a tail.
@@ -367,11 +382,12 @@ function kpTicks(
   if (!plan) return [];
   const interval = kpInterval(planStyle(plan), t.scale.horizontal);
   const out: [number, number][] = [];
-  for (
-    let kp = Math.ceil((k0 - len * 0.05) / interval) * interval;
-    kp <= k0 + len * 1.05 && out.length < 400;
-    kp += interval
-  ) {
+  for (const kp of withLineEnd(
+    Math.ceil(k0 / interval) * interval,
+    k0 + len,
+    interval,
+    k0 + len,
+  )) {
     const x = toX(kp);
     if (x >= x0 - 0.01 && x <= x1 + 0.01) out.push([kp, x]);
   }

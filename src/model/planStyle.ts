@@ -36,3 +36,23 @@ export const planStyle = (p: Panel): PlanStyle => ({
   ...DEFAULT_PLAN,
   ...p.plan,
 });
+
+/**
+ * KPs of the marks from `from` to `to` at the interval, with the line's end KP added
+ * (the plan view puts a block there and every KP panel a grid line), in order.
+ */
+export function withLineEnd(
+  from: number,
+  to: number,
+  interval: number,
+  end: number,
+): number[] {
+  const out: number[] = [];
+  for (let kp = from; kp <= to + 1e-6 && out.length < 400; kp += interval)
+    out.push(kp);
+  if (!out.some((k) => Math.abs(k - end) < 0.5)) {
+    out.push(end);
+    out.sort((a, b) => a - b);
+  }
+  return out;
+}

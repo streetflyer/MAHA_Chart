@@ -19,7 +19,12 @@ import type {
   Panel,
   PlanStyle,
 } from "../model/types";
-import { DEFAULT_PLAN, kpInterval, planStyle } from "../model/planStyle";
+import {
+  DEFAULT_PLAN,
+  kpInterval,
+  planStyle,
+  withLineEnd,
+} from "../model/planStyle";
 import { useSurvey } from "../state/surveyData";
 import { useDrawingEdit } from "../state/drawingEdit";
 import { DrawingEditOverlay } from "./DrawingEditOverlay";
@@ -354,11 +359,13 @@ function KpBlocks({
   const reach = st.kpStem + size;
   const rot = (st.kpRotation * Math.PI) / 180;
   // Every block along the line is tested, so a turned or extra chart still gets the right ones.
-  for (
-    let kp = Math.ceil(k0 / interval) * interval;
-    kp <= k0 + route.length + 1e-6;
-    kp += interval
-  ) {
+  // A block at every interval and one at the end of the line.
+  for (const kp of withLineEnd(
+    Math.ceil(k0 / interval) * interval,
+    k0 + route.length,
+    interval,
+    k0 + route.length,
+  )) {
     const [x, y] = project(...pointAt(route, kp - k0));
     if (x < rect.x || x > rect.x + rect.w || y < rect.y || y > rect.y + rect.h)
       continue;
