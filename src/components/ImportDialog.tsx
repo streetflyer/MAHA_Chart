@@ -1,3 +1,4 @@
+import { applyKpMatch } from "./KpMatchControl";
 import { askChoice, askCodes } from "./Dialog";
 import { dwgToDxfText } from "../model/dwg";
 import { useEffect, useRef, useState } from "react";
@@ -588,6 +589,14 @@ export function ImportDialog({
           id: "",
           msg: "Runline: no As Built survey line to copy. Add one in the As Built survey line row.",
         });
+    }
+    // A survey line matched to the profile's KPs follows a newly read profile (or a new survey line keeps the match off).
+    {
+      const sl = [...useSurvey.getState().datasets]
+        .reverse()
+        .find((d) => d.target === "asbuilt" && d.kind === "linework");
+      if (sl?.kind === "linework" && sl.kpMatch && sl.kpMatch !== "none")
+        applyKpMatch(sl.kpMatch);
     }
     setBusy(null);
     if (failed.length) {

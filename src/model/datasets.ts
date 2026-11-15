@@ -99,6 +99,9 @@ export const extOf = (name: string) =>
 export const targetsFor = (name: string) =>
   TARGETS.filter((t) => t.exts.includes(extOf(name)));
 
+/** How the survey line's ends follow the longitudinal profile's KP extent. */
+export type KpMatch = "none" | "start" | "end" | "both";
+
 interface Base {
   id: string;
   name: string;
@@ -466,12 +469,20 @@ export type Dataset =
   | (Base & {
       kind: "route";
       route: Route;
+      /** Id of the as-built survey line this runline was copied from. */
+      fromSurvey?: string;
+      /** The runline before it was cut or carried on to the longitudinal profile's KPs. */
+      fullRoute?: Route;
       before?: Float64Array;
       width: number;
     })
   | (Base & {
       kind: "linework";
       lw: Linework;
+      /** Survey line only: its start and/or end matched to the longitudinal profile's first/last KP. */
+      kpMatch?: KpMatch;
+      /** The survey line's polylines before that match. */
+      fullLines?: Float64Array[];
       width: number;
       textMode: TextMode;
       textScale: number;

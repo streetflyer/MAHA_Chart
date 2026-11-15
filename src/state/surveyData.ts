@@ -99,7 +99,16 @@ export const useSurvey = create<SurveyData>((set, get) => ({
   removeDataset: (id) =>
     set(
       derive(
-        get().datasets.filter((d) => d.id !== id),
+        // A runline copied from a survey line goes with it.
+        get().datasets.filter((d) => {
+          if (d.id === id) return false;
+          if (d.kind !== "route") return true;
+          const gone = get().datasets.find((x) => x.id === id);
+          return !(
+            d.fromSurvey === id ||
+            (gone && d.name === `${gone.name} (survey line as runline)`)
+          );
+        }),
         get().reversed,
       ),
     ),

@@ -1,3 +1,4 @@
+import { KpMatchControl } from "./KpMatchControl";
 import { drawingNoOf } from "../model/tokens";
 import { pointsOf, pointsPatch } from "../model/cpEdit";
 import type { CpPoint } from "../model/datasets";
@@ -509,6 +510,9 @@ function PanelProps({ p }: { p: Panel }) {
         />
       </div>
       {p.type === "plan" && <ScaleFields t={template} />}
+      {(p.type === "plan" ||
+        p.type === "longProfile" ||
+        p.type === "events") && <KpMatchControl />}
       {p.type !== "plan" &&
         ["longProfile", "transProfile", "events", "cp"].includes(p.type) && (
           <label className="check">
