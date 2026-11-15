@@ -11,13 +11,18 @@ export const canWriteBack = (d: Long) =>
   d.top !== undefined;
 
 /**
- * The imported file again, with the smoothed TOP (as shown on the chart) and BOP moved
+ * The imported file again (under its own name; the caller keeps the original as `_Raw`), with the smoothed TOP (as shown on the chart) and BOP moved
  * by the same amount (so the pipe keeps its diameter). Excel files keep everything else
  * as it was; text listings come back as a CSV of the same rows.
  */
-export async function smoothedFile(
-  d: Long,
-): Promise<{ blob: Blob; name: string; changed: number }> {
+export async function smoothedFile(d: Long): Promise<{
+  blob: Blob;
+  name: string;
+  changed: number;
+  /** The untouched imported file and the name its backup gets (`<name>_Raw.<ext>`). */
+  raw: File;
+  rawName: string;
+}> {
   if (!canWriteBack(d))
     throw new Error(
       "This profile was not read from a file that is still known. Import the file again.",
@@ -36,13 +41,15 @@ export async function smoothedFile(
     edits.set(r, e);
   });
   const base = file.name.replace(/\.[^.]+$/, "");
+  const ext = file.name.slice(base.length);
+  const rawName = `${base}_Raw${ext}`;
   if (/\.xlsx$/i.test(file.name)) {
     const { blob, changed } = await patchXlsx(
       await file.arrayBuffer(),
       d.srcSheet ?? 0,
       edits,
     );
-    return { blob, name: `${base}_smoothed.xlsx`, changed };
+    return { blob, name: file.name, changed, raw: file, rawName };
   }
   const table = parseDelimited(dropComments(await file.text()), file.name);
   let changed = 0;
@@ -57,7 +64,9 @@ export async function smoothedFile(
   const csv = table.rows.map((r) => r.map(q).join(",")).join("\r\n");
   return {
     blob: new Blob([csv], { type: "text/csv" }),
-    name: `${base}_smoothed.csv`,
+    name: /\.csv$/i.test(file.name) ? file.name : `${base}.csv`,
     changed,
+    raw: file,
+    rawName,
   };
 }

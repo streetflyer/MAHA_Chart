@@ -2,6 +2,7 @@ import type { Dataset } from "../model/datasets";
 import type { ChartTemplate } from "../model/types";
 import { useEditor } from "./store";
 import { useProject, type FolderNode, type FolderState } from "./project";
+import { settingsOf } from "../model/datasetSettings";
 import { useSurvey } from "./surveyData";
 import { useVideo } from "./video";
 import type { VideoRow } from "../model/video";
@@ -43,6 +44,9 @@ const TYPED: Record<string, new (b: ArrayBuffer) => Typed> = {
 interface Header {
   format: "mahachart-workspace";
   version: 1;
+  /** "full": chart, data and project; "settings": only the settings (no data). Older files have none and are full. */
+  mode?: "full" | "settings";
+  carry?: FolderState | null;
   saved: string;
   parts: number[];
   template: ChartTemplate;
@@ -57,7 +61,11 @@ interface Header {
     selected: string | null;
     expanded: Record<string, boolean>;
   };
-  video?: { rows: VideoRow[]; joinHours?: number; image: { name: string; url: string } | null };
+  video?: {
+    rows: VideoRow[];
+    joinHours?: number;
+    image: { name: string; url: string } | null;
+  };
   storage: Record<string, string>;
 }
 
@@ -78,8 +86,14 @@ async function gunzip(buf: ArrayBuffer): Promise<ArrayBuffer> {
   ).arrayBuffer();
 }
 
+function withoutFiles(n: FolderNode): FolderNode {
+  return { ...n, files: [], children: n.children.map(withoutFiles) };
+}
+
 /** Build the project file for the session as it is now. */
-export async function workspaceBlob(): Promise<Blob> {
+export type SaveMode = "full" | "settings";
+
+export async function workspaceBlob(mode: SaveMode = "full"): Promise<Blob> {
   const ed = useEditor.getState();
   const sv = useSurvey.getState();
   const pr = useProject.getState();
@@ -104,22 +118,45 @@ export async function workspaceBlob(): Promise<Blob> {
     format: "mahachart-workspace",
     version: 1,
     saved: new Date().toISOString(),
+    mode,
     parts: [],
     template: ed.template!,
     sheetIndex: ed.sheetIndex,
-    datasets: sv.datasets,
+    datasets: mode === "full" ? sv.datasets : [],
     reversed: sv.reversed,
-    project: pr.tree
-      ? {
-          name: pr.name,
-          tree: pr.tree,
-          folders: pr.folders,
-          active: pr.active,
-          selected: pr.selected,
-          expanded: pr.expanded,
-        }
-      : null,
-    video: { rows: useVideo.getState().rows, joinHours: useVideo.getState().joinHours, image: useVideo.getState().image },
+    carry:
+      mode === "settings"
+        ? {
+            ...(pr.active !== null
+              ? pr.folder(pr.active)
+              : (pr.carry ?? { recipes: [] })),
+            template: ed.template!,
+            settings: sv.datasets.length
+              ? sv.datasets.map(settingsOf)
+              : pr.active !== null
+                ? pr.folder(pr.active).settings
+                : pr.carry?.settings,
+          }
+        : null,
+    project:
+      mode === "settings"
+        ? null
+        : pr.tree
+          ? {
+              name: pr.name,
+              // The raw files are not embedded: the project folder on disk still holds them.
+              tree: withoutFiles(pr.tree),
+              folders: pr.folders,
+              active: pr.active,
+              selected: pr.selected,
+              expanded: pr.expanded,
+            }
+          : null,
+    video: {
+      rows: useVideo.getState().rows,
+      joinHours: useVideo.getState().joinHours,
+      image: useVideo.getState().image,
+    },
     storage,
   };
   const json = JSON.stringify(header, function (_k, v) {
@@ -133,7 +170,9 @@ export async function workspaceBlob(): Promise<Blob> {
     if (ArrayBuffer.isView(v) && !(v instanceof DataView)) {
       const t = v as Typed;
       return {
-        $b: add(new Blob([new Uint8Array(t.buffer, t.byteOffset, t.byteLength)])),
+        $b: add(
+          new Blob([new Uint8Array(t.buffer, t.byteOffset, t.byteLength)]),
+        ),
         $t: t.constructor.name,
       };
     }
@@ -148,7 +187,9 @@ export async function workspaceBlob(): Promise<Blob> {
   const len = new Uint8Array(4);
   new DataView(len.buffer).setUint32(0, head.length);
   return gzip(
-    new Blob([MAGIC, len, head, ...parts], { type: "application/octet-stream" }),
+    new Blob([MAGIC, len, head, ...parts], {
+      type: "application/octet-stream",
+    }),
   );
 }
 
@@ -157,7 +198,8 @@ export async function loadWorkspace(file: File): Promise<string> {
   const buf = await gunzip(await file.arrayBuffer());
   const u8 = new Uint8Array(buf);
   const magic = new TextDecoder().decode(u8.subarray(0, MAGIC.length));
-  if (magic !== MAGIC) throw new Error("This is not a MAHA Chart project file.");
+  if (magic !== MAGIC)
+    throw new Error("This is not a MAHA Chart project file.");
   const hl = new DataView(buf).getUint32(MAGIC.length);
   const start = MAGIC.length + 4;
   const text = new TextDecoder().decode(u8.subarray(start, start + hl));
@@ -190,10 +232,26 @@ export async function loadWorkspace(file: File): Promise<string> {
   } catch {
     /* ignore */
   }
+  const settingsOnly = h.mode === "settings";
   useEditor.getState().open(h.template);
   useEditor.setState({ sheetIndex: h.sheetIndex ?? 0 });
+  if (settingsOnly) {
+    useSurvey.getState().clear();
+    const c = h.carry ?? null;
+    useProject.setState({ carry: c, active: null });
+    useVideo.setState({
+      rows: h.video?.rows ?? [],
+      joinHours: h.video?.joinHours ?? 12,
+      image: h.video?.image ?? null,
+    });
+    return h.template.name;
+  }
   useSurvey.getState().load(h.datasets, h.reversed);
-  useVideo.setState({ rows: h.video?.rows ?? [], joinHours: h.video?.joinHours ?? 12, image: h.video?.image ?? null });
+  useVideo.setState({
+    rows: h.video?.rows ?? [],
+    joinHours: h.video?.joinHours ?? 12,
+    image: h.video?.image ?? null,
+  });
   if (h.project)
     useProject.setState({
       ...h.project,

@@ -1,7 +1,12 @@
+import { drawingNoOf } from "../model/tokens";
 import { pointsOf, pointsPatch } from "../model/cpEdit";
 import type { CpPoint } from "../model/datasets";
 import { DEFAULT_MATCHLINES } from "../model/matchlines";
-import type { MatchlineStyle } from "../model/types";
+import {
+  SCALE_BAR_STYLES,
+  type MatchlineStyle,
+  type ScaleBarStyle,
+} from "../model/types";
 import { ColourBox } from "./ColourBox";
 import { useEffect, useState } from "react";
 import { newId } from "../model/ids";
@@ -44,7 +49,7 @@ import { useSmoothTool } from "../state/smoothTool";
 import { downloadBlob } from "../state/workspace";
 import { useVideo } from "../state/video";
 import { autoVideoText, productKeys } from "../model/video";
-import { useProject } from "../state/project";
+import { canWrite, subHandle, useProject } from "../state/project";
 import { useImport } from "./ImportDialog";
 import { askCodes } from "./Dialog";
 import {
@@ -548,6 +553,63 @@ function PanelProps({ p }: { p: Panel }) {
         </p>
       )}
       {p.body !== undefined && <FontEditor p={p} />}
+      {[
+        "chartInfo",
+        "notes",
+        "equipment",
+        "geodetic",
+        "scale",
+        "titleBlock",
+        "text",
+        "keyplan",
+      ].includes(p.type) && (
+        <FontPick
+          value={p.fontFamily}
+          sheetFont={template.fontFamily}
+          note={
+            p.type === "chartInfo"
+              ? "Also applies to every section inside."
+              : undefined
+          }
+          onChange={(f) => {
+            if (p.type === "chartInfo")
+              s.commit((t) => ({
+                ...t,
+                panels: t.panels.map((x) =>
+                  x.id === p.id || x.parentId === p.id
+                    ? { ...x, fontFamily: f }
+                    : x,
+                ),
+                texts: t.texts.map((x) =>
+                  x.panelId === p.id ||
+                  t.panels.some(
+                    (q) => q.id === x.panelId && q.parentId === p.id,
+                  )
+                    ? { ...x, fontFamily: f }
+                    : x,
+                ),
+              }));
+            else set({ fontFamily: f });
+          }}
+        />
+      )}
+      {p.type === "scale" && (
+        <label className="field">
+          <span>Scale bar style</span>
+          <select
+            value={p.scaleBarStyle ?? "blocks"}
+            onChange={(e) =>
+              set({ scaleBarStyle: e.target.value as ScaleBarStyle })
+            }
+          >
+            {SCALE_BAR_STYLES.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {p.type === "legend" && <LegendEditor p={p} />}
       {p.type === "plan" && <DrawingEditPanel panelId={p.id} when="idle" />}
       <DataList panelType={p.type} />
@@ -856,7 +918,9 @@ function VideoTextEditor({
 }) {
   const video = useVideo((x) => x.rows);
   const joinHours = useVideo((x) => x.joinHours);
-  const drawingNo = useEditor((x) => x.template?.fields.CHART_NO ?? "");
+  const drawingNo = useEditor((x) =>
+    x.template ? drawingNoOf(x.template, x.sheetIndex) : "",
+  );
   const folder = useProject((x) => x.active ?? "");
   const auto = autoVideoText(video, {
     product: r.videoProduct,
@@ -1001,22 +1065,63 @@ function LongSmooth({ d }: { d: Extract<Dataset, { kind: "long" }> }) {
         disabled={busy || !canWriteBack(d)}
         title={
           canWriteBack(d)
-            ? "Write the smoothed TOP (and BOP) back into a copy of the imported file and download it"
+            ? "Write the smoothed TOP (and BOP) back into the imported file (the original is kept as *_Raw)"
             : "This profile was not read from a file that is still known: import the file again"
         }
         onClick={async () => {
           setBusy(true);
           try {
             const r = await smoothedFile(d);
-            downloadBlob(r.blob, r.name);
-            setNote(`Saved ${r.name}: ${r.changed} cells changed.`);
+            const pr = useProject.getState();
+            let done = false;
+            if (
+              pr.handle &&
+              pr.active !== null &&
+              (await canWrite(pr.handle))
+            ) {
+              try {
+                const dir = await subHandle(pr.handle, pr.active);
+                // Back up the untouched file once; never overwrite an earlier backup.
+                let have = true;
+                try {
+                  await dir.getFileHandle(r.rawName);
+                } catch {
+                  have = false;
+                }
+                if (!have) {
+                  const w = await (
+                    await dir.getFileHandle(r.rawName, { create: true })
+                  ).createWritable();
+                  await w.write(r.raw);
+                  await w.close();
+                }
+                const w = await (
+                  await dir.getFileHandle(r.name, { create: true })
+                ).createWritable();
+                await w.write(r.blob);
+                await w.close();
+                done = true;
+                setNote(
+                  `Saved ${r.name} in the project folder (${r.changed} cells changed). The original is kept as ${r.rawName}.`,
+                );
+              } catch {
+                /* fall back to downloads */
+              }
+            }
+            if (!done) {
+              downloadBlob(r.raw, r.rawName);
+              downloadBlob(r.blob, r.name);
+              setNote(
+                `Downloaded ${r.rawName} (the original) and ${r.name} (smoothed, ${r.changed} cells changed). Put them in the file's folder and replace the old file.`,
+              );
+            }
           } catch (e) {
             setNote((e as Error).message);
           }
           setBusy(false);
         }}
       >
-        Write back to the file and download
+        Save to the file (original kept as _Raw)
       </button>
       {note && <p className="hint">{note}</p>}
     </div>
@@ -1043,6 +1148,11 @@ function TextProps({ t }: { t: TextItem }) {
         <p className="muted">Attached to {parent.title}; moves with it.</p>
       )}
       <Field label="Text" value={t.text} onCommit={(v) => set({ text: v })} />
+      <FontPick
+        value={t.fontFamily}
+        sheetFont={template.fontFamily}
+        onChange={(f) => set({ fontFamily: f })}
+      />
       <p className="muted">
         Tokens such as {"{H_SCALE}"} (now{" "}
         {formatScale(template.scale.horizontal)}), {"{KP_START}"}, {"{KP_END}"}{" "}
@@ -1103,6 +1213,37 @@ function TextProps({ t }: { t: TextItem }) {
         Bold
       </label>
     </aside>
+  );
+}
+
+function FontPick({
+  value,
+  sheetFont,
+  note,
+  onChange,
+}: {
+  value?: string;
+  sheetFont?: string;
+  note?: string;
+  onChange(f: string | undefined): void;
+}) {
+  return (
+    <label className="field">
+      <span>Font</span>
+      <select
+        value={value ?? ""}
+        style={{ fontFamily: value }}
+        onChange={(e) => onChange(e.target.value || undefined)}
+      >
+        <option value="">Sheet font ({sheetFont ?? "Arial"})</option>
+        {FONTS.map((f) => (
+          <option key={f} value={f} style={{ fontFamily: f }}>
+            {f}
+          </option>
+        ))}
+      </select>
+      {note && <span className="muted">{note}</span>}
+    </label>
   );
 }
 

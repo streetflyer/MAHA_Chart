@@ -53,6 +53,8 @@ interface ProjectState {
   /** Writable folder handle (Chrome / Edge); null when the folder was read with a plain folder picker. */
   handle: FileSystemDirectoryHandle | null;
   folders: Record<string, FolderState>;
+  /** Settings from a settings-only project file, given to any folder charted that has none of its own. */
+  carry: FolderState | null;
   /** Folder whose data is on the chart now. */
   active: string | null;
   /** Folder picked in the tree. */
@@ -75,6 +77,7 @@ export const useProject = create<ProjectState>((set, get) => ({
   tree: null,
   handle: null,
   folders: {},
+  carry: null,
   active: null,
   selected: null,
   expanded: { "": true },

@@ -17,6 +17,23 @@ export type PanelType =
   | "logo"
   | "text";
 
+export type ScaleBarStyle =
+  | "blocks"
+  | "checker"
+  | "outline"
+  | "line"
+  | "ruler"
+  | "stepped";
+
+export const SCALE_BAR_STYLES: { id: ScaleBarStyle; label: string }[] = [
+  { id: "blocks", label: "Alternating blocks" },
+  { id: "checker", label: "Two-row chequer" },
+  { id: "outline", label: "Outlined bar" },
+  { id: "stepped", label: "Stepped blocks" },
+  { id: "line", label: "Line with ticks" },
+  { id: "ruler", label: "Ruler with minor ticks" },
+];
+
 export type TitlePosition = "above" | "inside" | "none";
 
 export interface EventRow {
@@ -55,6 +72,10 @@ export interface Panel {
   h: number;
   /** Section panels (legend, notes, ...) belong to a container such as Chart Information. */
   parentId?: string;
+  /** Font for this panel's text; unset: the sheet's font. */
+  fontFamily?: string;
+  /** Scale panel: how the scale bars are drawn. */
+  scaleBarStyle?: ScaleBarStyle;
   /** KP-aligned panels share the plan view's horizontal extent and scale. */
   kpAligned?: boolean;
   /** Vertical KP lines in the profile and CP panels (default on). */
@@ -298,6 +319,7 @@ export interface TextItem {
   bold?: boolean;
   rotation?: number;
   color?: string;
+  fontFamily?: string;
 }
 
 export interface ScaleSettings {

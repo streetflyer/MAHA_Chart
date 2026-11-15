@@ -248,7 +248,8 @@ export function DraftNumber({
       onChange={(e) => {
         setDraft(e.target.value);
         const v = parseFloat(e.target.value);
-        if (Number.isFinite(v) && v >= Math.max(0, min ?? 1e-9)) commit(e.target.value);
+        if (Number.isFinite(v) && v >= Math.max(0, min ?? 1e-9))
+          commit(e.target.value);
       }}
       onBlur={() => {
         if (draft !== null) commit(draft);
@@ -954,7 +955,9 @@ function CpLookControls({
           onChange={(e) => set({ yMode: e.target.value as CpLook["yMode"] })}
         >
           <option value="fixed">At one height in the panel</option>
-          <option value="value">At the height of their value (mV axis with grid)</option>
+          <option value="value">
+            At the height of their value (mV axis with grid)
+          </option>
         </select>
       </label>
       {look.yMode === "fixed" && (

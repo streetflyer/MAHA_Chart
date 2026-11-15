@@ -17,7 +17,12 @@
   --field: #ffffff;
   --desk: #c9ced6;
   --disabled: #a3aab4;
-  font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  font-family:
+    "Segoe UI",
+    system-ui,
+    -apple-system,
+    Roboto,
+    sans-serif;
   font-size: 13px;
   color: var(--text);
 }
@@ -27,7 +32,7 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
+  :root:not([data-theme="light"]) {
     --bg: #14181e;
     --chrome: #1b2028;
     --chrome-2: #20262f;
@@ -43,7 +48,7 @@
     color-scheme: dark;
   }
 }
-:root[data-theme='dark'] {
+:root[data-theme="dark"] {
   --bg: #14181e;
   --chrome: #1b2028;
   --chrome-2: #20262f;
@@ -112,7 +117,7 @@ button.link {
 }
 
 select,
-input:not([type='checkbox']):not([type='color']),
+input:not([type="checkbox"]):not([type="color"]),
 textarea {
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -629,6 +634,7 @@ textarea {
 .dialog p {
   margin: 0;
   color: var(--muted);
+  white-space: pre-line;
 }
 .dialog-actions {
   display: flex;
@@ -642,6 +648,7 @@ button.danger-fill {
 
 /* Chart tabs, legend editor, misc */
 .sheet-col {
+  position: relative;
   display: grid;
   grid-template-rows: 1fr auto;
   min-width: 0;
@@ -727,11 +734,11 @@ button.danger-fill {
   gap: 4px;
   align-items: center;
 }
-.legend-row input:not([type='color']) {
+.legend-row input:not([type="color"]) {
   flex: 1;
   min-width: 0;
 }
-.legend-row input[type='color'] {
+.legend-row input[type="color"] {
   width: 28px;
   height: 26px;
   padding: 0;
@@ -1005,7 +1012,7 @@ table.preview .mapped {
   align-items: center;
   gap: 6px;
 }
-.data-row input[type='color'] {
+.data-row input[type="color"] {
   width: 26px;
   height: 22px;
   padding: 0;
@@ -1055,7 +1062,7 @@ table.preview .mapped {
   flex: 1 1 110px;
   min-width: 0;
 }
-.colour-field input[type='color'] {
+.colour-field input[type="color"] {
   width: 100%;
   min-width: 44px;
   height: 28px;
@@ -1372,7 +1379,8 @@ table.preview thead th.mapped {
   border-radius: 6px;
   padding: 4px 0;
   overflow: auto;
-  max-height: 55vh;
+  max-height: 45vh;
+  min-height: 7em;
   user-select: none;
 }
 .tree-row {
@@ -1510,18 +1518,61 @@ table.preview thead th.mapped {
   min-width: 0;
 }
 
-.code-find { width: 100%; margin: 4px 0; }
-.code-pick { list-style: none; margin: 0 0 8px; padding: 0; max-height: 50vh; overflow: auto; border: 1px solid var(--line, #ccc); border-radius: 4px; }
-.code-pick li { padding: 3px 8px; }
-.code-pick li:nth-child(odd) { background: rgba(127, 127, 127, 0.08); }
-.row-extra { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; width: 100%; }
-.row-extra textarea { width: 100%; }
+.code-find {
+  width: 100%;
+  margin: 4px 0;
+}
+.code-pick {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  max-height: 50vh;
+  overflow: auto;
+  border: 1px solid var(--line, #ccc);
+  border-radius: 4px;
+}
+.code-pick li {
+  padding: 3px 8px;
+}
+.code-pick li:nth-child(odd) {
+  background: rgba(127, 127, 127, 0.08);
+}
+.row-extra {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.row-extra textarea {
+  width: 100%;
+}
 
-.mini-table { width: 100%; font-size: 11px; border-collapse: collapse; }
-.mini-table th, .mini-table td { text-align: left; padding: 1px 6px; }
-.event-kps { list-style: none; margin: 0 0 4px; padding: 0 0 0 12px; font-size: 11px; max-height: 200px; overflow: auto; }
+.mini-table {
+  width: 100%;
+  font-size: 11px;
+  border-collapse: collapse;
+}
+.mini-table th,
+.mini-table td {
+  text-align: left;
+  padding: 1px 6px;
+}
+.event-kps {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0 0 0 12px;
+  font-size: 11px;
+  max-height: 200px;
+  overflow: auto;
+}
 
-.cell-input { width: 100%; min-width: 0; font-size: 11px; padding: 1px 3px; }
+.cell-input {
+  width: 100%;
+  min-width: 0;
+  font-size: 11px;
+  padding: 1px 3px;
+}
 
 .video-timing {
   display: flex;
@@ -1603,4 +1654,42 @@ table.preview thead th.mapped {
   flex-direction: column;
   gap: 4px;
   width: 100%;
+}
+
+.event-edit-bar {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 10px;
+  background: var(--panel, #fff);
+  border: 1px solid #0a84ff;
+  border-radius: 6px;
+  font-size: 12px;
+  z-index: 5;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Sections of the left panel keep their height; the whole panel scrolls instead of squeezing the tree. */
+.project-panel:not(.collapsed) > * {
+  flex-shrink: 0;
+}
+.chart-numbers {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0;
+  font-size: 12px;
+}
+.chart-numbers label {
+  display: grid;
+  grid-template-columns: 82px 1fr;
+  align-items: center;
+  gap: 6px;
+}
+.chart-numbers .sample {
+  color: var(--muted);
+  word-break: break-all;
 }

@@ -92,5 +92,6 @@ export const useSurvey = create<SurveyData>((set, get) => ({
   setReversed: (reversed) =>
     set({ reversed, ...derive(get().datasets, reversed) }),
   clear: () => set({ reversed: false, ...derive([], false) }),
-  load: (datasets, reversed) => set({ reversed, ...derive(datasets, reversed) }),
+  load: (datasets, reversed) =>
+    set({ reversed, ...derive(datasets, reversed) }),
 }));

@@ -145,7 +145,8 @@ export function Cp({
     // Neighbouring readings on the same side must not print over each other.
     const need = horizontal ? label.length * fs * 0.6 + 0.5 : fs * 1.15;
     const key = `${clock}`;
-    if (!editing && !look.showAll && x - (lastX.get(key) ?? -Infinity) <= need) continue;
+    if (!editing && !look.showAll && x - (lastX.get(key) ?? -Infinity) <= need)
+      continue;
     lastX.set(key, x);
     const c = clockText(
       clock,

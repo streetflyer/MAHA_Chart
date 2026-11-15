@@ -19,7 +19,11 @@ import type {
 import { useEditor } from "../state/store";
 import { fitInto, readImageFile } from "./imageImport";
 import { InlineEditor } from "./InlineEditor";
-import { distanceBeforeStart, nearestChainage } from "../model/route";
+import {
+  chartGeometry,
+  distanceBeforeStart,
+  nearestChainage,
+} from "../model/route";
 import {
   editSheet,
   planPanel,
@@ -31,7 +35,11 @@ import { planStyle } from "./PlanView";
 import { useSurvey } from "../state/surveyData";
 import { useImport } from "./ImportDialog";
 import { editPlanItemText, matchLabelOf } from "./planItems";
-import { eventLabelOf, patchEventLabel } from "./eventLabelEdit";
+import {
+  eventLabelOf,
+  patchEventLabel,
+  snapshotEventLabels,
+} from "./eventLabelEdit";
 import { useEventEdit } from "../state/eventEdit";
 import {
   PanelContent,
@@ -129,6 +137,15 @@ type Drag =
       index: number;
       startChain: number;
       startKp: number;
+      toGrid: (p: Pt) => [number, number];
+    }
+  | {
+      type: "frameFree";
+      index: number;
+      g0: [number, number];
+      u: [number, number];
+      panU: number;
+      panV: number;
       toGrid: (p: Pt) => [number, number];
     }
   | {
@@ -357,6 +374,7 @@ export function SheetView({
         svgRef.current!.setPointerCapture(e.pointerId);
         if (id) {
           const cur = eventLabelOf(id);
+          snapshotEventLabels(id);
           return setDrag({
             type: "evlabel",
             id,
@@ -525,6 +543,23 @@ export function SheetView({
           toGrid,
         });
         return;
+      }
+      if (e.shiftKey) {
+        // Shift: move the box freely (also across the line), not only along it.
+        const geo = chartGeometry(template, route, index);
+        if (geo) {
+          const f = sheetFrame(template, index);
+          setDrag({
+            type: "frameFree",
+            index,
+            g0: toGrid(at),
+            u: geo.u,
+            panU: f?.panU ?? 0,
+            panV: f?.panV ?? 0,
+            toGrid,
+          });
+          return;
+        }
       }
       setDrag({
         type: "frame",
@@ -797,6 +832,16 @@ export function SheetView({
       if (!drag.moved) setDrag({ ...drag, moved: true });
       return;
     }
+    if (drag.type === "frameFree") {
+      const g = drag.toGrid(at);
+      const dx = g[0] - drag.g0[0];
+      const dy = g[1] - drag.g0[1];
+      const [ux, uy] = drag.u;
+      const panU = Math.round((drag.panU + dx * ux + dy * uy) * 10) / 10;
+      const panV = Math.round((drag.panV + dx * -uy + dy * ux) * 10) / 10;
+      store().updateGesture((t) => editSheet(t, drag.index, { panU, panV }));
+      return;
+    }
     if (drag.type === "frame") {
       const route = useSurvey.getState().route;
       if (!route) return;
@@ -1047,6 +1092,7 @@ export function SheetView({
       drag.type === "edge" ||
       drag.type === "imgResize" ||
       drag.type === "frame" ||
+      drag.type === "frameFree" ||
       drag.type === "rotate" ||
       drag.type === "north"
     ) {
@@ -1582,9 +1628,13 @@ function PanelView({
     },
   ];
   const isContainer = p.type === "chartInfo";
+  const fam = p.fontFamily
+    ? { fontFamily: `${p.fontFamily}, Arial, Helvetica, sans-serif` }
+    : undefined;
   return (
     <g
       className={`panel type-${p.type}${selected ? " selected" : ""}${p.locked ? " locked" : ""}`}
+      style={fam}
     >
       <g data-item={p.id} data-kind="panel">
         <rect
@@ -1704,6 +1754,11 @@ function TextView({
       data-item={tx.id}
       data-kind="text"
       className={`text-item${selected ? " selected" : ""}`}
+      style={
+        tx.fontFamily
+          ? { fontFamily: `${tx.fontFamily}, Arial, Helvetica, sans-serif` }
+          : undefined
+      }
       transform={`translate(${pos.x} ${pos.y}) rotate(${tx.rotation ?? 0})`}
     >
       <rect

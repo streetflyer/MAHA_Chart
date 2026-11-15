@@ -42,3 +42,14 @@ describe("matchlines", () => {
     );
   });
 });
+
+import { drawingNoOf } from "./tokens";
+import { alignmentSheetA1 } from "./builtinTemplates";
+describe("drawing number", () => {
+  it("builds JOB-PRODUCT-CCC.SSS from the job, product and chart number", () => {
+    const t = alignmentSheetA1();
+    t.fields = { JOB_NO: "33DJ100160-T1201", PRODUCT: "UMB2", CHART_SEQ: "2" };
+    expect(drawingNoOf(t, 0)).toBe("33DJ100160-T1201-UMB2-002.001");
+    expect(drawingNoOf(t, 2)).toBe("33DJ100160-T1201-UMB2-002.003");
+  });
+});

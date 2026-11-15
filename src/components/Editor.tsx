@@ -37,6 +37,8 @@ import { downloadBlob, loadWorkspace, workspaceBlob } from "../state/workspace";
 import { useSmoothTool } from "../state/smoothTool";
 import { eventLabelMenu } from "./eventLabelEdit";
 import { useEventEdit } from "../state/eventEdit";
+import { EventEditBar } from "./EventEditBar";
+import { undoEventLabels } from "./eventLabelEdit";
 import { planItemMenu } from "./planItems";
 import { SheetView, type ContextTarget } from "./SheetView";
 import { useDrawingEdit } from "../state/drawingEdit";
@@ -149,12 +151,24 @@ export function Editor({ onExit }: { onExit(): void }) {
     }
   }, [panes]);
   async function saveProject() {
+    const pick = await askChoice(
+      "Save the project",
+      "Settings only: the paper, scale, overlap, every panel setting, the look and import settings of your files, the video timing list and your saved presets. No survey data, so the file is small (a few hundred KB). Use it to start another product, hand the setup over or move to another machine, then add the data files there.\n\nFull project: all of the above plus the imported data and the drawing lines as they are on the chart, so it opens exactly as you left it. Your raw files are not copied in; they stay in the project folder. The file can be tens of MB.",
+      ["Settings only", "Full project"],
+    );
+    if (pick === null) return;
+    const mode = pick === 0 ? "settings" : "full";
     try {
-      const blob = await workspaceBlob();
+      const blob = await workspaceBlob(mode);
       const t = s().template!;
-      downloadBlob(blob, `${t.name.replace(/[^\w.-]+/g, "_")}.mahachart`);
+      downloadBlob(
+        blob,
+        `${t.name.replace(/[^\w.-]+/g, "_")}${mode === "settings" ? "_settings" : ""}.mahachart`,
+      );
       s().markSaved(t);
-      flash(`Saved the whole project (${(blob.size / 1048576).toFixed(1)} MB)`);
+      flash(
+        `Saved ${mode === "settings" ? "the settings" : "the full project"} (${(blob.size / 1048576).toFixed(1)} MB)`,
+      );
     } catch (e) {
       flash(`Could not save: ${(e as Error).message}`);
     }
@@ -183,6 +197,16 @@ export function Editor({ onExit }: { onExit(): void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || s().editing) return;
+      if (
+        useEventEdit.getState().active &&
+        (e.ctrlKey || e.metaKey) &&
+        e.key.toLowerCase() === "z" &&
+        !e.shiftKey &&
+        undoEventLabels()
+      ) {
+        e.preventDefault();
+        return;
+      }
       if (e.key === "Escape" && useEventEdit.getState().active) {
         useEventEdit.getState().exit();
         return;
@@ -853,6 +877,7 @@ export function Editor({ onExit }: { onExit(): void }) {
             fitSignal={fitSignal}
             dark={dark}
           />
+          <EventEditBar />
           <ChartTabs />
         </div>
         <PaneResizer side="right" panes={panes} setPanes={setPanes} />

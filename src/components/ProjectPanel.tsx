@@ -154,9 +154,27 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
     }
     keepActiveTemplate();
     useSurvey.getState().clear();
-    const saved = s.folder(path).template;
+    if (!s.folders[path] && s.carry) {
+      useProject.setState({
+        folders: {
+          ...s.folders,
+          [path]: {
+            ...structuredClone(s.carry),
+            recipes: s.carry.recipes.map((r) => ({ ...r, borrowed: true })),
+          },
+        },
+      });
+    }
+    const saved = useProject.getState().folder(path).template;
+    const prevFields = useEditor.getState().template?.fields;
     if (saved) useEditor.getState().open(saved);
     useProject.setState({ active: path, selected: path });
+    // The job number carries over to the next product; the product name is the folder's.
+    const ed = useEditor.getState();
+    const cur = ed.template?.fields ?? {};
+    if (!cur.JOB_NO && prevFields?.JOB_NO)
+      ed.setField("JOB_NO", prevFields.JOB_NO);
+    ed.setField("PRODUCT", node.name || s.name || "");
     if (!saved && useEditor.getState().template)
       useProject.getState().setTemplate(path, useEditor.getState().template!);
     if (node.files.length) useImport.getState().request(node.files);
@@ -502,6 +520,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
               </li>
             )}
           </ul>
+          <ChartNumbers path={sel.path} name={sel.name || pr.name || ""} />
           <div className="project-actions">
             <button
               type="button"
@@ -576,6 +595,59 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
         }}
       />
     </aside>
+  );
+}
+
+/** Job number and chart number: the Drawing No. of every sheet is JOB-PRODUCT-CCC.SSS. */
+function ChartNumbers({ path, name }: { path: string; name: string }) {
+  const active = useProject((s) => s.active);
+  const t = useEditor((s) => s.template);
+  const setField = useEditor((s) => s.setField);
+  const on = active === path && !!t;
+  const f = t?.fields ?? {};
+  const job = f.JOB_NO ?? "";
+  const seq = f.CHART_SEQ ?? "";
+  const sample =
+    job.trim() && name
+      ? `${job.trim()}-${name}-${String(parseInt(seq, 10) || 1).padStart(3, "0")}.001`
+      : "";
+  return (
+    <div className="chart-numbers">
+      <label>
+        <span>Job number</span>
+        <input
+          type="text"
+          disabled={!on}
+          value={job}
+          placeholder="e.g. 33DJ100160-T1201"
+          onChange={(e) => {
+            setField("JOB_NO", e.target.value);
+            setField("PRODUCT", name);
+          }}
+        />
+      </label>
+      <label>
+        <span>Chart number</span>
+        <input
+          type="text"
+          inputMode="numeric"
+          disabled={!on}
+          value={seq}
+          placeholder="e.g. 2"
+          onChange={(e) => {
+            setField("CHART_SEQ", e.target.value.replace(/\D/g, ""));
+            setField("PRODUCT", name);
+          }}
+        />
+      </label>
+      <span className="sample">
+        {on
+          ? sample
+            ? `Drawing No.: ${sample} (sheets count .001, .002 …)`
+            : "Type a job number to write the Drawing No. as JOB-PRODUCT-NUMBER.SHEET"
+          : "Chart this folder to set its numbers"}
+      </span>
+    </div>
   );
 }
 

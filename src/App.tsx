@@ -1,7 +1,7 @@
-import { DialogHost } from './components/Dialog';
-import { Editor } from './components/Editor';
-import { StartPage } from './components/StartPage';
-import { useEditor } from './state/store';
+import { DialogHost } from "./components/Dialog";
+import { Editor } from "./components/Editor";
+import { StartPage } from "./components/StartPage";
+import { useEditor } from "./state/store";
 
 export function App() {
   const hasTemplate = useEditor((s) => s.template !== null);

@@ -1,3 +1,4 @@
+import { drawingNoOf } from "../model/tokens";
 import { Cp } from "./CpPanel";
 import { useEditor } from "../state/store";
 import { useProject } from "../state/project";
@@ -972,7 +973,9 @@ function EventsPanel({
   routeEnd: number;
 }) {
   const rows = p.rows ?? [];
-  const drawingNo = useEditor((s) => s.template?.fields.CHART_NO ?? "");
+  const drawingNo = useEditor((s) =>
+    s.template ? drawingNoOf(s.template, s.sheetIndex) : "",
+  );
   const folder = useProject((s) => s.active ?? "");
   const video = useVideo((s) => s.rows);
   const joinHours = useVideo((s) => s.joinHours);
@@ -1295,14 +1298,13 @@ function PointTicks({
     const moved =
       Math.abs(fx - x) > 0.01 || fy < base - 0.01 || fy > base + 0.01;
     if (inCluster || moved) {
-      // Trunk up from the tick, a slanted step across, then up to the code.
+      // Trunk up from the tick, a right-angle step across, then straight up to the code.
       const gap = top - fy;
       if (Math.abs(fx - x) < 0.01 || gap <= 0.3)
         path += `M${x.toFixed(2)} ${top.toFixed(2)}L${fx.toFixed(2)} ${(fy + layout.labelGap).toFixed(2)}`;
       else {
-        const k1 = top - gap * 0.3;
-        const k2 = top - gap * 0.7;
-        path += `M${x.toFixed(2)} ${top.toFixed(2)}V${k1.toFixed(2)}L${fx.toFixed(2)} ${k2.toFixed(2)}V${(fy + layout.labelGap).toFixed(2)}`;
+        const k = top - gap * 0.5;
+        path += `M${x.toFixed(2)} ${top.toFixed(2)}V${k.toFixed(2)}H${fx.toFixed(2)}V${(fy + layout.labelGap).toFixed(2)}`;
       }
     }
     const ax = upright ? fx + efs * 0.35 : fx;

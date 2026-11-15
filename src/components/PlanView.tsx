@@ -1,3 +1,4 @@
+import { drawingNoOf } from "../model/tokens";
 import { useEffect, useMemo, type ReactElement, type ReactNode } from "react";
 import {
   DEFAULT_MATCHLINES,
@@ -317,7 +318,7 @@ function Matchlines({
         {!ov.hidden &&
           label(
             ov.text ??
-              matchLabel(st, m.chart, template.fields.CHART_NO ?? ""),
+              matchLabel(st, m.chart, drawingNoOf(template, sheetIndex)),
             m.side,
             "l",
             true,

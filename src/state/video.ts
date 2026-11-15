@@ -26,7 +26,9 @@ export const useVideo = create<VideoState>((set, get) => ({
   setRows: (rows) => set({ rows }),
   addRows: (rows) => set({ rows: [...get().rows, ...rows] }),
   update: (id, patch) =>
-    set({ rows: get().rows.map((r) => (r.id === id ? { ...r, ...patch } : r)) }),
+    set({
+      rows: get().rows.map((r) => (r.id === id ? { ...r, ...patch } : r)),
+    }),
   remove: (id) => set({ rows: get().rows.filter((r) => r.id !== id) }),
   add: () =>
     set({
