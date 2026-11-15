@@ -69,7 +69,7 @@ export function colourPaths(
     { color: string; width: number; list: Float64Array[] }
   >();
   const lines = d.lw.lines;
-  const ws = d.lw.weights;
+  const ws = d.ownWeights ? d.lw.weights : undefined;
   for (let i = 0; i < lines.length; i++) {
     if (!layerShown(d, d.lw.layers[i])) continue;
     if (skip?.has(d.lw.groups[i])) continue;
@@ -134,6 +134,8 @@ export function LineworkLayer({
                 strokeWidth: `max(${p.width * widthScale}px, var(--px, 0px))`,
               }}
               strokeLinejoin="round"
+              // Sharp, full-colour pixels like AutoCAD's screen, not faded anti-aliased hairlines.
+              shapeRendering="crispEdges"
             />
           ))}
           <Texts

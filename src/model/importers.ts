@@ -637,7 +637,7 @@ export function routeFromSurveyLine(d: Dataset, id: string): Dataset | null {
     name: `${d.name} (survey line as runline)`,
     target: "route",
     visible: true,
-    color: DEFAULT_COLOURS.route!,
+    color: "#00ff00",
     kind: "route",
     route: makeRoute(d.name, Array.from(longest)),
     width: 0.35,

@@ -576,6 +576,8 @@ export function ImportDialog({
       const r = line && routeFromSurveyLine(line, newId());
       if (r && r.kind === "route") {
         useSurvey.getState().addDataset(r);
+        // The runline is drawn instead of the survey line: one line, in green by default.
+        useSurvey.getState().updateDataset(line!.id, { visible: false });
         useEditor.getState().setScale({
           routeLength: Math.round(r.route.length * 1000) / 1000,
           sheets: undefined,

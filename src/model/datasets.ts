@@ -472,6 +472,8 @@ export type Dataset =
       textScale: number;
       textHeight: number;
       both?: boolean;
+      /** Draw lines with the lineweights saved in the drawing (as AutoCAD plots them); off: every line at `width`. */
+      ownWeights?: boolean;
     } & LineworkLook)
   /** Pipe drawn between the top and bottom series; the rest are seabed lines. */
   | (Base & {

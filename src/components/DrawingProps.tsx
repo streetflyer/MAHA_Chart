@@ -212,6 +212,19 @@ export function DrawingLook({ d }: { d: LineworkSet }) {
         />
         Keep the layer colours of the drawing
       </label>
+      {d.lw.weights && (
+        <label
+          className="check"
+          title="The drawing carries its own lineweights (by layer or object). Off: every line uses the line weight below, thin like AutoCAD's screen."
+        >
+          <input
+            type="checkbox"
+            checked={!!d.ownWeights}
+            onChange={(e) => upd({ ownWeights: e.target.checked })}
+          />
+          Use the lineweights saved in the drawing
+        </label>
+      )}
       <LayerList d={d} />
       {d.lw.texts.length > 0 && (
         <details className="layer-list" open>

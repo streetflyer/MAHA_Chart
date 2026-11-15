@@ -42,8 +42,8 @@ export function defaultStyle(target: ImportTarget): DataStyle {
       return { color, width: 0.35 };
     case "plan":
     case "siteplan":
-      // AutoCAD's default lineweight (LWDEFAULT), on paper.
-      return { color, width: 0.25 };
+      // Hairline: fine details stay crisp, as on AutoCAD's screen.
+      return { color, width: 0.03 };
     case "long":
       return { color: "#e00000", fill: "#6b6b6b" };
     case "trans":
@@ -789,9 +789,9 @@ export function StyleControls({
           {target === "plan" || target === "siteplan" ? (
             <label
               className="field pen-weight"
-              title="Like AutoCAD's Default lineweight: on paper, never scaled with the chart scale. Lines with their own lineweight in the DWG/DXF (by object or layer) keep it. On screen a line is never thinner than one pixel, as in AutoCAD; the PDF prints the same widths."
+              title="Pen width on paper, never scaled with the chart scale. Hairline (0.03) keeps small details crisp. On screen a line is never thinner than one pixel and is drawn sharp, as in AutoCAD; the PDF prints the same widths."
             >
-              <span>Default line weight</span>
+              <span>Line weight</span>
               <span className="with-suffix">
                 <select
                   value={PEN_WIDTHS.includes(s.width!) ? String(s.width) : ""}
