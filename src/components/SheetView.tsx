@@ -1,5 +1,6 @@
 import { editSessionAt } from "./KpPanels";
 import { editLegendAt } from "./legendEdit";
+import { editPairAt } from "./pairEdit";
 import {
   useCallback,
   useEffect,
@@ -1309,6 +1310,8 @@ export function SheetView({
     }
     // Legend headings, wording and code definitions edit in place.
     if (editLegendAt(el, e.clientX, e.clientY)) return;
+    // "Label : value" lines (equipment, geodetic) edit as two boxes.
+    if (editPairAt(e.clientX, e.clientY)) return;
     // Double-click anywhere without text to edit zooms to fit, like a CAD viewport.
     if (!itemEl) return fit();
     const kind = itemEl.getAttribute("data-kind");

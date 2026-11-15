@@ -563,18 +563,18 @@ function PanelProps({ p }: { p: Panel }) {
         </span>
       </label>
       {p.body !== undefined && (
-        <Field
+        <BodyEditor
           label={p.body2 !== undefined ? "Left column" : "Text"}
-          multiline
           value={p.body}
+          type={p.type}
           onCommit={(v) => set({ body: v })}
         />
       )}
       {p.body2 !== undefined && (
-        <Field
+        <BodyEditor
           label="Right column"
-          multiline
           value={p.body2}
+          type={p.type}
           onCommit={(v) => set({ body2: v })}
         />
       )}
@@ -767,6 +767,105 @@ function RowTextLook({ p, r }: { p: Panel; r: EventRow }) {
       <h5>Text along the row (codes, values, video)</h5>
       <FontControls font={text} onChange={(f) => set("font", f)} />
     </details>
+  );
+}
+
+/** "Label⇥: value" lines as pairs; null when the text is not such a list. */
+export function pairsOf(body: string): [string, string][] | null {
+  const lines = body.split("\n").filter((l) => l.trim());
+  if (!lines.length || !lines.every((l) => l.includes("\t"))) return null;
+  return lines.map((l) => {
+    const [a, ...rest] = l.split("\t");
+    return [a, rest.join(" ").replace(/^\s*:\s?/, "")];
+  });
+}
+export const pairsText = (rows: [string, string][]) =>
+  rows.map(([a, b]) => `${a}\t: ${b}`).join("\n");
+
+/** A panel's text: a list of items (label and value, with add / remove) when it is one, else plain text. */
+function BodyEditor({
+  label,
+  value,
+  type,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  type: Panel["type"];
+  onCommit(v: string): void;
+}) {
+  const [plain, setPlain] = useState(false);
+  const rows = pairsOf(value);
+  if (!rows || plain)
+    return (
+      <>
+        <Field label={label} multiline value={value} onCommit={onCommit} />
+        {rows && (
+          <button
+            type="button"
+            className="link"
+            onClick={() => setPlain(false)}
+          >
+            Edit as a list of items
+          </button>
+        )}
+      </>
+    );
+  const [left, right] =
+    type === "equipment" ? ["System type", "System name"] : ["Item", "Value"];
+  const put = (next: [string, string][]) => onCommit(pairsText(next));
+  return (
+    <div className="pair-list">
+      <div className="pair-head">
+        <span>{left}</span>
+        <span>{right}</span>
+      </div>
+      {rows.map(([a, b], i) => (
+        <div key={`${i}:${a}:${b}`} className="pair-row">
+          {[a, b].map((v, k) => (
+            <input
+              key={k}
+              defaultValue={v}
+              title={k ? right : left}
+              onBlur={(e) => {
+                if (e.target.value === v) return;
+                const next = rows.map((r) => [...r] as [string, string]);
+                next[i][k] = e.target.value;
+                put(next);
+              }}
+              onKeyDown={(e) =>
+                e.key === "Enter" && (e.target as HTMLInputElement).blur()
+              }
+            />
+          ))}
+          <button
+            type="button"
+            className="icon"
+            title="Move up"
+            disabled={i === 0}
+            onClick={() => put(swap(rows, i, i - 1))}
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            className="icon"
+            title="Remove this item"
+            onClick={() => put(rows.filter((_, j) => j !== i))}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      <div className="pair-actions">
+        <button type="button" onClick={() => put([...rows, ["New item", ""]])}>
+          + Add item
+        </button>
+        <button type="button" className="link" onClick={() => setPlain(true)}>
+          Edit as plain text
+        </button>
+      </div>
+    </div>
   );
 }
 

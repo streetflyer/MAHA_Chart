@@ -1,4 +1,7 @@
-import { EQUIPMENT_BODY, OLD_EQUIPMENT_BODY } from "../model/builtinTemplates";
+import {
+  EQUIPMENT_BODY,
+  OLD_EQUIPMENT_BODIES,
+} from "../model/builtinTemplates";
 import { create } from "zustand";
 import { newId } from "../model/ids";
 import { descendants, movePanels, splitPanel } from "../model/layout";
@@ -619,7 +622,8 @@ export function upgrade(t: ChartTemplate): ChartTemplate {
         ? { ...p, legendStyle: { ...p.legendStyle, codeColor: "#000000" } }
         : p;
     // The untouched old equipment list becomes the current one.
-    if (q.body === OLD_EQUIPMENT_BODY) q = { ...q, body: EQUIPMENT_BODY };
+    if (q.body && OLD_EQUIPMENT_BODIES.includes(q.body))
+      q = { ...q, body: EQUIPMENT_BODY };
     if (addKp && q.body?.trim() === "{TITLE}")
       q = { ...q, body: "{TITLE}\nKP {KP_START} to KP {KP_END}" };
     return q;

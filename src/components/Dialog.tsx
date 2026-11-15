@@ -7,7 +7,9 @@ import { create } from "zustand";
  */
 
 interface Request {
-  kind: "text" | "confirm" | "choice" | "codes";
+  kind: "text" | "confirm" | "choice" | "codes" | "pair";
+  /** Labels and starting values of a two-field question. */
+  pair?: { labels: [string, string]; values: [string, string] };
   choices?: string[];
   items?: { code: string; note: string }[];
   single?: boolean;
@@ -74,6 +76,27 @@ export function askChoice(
         choices,
         okLabel: "",
         resolve: (v) => resolve(typeof v === "string" ? Number(v) : null),
+      },
+    }),
+  );
+}
+
+/** Two text fields side by side (e.g. system type and system name); resolves with both, or null. */
+export function askPair(
+  title: string,
+  labels: [string, string],
+  values: [string, string],
+  okLabel = "OK",
+): Promise<[string, string] | null> {
+  return new Promise((resolve) =>
+    useDialog.setState({
+      req: {
+        kind: "pair",
+        title,
+        pair: { labels, values },
+        okLabel,
+        resolve: (v) =>
+          resolve(Array.isArray(v) ? [v[0] ?? "", v[1] ?? ""] : null),
       },
     }),
   );
@@ -185,15 +208,17 @@ function CodePicker({
 export function DialogHost() {
   const req = useDialog((s) => s.req);
   const [value, setValue] = useState("");
+  const [pairV, setPairV] = useState<[string, string]>(["", ""]);
   const inputRef = useRef<HTMLInputElement>(null);
   const okRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!req) return;
     setValue(req.initial ?? "");
+    if (req.pair) setPairV(req.pair.values);
     setTimeout(
       () =>
-        req.kind === "text"
+        req.kind === "text" || req.kind === "pair"
           ? inputRef.current?.select()
           : okRef.current?.focus(),
       0,
@@ -208,7 +233,8 @@ export function DialogHost() {
   const ok = () => {
     if (req.kind === "text") {
       if (value.trim()) close(value.trim());
-    } else if (req.kind === "choice") close("0");
+    } else if (req.kind === "pair") close([pairV[0].trim(), pairV[1].trim()]);
+    else if (req.kind === "choice") close("0");
     else close(true);
   };
 
@@ -243,6 +269,24 @@ export function DialogHost() {
             value={value}
             onChange={(e) => setValue(e.target.value)}
           />
+        )}
+        {req.kind === "pair" && (
+          <div className="dialog-pair">
+            {[0, 1].map((i) => (
+              <label key={i} className="field">
+                <span>{req.pair!.labels[i]}</span>
+                <input
+                  ref={i === 1 ? inputRef : undefined}
+                  value={pairV[i]}
+                  onChange={(e) =>
+                    setPairV((v) =>
+                      i ? [v[0], e.target.value] : [e.target.value, v[1]],
+                    )
+                  }
+                />
+              </label>
+            ))}
+          </div>
         )}
         {req.kind === "codes" && (
           <CodePicker

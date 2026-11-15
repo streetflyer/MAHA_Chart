@@ -259,22 +259,35 @@ export function alignmentSheetA1(): ChartTemplate {
   };
 }
 
-/** Equipment used on the survey (agung, 2026-11-15). */
+/** Equipment used on the survey (agung, 2026-11-15): system type, Tab, ": ", system name. */
 export const EQUIPMENT_BODY = [
-  "Primary DGPS Positioning System\t: {PRIMARY_DGPS}",
-  "Secondary DGPS Positioning System\t: {SECONDARY_DGPS}",
+  "Primary DGPS Positioning System\t: Veripos LD900 c/w APEX Correction",
+  "Secondary DGPS Positioning System\t: Veripos LD900 c/w APEX Correction",
   "Navigation Software\t: EIVA Navipac 4.14",
   "Vessel Gyro\t: Kongsberg MGC R2 Combined Heading and Motion Sensor",
   "Subsea Positioning System\t: USBL HiPAP 502 System",
   "ROV MRU/Gyro\t: iXblue Octans G4 Subsea FOG Gyrocompass & Motion Sensor",
-  "MBES\t: {MBES}",
+  "DVL\t: Teledyne RDI 1200kHz Navigator DVL",
+  "MBES\t: R2 Sonic 2024 Dual Head System",
   "Sound Velocity Profiler\t: Valeport MIDAS SVX2",
-  "Depth Sensor\t: Tritech Bathy c/w PA500 Altimeter",
+  "Depth Sensor\t: Valeport Bathy2 c/w VA500 Altimeter",
 ].join("\n");
 
-/** The equipment text earlier versions started with. */
-export const OLD_EQUIPMENT_BODY =
-  "Primary DGPS Positioning System\t: {PRIMARY_DGPS}\nSecondary DGPS Positioning System\t: {SECONDARY_DGPS}\nMultibeam Echosounder\t: {MBES}";
+/** Equipment texts earlier versions started with: untouched ones become the current list. */
+export const OLD_EQUIPMENT_BODIES = [
+  "Primary DGPS Positioning System\t: {PRIMARY_DGPS}\nSecondary DGPS Positioning System\t: {SECONDARY_DGPS}\nMultibeam Echosounder\t: {MBES}",
+  [
+    "Primary DGPS Positioning System\t: {PRIMARY_DGPS}",
+    "Secondary DGPS Positioning System\t: {SECONDARY_DGPS}",
+    "Navigation Software\t: EIVA Navipac 4.14",
+    "Vessel Gyro\t: Kongsberg MGC R2 Combined Heading and Motion Sensor",
+    "Subsea Positioning System\t: USBL HiPAP 502 System",
+    "ROV MRU/Gyro\t: iXblue Octans G4 Subsea FOG Gyrocompass & Motion Sensor",
+    "MBES\t: {MBES}",
+    "Sound Velocity Profiler\t: Valeport MIDAS SVX2",
+    "Depth Sensor\t: Tritech Bathy c/w PA500 Altimeter",
+  ].join("\n"),
+];
 
 /** The same sheet with the cathodic protection panel removed, as discussed for this job. */
 export function alignmentSheetA1NoCp(): ChartTemplate {

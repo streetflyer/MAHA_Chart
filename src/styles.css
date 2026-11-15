@@ -1966,3 +1966,37 @@ fieldset.plain {
   width: 64px;
   flex: 0 0 64px;
 }
+.dialog-pair {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.dialog-pair input {
+  width: 100%;
+}
+.pair-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 6px;
+}
+.pair-head,
+.pair-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto auto;
+  gap: 3px;
+  align-items: center;
+}
+.pair-head {
+  font-size: 12px;
+  color: var(--muted);
+}
+.pair-row input {
+  min-width: 0;
+}
+.pair-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
