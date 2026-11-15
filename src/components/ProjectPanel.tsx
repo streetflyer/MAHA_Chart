@@ -1,3 +1,4 @@
+import { showData, moveToData } from "./DataViewer";
 import { useEffect, useRef, useState } from "react";
 import { canRead, recallHandle, rememberHandle } from "../state/folderHandles";
 import { useEditor } from "../state/store";
@@ -15,6 +16,7 @@ import {
   type FolderNode,
   type FolderState,
   rootDrawings,
+  freshFile,
 } from "../state/project";
 import { askCodes, askConfirm } from "./Dialog";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
@@ -386,6 +388,21 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
       y: e.clientY,
       items: [
         {
+          label: "Show the data",
+          action: async () => {
+            const f = findNode(s.tree, path)?.files.find(
+              (x) => x.name === name,
+            );
+            void showData(f ? await freshFile(f).catch(() => f) : null, name);
+          },
+        },
+        {
+          label: "Move to location in chart",
+          disabled: s.active !== path,
+          action: () => onNotice(moveToData(name)),
+        },
+        "separator",
+        {
           label: "Remove from the project",
           action: () => void removeFile(path, name, false),
         },
@@ -644,11 +661,20 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
             {sel.files.map((f) => (
               <li
                 key={f.name}
-                title={`${f.name}: right-click to remove`}
+                className={`file-chip${recipes.some((r) => r.file === f.name) ? " charted" : ""}`}
+                title={`${f.name}: double-click to show the data; right-click for more`}
+                onDoubleClick={async () =>
+                  void showData(await freshFile(f).catch(() => f), f.name)
+                }
                 onContextMenu={(e) => fileMenu(e, sel.path, f.name)}
               >
-                {recipes.some((r) => r.file === f.name) ? "✓ " : ""}
-                {f.name}
+                <span className="chip-icon">{fileIcon(f.name)}</span>
+                <span className="chip-name">{f.name}</span>
+                {recipes.some((r) => r.file === f.name) && (
+                  <span className="chip-tick" title="On the chart">
+                    ✓
+                  </span>
+                )}
               </li>
             ))}
             {!sel.files.length &&
@@ -894,4 +920,14 @@ function TreeNode({
         ))}
     </div>
   );
+}
+
+/** A small sign for the kind of file. */
+function fileIcon(name: string): string {
+  const ext = name.toLowerCase().split(".").pop() ?? "";
+  if (["dwg", "dxf"].includes(ext)) return "📐";
+  if (["xlsx", "xls", "csv"].includes(ext)) return "📊";
+  if (["png", "jpg", "jpeg", "gif", "bmp", "svg"].includes(ext)) return "🖼";
+  if (["dig", "rlx", "rlxp"].includes(ext)) return "〰";
+  return "📄";
 }

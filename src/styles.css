@@ -1455,6 +1455,80 @@ table.preview thead th.mapped {
   white-space: nowrap;
   padding: 1px 0;
 }
+/* Files of the folder as chips: easy to see, double-click to show the data, right-click for more. */
+.pf-files:has(.file-chip) {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 2px;
+}
+.pf-files li.file-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 9px 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--chrome-2);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  cursor: default;
+}
+.pf-files li.file-chip:hover {
+  border-color: var(--accent);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+.pf-files li.file-chip.charted {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.file-chip .chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-chip .chip-tick {
+  color: var(--accent);
+  font-weight: 700;
+}
+.data-viewer {
+  width: min(1100px, 96vw);
+  max-height: 90vh;
+}
+.dv-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.dv-tabs button.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.dv-table {
+  overflow: auto;
+  max-height: 65vh;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.dv-table table {
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.dv-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+.dv-table tr.head td {
+  position: sticky;
+  top: 0;
+  background: var(--chrome-2);
+  font-weight: 600;
+}
+.dv-table td.dv-n {
+  color: var(--muted);
+  text-align: right;
+}
 
 /* Files in the import window can be dragged to another row. */
 .row-info li.movable {

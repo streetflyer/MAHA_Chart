@@ -1,3 +1,4 @@
+import { DataViewerHost } from "./components/DataViewer";
 import { DialogHost } from "./components/Dialog";
 import { Editor } from "./components/Editor";
 import { StartPage } from "./components/StartPage";
@@ -11,6 +12,7 @@ export function App() {
     <>
       {hasTemplate ? <Editor onExit={close} /> : <StartPage onOpen={open} />}
       <DialogHost />
+      <DataViewerHost />
     </>
   );
 }
