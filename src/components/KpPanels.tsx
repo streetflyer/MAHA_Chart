@@ -141,6 +141,46 @@ export function monotonicKp(
   };
 }
 
+/**
+ * KPs of the route that the plan view actually shows: the line inside the plan frame
+ * (top and bottom too, not just left and right), on the route itself. Profiles, CP and
+ * events are cut to this so nothing is drawn where the plan view has no line.
+ */
+export function planKpRange(
+  t: ChartTemplate,
+  route: Route | null,
+  sheetIndex: number,
+  toX: (kp: number) => number,
+): [number, number] | null {
+  const plan = planPanel(t);
+  if (!plan || !route) return null;
+  const g = chartGeometry(t, route, sheetIndex);
+  if (!g) return null;
+  const project = gridToPlan(g, plan);
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+  const step = Math.max(0.25, route.length / 8000);
+  const tol = 0.01;
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let d = 0; d <= route.length + step / 2; d += step) {
+    const dd = Math.min(d, route.length);
+    const kp = k0 + dd;
+    const x = toX(kp);
+    if (!(x >= plan.x - tol && x <= plan.x + plan.w + tol)) continue;
+    const [px, py] = project(...pointAt(route, dd));
+    if (
+      px >= plan.x - tol &&
+      px <= plan.x + plan.w + tol &&
+      py >= plan.y - tol &&
+      py <= plan.y + plan.h + tol
+    ) {
+      lo = Math.min(lo, kp);
+      hi = Math.max(hi, kp);
+    }
+  }
+  return lo <= hi ? [lo, hi] : null;
+}
+
 export function useKpToX(t: ChartTemplate, sheetIndex: number) {
   const route = useSurvey((s) => s.route);
   return useMemo(() => kpToX(t, route, sheetIndex), [t, route, sheetIndex]);
@@ -168,6 +208,17 @@ function kpSpan(
   return lo <= hi ? [lo - 2 * step, hi + 2 * step] : null;
 }
 
+/** The panel's KP span cut to what the plan view shows. */
+function cutToPlan(
+  span: [number, number] | null,
+  plan: [number, number] | null,
+): [number, number] | null {
+  if (!span || !plan) return span;
+  const a = Math.max(span[0], plan[0]);
+  const b = Math.min(span[1], plan[1]);
+  return b > a ? [a, b] : null;
+}
+
 /** Data drawn in the longitudinal, transverse, events and CP panels for the current chart. */
 export function KpPanelData({
   p,
@@ -186,7 +237,14 @@ export function KpPanelData({
   const clipId = `kp-clip-${p.id}`;
   const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
   const len = route?.length ?? t.scale.routeLength;
-  const span = kpSpan(toX, x0, p.x + p.w, len, k0);
+  const shown = planKpRange(t, route, sheetIndex, toX);
+  const span = cutToPlan(kpSpan(toX, x0, p.x + p.w, len, k0), shown);
+  // The data is clipped to the x of the plan view's stretch too, so a reading just past it does not draw a tail.
+  const dx0 = shown ? Math.max(x0, Math.min(toX(shown[0]), p.x + p.w)) : x0;
+  const dx1 = shown
+    ? Math.min(p.x + p.w, Math.max(toX(shown[1]), x0))
+    : p.x + p.w;
+  const dataClip = `kp-dclip-${p.id}`;
   const mine = datasets.filter((d) => d.visible && targetPanel(d) === p.type);
   const ticks = kpTicks(t, toX, x0, p.x + p.w, k0, len);
   const lines = route || mine.length > 0;
@@ -195,6 +253,9 @@ export function KpPanelData({
       <defs>
         <clipPath id={clipId}>
           <rect x={x0} y={p.y} width={p.x + p.w - x0} height={p.h} />
+        </clipPath>
+        <clipPath id={dataClip}>
+          <rect x={dx0} y={p.y} width={Math.max(0, dx1 - dx0)} height={p.h} />
         </clipPath>
       </defs>
       <g clipPath={`url(#${clipId})`}>
@@ -211,45 +272,47 @@ export function KpPanelData({
               y2={p.y + p.h}
             />
           ))}
-        {span &&
-          mine.map((d) => {
-            if (d.kind === "long")
-              return (
-                <LongProfile
-                  key={d.id}
-                  d={d}
-                  p={p}
-                  t={t}
-                  toX={toX}
-                  span={span}
-                />
-              );
-            if (d.kind === "cp")
-              return <Cp key={d.id} d={d} p={p} toX={toX} span={span} />;
-            if (d.kind === "trans")
-              return (
-                <TransProfiles
-                  key={d.id}
-                  d={d}
-                  p={p}
-                  t={t}
-                  toX={toX}
-                  span={span}
-                />
-              );
-            return null;
-          })}
-        {p.type === "events" && span && (
-          <EventsPanel
-            p={p}
-            x0={x0}
-            toX={toX}
-            span={span}
-            sets={mine.filter((d): d is EventsSet => d.kind === "events")}
-            ticks={ticks}
-            routeEnd={k0 + len}
-          />
-        )}
+        <g clipPath={`url(#${dataClip})`}>
+          {span &&
+            mine.map((d) => {
+              if (d.kind === "long")
+                return (
+                  <LongProfile
+                    key={d.id}
+                    d={d}
+                    p={p}
+                    t={t}
+                    toX={toX}
+                    span={span}
+                  />
+                );
+              if (d.kind === "cp")
+                return <Cp key={d.id} d={d} p={p} toX={toX} span={span} />;
+              if (d.kind === "trans")
+                return (
+                  <TransProfiles
+                    key={d.id}
+                    d={d}
+                    p={p}
+                    t={t}
+                    toX={toX}
+                    span={span}
+                  />
+                );
+              return null;
+            })}
+          {p.type === "events" && span && (
+            <EventsPanel
+              p={p}
+              x0={x0}
+              toX={toX}
+              span={span}
+              sets={mine.filter((d): d is EventsSet => d.kind === "events")}
+              ticks={ticks}
+              routeEnd={k0 + len}
+            />
+          )}
+        </g>
         {lines &&
           (p.type === "longProfile" ||
             p.type === "transProfile" ||
