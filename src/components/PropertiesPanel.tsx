@@ -636,6 +636,73 @@ function PanelProps({ p }: { p: Panel }) {
   );
 }
 
+type UserTime = NonNullable<EventRow["userTimes"]>[number];
+
+/** User defined timing lines of a video row: start / end KP (km) and the text on each. */
+function UserTimes({
+  list,
+  onChange,
+}: {
+  list: UserTime[];
+  onChange(l: UserTime[]): void;
+}) {
+  const set = (id: string, c: Partial<UserTime>) =>
+    onChange(list.map((x) => (x.id === id ? { ...x, ...c } : x)));
+  const km = (m: number) => Math.round(m) / 1000;
+  return (
+    <div className="user-times">
+      {list.map((u, i) => (
+        <div key={u.id} className="user-time">
+          <label className="field">
+            <span>Start KP</span>
+            <DraftNumber
+              step={0.1}
+              value={km(u.k0)}
+              onCommit={(v) => set(u.id, { k0: v * 1000 })}
+            />
+          </label>
+          <label className="field">
+            <span>End KP</span>
+            <DraftNumber
+              step={0.1}
+              value={km(u.k1)}
+              onCommit={(v) => set(u.id, { k1: v * 1000 })}
+            />
+          </label>
+          <button
+            type="button"
+            className="icon"
+            title="Delete this line"
+            onClick={() => onChange(list.filter((x) => x.id !== u.id))}
+          >
+            ×
+          </button>
+          <input
+            key={`${u.id}:${u.text}`}
+            placeholder={`Text for line ${i + 1}, e.g. 12/06/2025 01:19 AM to 01:32 AM`}
+            defaultValue={u.text}
+            onBlur={(e) =>
+              e.target.value !== u.text && set(u.id, { text: e.target.value })
+            }
+            onKeyDown={(e) =>
+              e.key === "Enter" && (e.target as HTMLInputElement).blur()
+            }
+          />
+        </div>
+      ))}
+      <button
+        type="button"
+        onClick={() => {
+          const k0 = list.length ? list[list.length - 1].k1 : 0;
+          onChange([...list, { id: newId("ut"), k0, k1: k0 + 500, text: "" }]);
+        }}
+      >
+        + Add line
+      </button>
+    </div>
+  );
+}
+
 /** Font, size, colour and style of a row's title and of its text along the row: for every row (default) or just this one. */
 function RowTextLook({ p, r }: { p: Panel; r: EventRow }) {
   const [scope, setScope] = useState<"all" | "row">(
@@ -803,7 +870,7 @@ function RowsEditor({ p }: { p: Panel }) {
                     title="Survey sessions read from the time stamps of the events file, or the Video timing list"
                     onChange={(e) =>
                       patch(r.id, {
-                        videoSource: e.target.value as "events" | "timing",
+                        videoSource: e.target.value as EventRow["videoSource"],
                       })
                     }
                   >
@@ -811,7 +878,14 @@ function RowsEditor({ p }: { p: Panel }) {
                       Sessions from the event times
                     </option>
                     <option value="timing">Video timing list</option>
+                    <option value="user">User defined timing</option>
                   </select>
+                )}
+                {isVideoRow(r) && r.videoSource === "user" && (
+                  <UserTimes
+                    list={r.userTimes ?? []}
+                    onChange={(userTimes) => patch(r.id, { userTimes })}
+                  />
                 )}
                 {isVideoRow(r) && (r.videoSource ?? "events") === "events" && (
                   <label
@@ -951,12 +1025,14 @@ function RowsEditor({ p }: { p: Panel }) {
                   </button>
                 )}
                 {isVideoRow(r) ? (
-                  <VideoTextEditor
-                    key={`${r.id}:${sheetIndex}:${r.videoText ?? ""}:${r.videoTexts?.[sheetIndex] ?? ""}`}
-                    r={r}
-                    sheetIndex={sheetIndex}
-                    onChange={(c) => patch(r.id, c)}
-                  />
+                  r.videoSource === "user" ? null : (
+                    <VideoTextEditor
+                      key={`${r.id}:${sheetIndex}:${r.videoText ?? ""}:${r.videoTexts?.[sheetIndex] ?? ""}`}
+                      r={r}
+                      sheetIndex={sheetIndex}
+                      onChange={(c) => patch(r.id, c)}
+                    />
+                  )
                 ) : r.textOnly ? (
                   <textarea
                     key={`${r.id}:t:${r.text ?? ""}`}

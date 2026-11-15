@@ -124,7 +124,9 @@ export interface EventRow {
   /** Typed over it for single charts (chart number from 0). */
   videoTexts?: Record<number, string>;
   /** Where a video row takes its times from: the events' time stamps (survey sessions along KP) or the Video timing list. Unset: the events when they carry times. */
-  videoSource?: "events" | "timing";
+  videoSource?: "events" | "timing" | "user";
+  /** User defined timing lines: KP span (metres) and the text printed on it. */
+  userTimes?: { id: string; k0: number; k1: number; text: string }[];
   /** A pause in the event log longer than this (minutes) starts a new session. */
   sessionGap?: number;
   /** KP span the user set for a survey session (metres), keyed by the session's start time. */

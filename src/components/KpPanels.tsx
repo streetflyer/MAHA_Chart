@@ -1009,6 +1009,36 @@ function EventsPanel({
     });
     // A video row prints "start to end" of its product, as a stripe along the row.
     let r = row;
+    // User defined timing: the lines typed in the properties panel, each with its own text.
+    if (
+      isVideoRow(row) &&
+      !isKpRow(row) &&
+      row.video !== false &&
+      row.videoSource === "user"
+    ) {
+      const font = rf(split[0]?.d.font ?? DEFAULT_FONT);
+      (row.userTimes ?? []).forEach((u, j) => {
+        if (!(u.k1 > u.k0) || u.k1 < span[0] || u.k0 > span[1]) return;
+        out.push(
+          <SessionSpan
+            key={`vu${row.id}-${u.id}`}
+            s={{ t0: 0, t1: 0, k0: u.k0, k1: u.k1 }}
+            text={u.text}
+            y={y0 + rh / 2}
+            rh={rh}
+            toX={toX}
+            x0={x0}
+            x1={x1}
+            font={font}
+            fill={row.stripeColor ?? "#d9d9d9"}
+            editKey={sessionKey(p.id, row.id, j, () =>
+              editUserTime(p, row.id, u.id),
+            )}
+          />,
+        );
+      });
+      return;
+    }
     // Survey sessions read from the events' time stamps: one span per session along KP.
     if (
       isVideoRow(row) &&
@@ -1433,6 +1463,35 @@ export function editSessionAt(key: string): boolean {
   return !!f;
 }
 
+/** Ask for a user defined timing line's start and end KP (km). */
+async function editUserTime(p: Panel, rowId: string, id: string) {
+  const ed = useEditor.getState();
+  const panel = ed.template?.panels.find((q) => q.id === p.id);
+  const row = panel?.rows?.find((r) => r.id === rowId);
+  const u = row?.userTimes?.find((x) => x.id === id);
+  if (!panel?.rows || !row || !u) return;
+  const v = await askText(
+    `"${u.text}": start and end KP (km), e.g. 0.000 to 2.846.`,
+    `${(u.k0 / 1000).toFixed(3)} to ${(u.k1 / 1000).toFixed(3)}`,
+  );
+  const nums = (v?.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+  if (nums.length < 2 || !(nums[1] > nums[0])) return;
+  ed.updatePanel(p.id, {
+    rows: panel.rows.map((r) =>
+      r.id === rowId
+        ? {
+            ...r,
+            userTimes: r.userTimes?.map((x) =>
+              x.id === id
+                ? { ...x, k0: nums[0] * 1000, k1: nums[1] * 1000 }
+                : x,
+            ),
+          }
+        : r,
+    ),
+  });
+}
+
 /** Ask for a session's start and end KP (km); the sessions either side follow so the line stays joined. */
 async function editSession(
   p: Panel,
@@ -1490,8 +1549,10 @@ function SessionSpan({
   font,
   fill,
   editKey,
+  text: own,
 }: {
   editKey: string;
+  text?: string;
   s: SurveySession;
   y: number;
   rh: number;
@@ -1508,9 +1569,9 @@ function SessionSpan({
   if (cb <= ca) return null;
   const tick = Math.min(1.6, rh * 0.3);
   const ah = Math.min(1.4, (b - a) / 4);
-  const text = sessionText(s);
-  let cap = Math.min(font.size, 1.4, rh * 0.35);
-  const w = () => measureText(text, cap, false, font.family);
+  const text = own ?? sessionText(s);
+  let cap = Math.min(font.size, rh * 0.6);
+  const w = () => measureText(text, cap, !!font.bold, font.family);
   while (cap > 0.7 && w() + 2 > cb - ca) cap -= 0.1;
   const tw = w() + 1.6;
   const fs = fontSize(cap);
@@ -1541,7 +1602,7 @@ function SessionSpan({
           fill="currentColor"
         />
       )}
-      {tw < cb - ca && (
+      {text && tw < cb - ca && (
         <>
           <rect
             x={mid - tw / 2}
