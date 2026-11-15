@@ -7,6 +7,38 @@ export function currentRevision(t: ChartTemplate): string {
   return tb?.revisions?.find((r) => r.rev.trim())?.rev ?? "";
 }
 
+/** Typing in the Rev box renames the newest revision of the history (or starts one). */
+export function setCurrentRevision(
+  t: ChartTemplate,
+  rev: string,
+): ChartTemplate {
+  return {
+    ...t,
+    panels: t.panels.map((p) => {
+      if (p.type !== "titleBlock") return p;
+      const rows = p.revisions ?? [];
+      const i = rows.findIndex((r) => r.rev.trim());
+      const j =
+        i >= 0 ? i : rows.findIndex((r) => !(r.rev || r.date || r.desc));
+      if (j < 0) return p;
+      const out = [...rows];
+      const row = { ...out[j], rev };
+      if (i >= 0) out[j] = row;
+      else {
+        out.splice(j, 1);
+        out.unshift(row);
+      }
+      return { ...p, revisions: out };
+    }),
+  };
+}
+
+/** The Survey Date box: typed by the user, else the days of the video timing list. */
+export function surveyDateOf(t: ChartTemplate, auto: string): string {
+  if (t.fields.SURVEY_DATE_MANUAL === "1") return t.fields.SURVEY_DATE ?? "";
+  return auto || (t.fields.SURVEY_DATE ?? "");
+}
+
 /**
  * The drawing number of a sheet. With a job number and a product name set it is built as
  * JOB-PRODUCT-CCC.SSS (chart number typed by the user, then the sheet's own sequence);

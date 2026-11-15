@@ -1,3 +1,12 @@
+import { useVideo } from "../state/video";
+import { useProject } from "../state/project";
+import { autoSurveyDate } from "../model/video";
+import {
+  currentRevision,
+  setCurrentRevision,
+  surveyDateOf,
+  templateTokens,
+} from "../model/tokens";
 import { useEffect, useRef, useState } from "react";
 import { REVIEW_OPTIONS } from "../model/presets";
 import type {
@@ -115,10 +124,20 @@ function targetFor(e: InlineEdit, t: ChartTemplate): Target | null {
             h: Math.max(tb!.u * 2.4, 6),
           }
         : { x: p.x, y: p.y, w: p.w, h: 6 };
+    const sheetTokens = templateTokens(t, useEditor.getState().sheetIndex);
+    const auto = autoSurveyDate(useVideo.getState().rows, {
+      drawingNo: sheetTokens.CHART_NO ?? "",
+      folder: useProject.getState().active ?? "",
+    });
     return {
       rect,
       value:
-        t.fields[key] ?? (key === "PLOT_SIZE" ? `ISO ${t.paper.size}` : ""),
+        key === "REV"
+          ? currentRevision(t)
+          : key === "SURVEY_DATE"
+            ? surveyDateOf(t, auto)
+            : (t.fields[key] ??
+              (key === "PLOT_SIZE" ? `ISO ${t.paper.size}` : "")),
       multiline: false,
       cap: 1.8,
     };
@@ -222,6 +241,18 @@ export function InlineEditor({
       else if (e.kind === "panelTitle") s.updatePanel(e.id, { title: v });
       else if (e.kind === "panelBody") s.updatePanel(e.id, { body: v });
       else if (e.kind === "panelBody2") s.updatePanel(e.id, { body2: v });
+      else if (e.kind === "field" && e.col === "REV")
+        s.commit((t) => setCurrentRevision(t, v.trim()));
+      else if (e.kind === "field" && e.col === "SURVEY_DATE")
+        // Clearing the box goes back to the dates of the video timing list.
+        s.commit((t) => ({
+          ...t,
+          fields: {
+            ...t.fields,
+            SURVEY_DATE: v,
+            SURVEY_DATE_MANUAL: v.trim() ? "1" : "",
+          },
+        }));
       else if (e.kind === "field") s.setField(e.col!, v);
       else if (e.kind === "row") {
         const p = s.template!.panels.find((x) => x.id === e.id)!;

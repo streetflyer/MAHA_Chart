@@ -5,6 +5,7 @@ import { DEFAULT_MATCHLINES } from "../model/matchlines";
 import {
   SCALE_BAR_STYLES,
   scaleBarStyleOf,
+  type Callout,
   type MatchlineStyle,
   type ScaleBarStyle,
 } from "../model/types";
@@ -71,6 +72,7 @@ import { keyplanStyle } from "./Keyplan";
 import { planStyle } from "./PlanView";
 import { DrawingEditPanel, DrawingLook } from "./DrawingProps";
 import { BarShape } from "./scaleBars";
+import { addCallout, patchCallout, withCallouts } from "./calloutEdit";
 
 /** Text/number box that commits on Enter or blur, so typing doesn't create one undo step per key. */
 function Field({
@@ -605,6 +607,8 @@ function PanelProps({ p }: { p: Panel }) {
       {p.type === "plan" && <DrawingEditPanel panelId={p.id} when="idle" />}
       <DataList panelType={p.type} />
       {p.type === "keyplan" && <KeyplanEditor p={p} />}
+      {p.type === "plan" && <DrawingWeights />}
+      {p.type === "plan" && <CalloutEditor p={p} />}
       {p.type === "plan" && <PlanStyleEditor p={p} />}
       {p.type === "titleBlock" && (
         <p className="muted">
@@ -1954,6 +1958,225 @@ function MatchlineControls({
           </div>
         </>
       )}
+    </>
+  );
+}
+
+/** Text boxes with an arrow in the plan view. */
+function CalloutEditor({ p }: { p: Panel }) {
+  const list = planStyle(p).callouts ?? [];
+  const [note, setNote] = useState("");
+  return (
+    <>
+      <h4>Text boxes</h4>
+      <button
+        type="button"
+        onClick={() =>
+          setNote(
+            addCallout(p.id)
+              ? ""
+              : "Load the route or a drawing first: a text box points at map coordinates.",
+          )
+        }
+      >
+        Add text box
+      </button>
+      {note && <p className="hint">{note}</p>}
+      {list.map((c, i) => (
+        <CalloutFields key={c.id} panelId={p.id} c={c} n={i + 1} />
+      ))}
+      {list.length > 0 && (
+        <p className="hint">
+          Drag the box to move it with its arrow; Shift+drag moves the box only
+          (the arrow stays on its point). Drag the arrow tip to point elsewhere,
+          the corner to resize. Right-click a box for more.
+        </p>
+      )}
+    </>
+  );
+}
+
+function CalloutFields({
+  panelId,
+  c,
+  n,
+}: {
+  panelId: string;
+  c: Callout;
+  n: number;
+}) {
+  const [open, setOpen] = useState(false);
+  const set = (patch: Partial<Callout>) => patchCallout(panelId, c.id, patch);
+  return (
+    <div className="callout-fields">
+      <div className="style-row">
+        <button
+          type="button"
+          className="link"
+          onClick={() => setOpen((o) => !o)}
+        >
+          {open ? "▾" : "▸"} {n}. {c.title.split("\n").join(" ")}
+        </button>
+        <button
+          type="button"
+          className="link"
+          title="Delete this text box"
+          onClick={() =>
+            useEditor
+              .getState()
+              .commit((t) =>
+                withCallouts(t, panelId, (cs) =>
+                  cs.filter((x) => x.id !== c.id),
+                ),
+              )
+          }
+        >
+          ×
+        </button>
+      </div>
+      {open && (
+        <>
+          <label className="field">
+            <span>Title</span>
+            <textarea
+              rows={2}
+              value={c.title}
+              onChange={(e) => set({ title: e.target.value })}
+            />
+          </label>
+          <div className="row2">
+            <Field
+              label="Easting"
+              type="number"
+              suffix="m"
+              value={c.e}
+              onCommit={(v) => Number.isFinite(num(v)) && set({ e: num(v) })}
+            />
+            <Field
+              label="Northing"
+              type="number"
+              suffix="m"
+              value={c.n}
+              onCommit={(v) => Number.isFinite(num(v)) && set({ n: num(v) })}
+            />
+          </div>
+          <div className="row2">
+            <Field
+              label="Heading"
+              value={c.heading}
+              onCommit={(v) => set({ heading: v })}
+            />
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={c.showEN}
+                onChange={(e) => set({ showEN: e.target.checked })}
+              />{" "}
+              Show easting / northing
+            </label>
+          </div>
+          <FontPick
+            value={c.font}
+            sheetFont={useEditor.getState().template?.fontFamily}
+            onChange={(f) => set({ font: f })}
+          />
+          <div className="row2">
+            <Field
+              label="Text height"
+              type="number"
+              step={0.1}
+              suffix="mm"
+              value={c.size}
+              onCommit={(v) => num(v) > 0 && set({ size: num(v) })}
+            />
+            <Field
+              label="Box width"
+              type="number"
+              suffix="mm"
+              value={c.w}
+              onCommit={(v) => num(v) > 5 && set({ w: num(v) })}
+            />
+          </div>
+          <div className="row2">
+            <Field
+              label="Box height"
+              type="number"
+              suffix="mm"
+              value={c.h}
+              onCommit={(v) => num(v) > 3 && set({ h: num(v) })}
+            />
+          </div>
+          <div className="colour-grid">
+            {(
+              [
+                ["Title text", "titleColor"],
+                ["Title background", "titleFill"],
+                ["Text", "textColor"],
+                ["Background", "fill"],
+                ["Border", "border"],
+                ["Arrow", "arrow"],
+              ] as const
+            ).map(([label, k]) => (
+              <label key={k} className="field">
+                <span>{label}</span>
+                <ColourBox value={c[k]} onChange={(v) => set({ [k]: v })} />
+              </label>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+const PEN_WIDTHS = [0.03, 0.05, 0.09, 0.13, 0.18, 0.25, 0.35, 0.5];
+
+/** Line weight of each drawing (DWG / DXF) in the plan view: thin pens keep small details sharp, as in CAD. */
+function DrawingWeights() {
+  const all = useSurvey((x) => x.datasets);
+  const sets = all.filter(
+    (d): d is Extract<Dataset, { kind: "linework" }> =>
+      d.kind === "linework" && (d.target === "plan" || d.target === "siteplan"),
+  );
+  if (!sets.length) return null;
+  const sv = useSurvey.getState();
+  return (
+    <>
+      <h4>Drawing line weight</h4>
+      {sets.map((d) => (
+        <div key={d.id} className="style-row" title={d.name}>
+          <label className="field">
+            <span className="ellipsis">{d.name}</span>
+            <span className="with-suffix">
+              <select
+                value={PEN_WIDTHS.includes(d.width) ? String(d.width) : ""}
+                onChange={(e) =>
+                  e.target.value &&
+                  sv.updateDataset(d.id, { width: Number(e.target.value) })
+                }
+              >
+                {PEN_WIDTHS.map((w) => (
+                  <option key={w} value={w}>
+                    {w === 0.03 ? "Hairline (0.03)" : w.toFixed(2)}
+                  </option>
+                ))}
+                {!PEN_WIDTHS.includes(d.width) && <option value="">Own</option>}
+              </select>
+              <DraftNumber
+                min={0.01}
+                step={0.01}
+                value={d.width}
+                onCommit={(v) => v > 0 && sv.updateDataset(d.id, { width: v })}
+              />
+              <span className="suffix">mm</span>
+            </span>
+          </label>
+        </div>
+      ))}
+      <p className="hint">
+        Pen width on paper for every line of the drawing. 0.03 to 0.09 mm keeps
+        small details (structures, valves) as fine as in CAD.
+      </p>
     </>
   );
 }

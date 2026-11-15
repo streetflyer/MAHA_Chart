@@ -14,11 +14,16 @@ import type {
   ImageItem,
   Panel,
   Selection,
+  Callout,
   TextItem,
 } from "../model/types";
 import { useEditor } from "../state/store";
 import { fitInto, readImageFile } from "./imageImport";
 import { InlineEditor } from "./InlineEditor";
+import { useVideo } from "../state/video";
+import { useProject } from "../state/project";
+import { autoSurveyDate } from "../model/video";
+import { surveyDateOf } from "../model/tokens";
 import {
   chartGeometry,
   distanceBeforeStart,
@@ -35,6 +40,13 @@ import { planStyle } from "./PlanView";
 import { useSurvey } from "../state/surveyData";
 import { useImport } from "./ImportDialog";
 import { editPlanItemText, matchLabelOf } from "./planItems";
+import {
+  calloutMenu,
+  calloutsOf,
+  splitCallout,
+  withCallouts,
+} from "./calloutEdit";
+import { planProjection } from "./Callouts";
 import {
   eventLabelOf,
   patchEventLabel,
@@ -74,6 +86,7 @@ export interface ContextTarget {
     | "drawing"
     | "cp"
     | "planitem"
+    | "callout"
     | "evlabel";
   id?: string;
   rowId?: string;
@@ -132,6 +145,14 @@ type Drag =
       hit?: Selection;
     }
   | { type: "north"; panelId: string }
+  | {
+      type: "callout";
+      id: string;
+      part: string;
+      start: Pt;
+      c0: Callout;
+      unproject: (x: number, y: number) => [number, number];
+    }
   | {
       type: "frame";
       index: number;
@@ -209,10 +230,19 @@ export function SheetView({
   const spaceDown = useRef(false);
   const renameTimer = useRef<number | null>(null);
 
-  const tokens = useMemo(
-    () => templateTokens(template, sheetIndex),
-    [template, sheetIndex],
-  );
+  const videoRows = useVideo((v) => v.rows);
+  const activeFolder = useProject((v) => v.active ?? "");
+  const tokens = useMemo(() => {
+    const tk = templateTokens(template, sheetIndex);
+    tk.SURVEY_DATE = surveyDateOf(
+      template,
+      autoSurveyDate(videoRows, {
+        drawingNo: tk.CHART_NO ?? "",
+        folder: activeFolder,
+      }),
+    );
+    return tk;
+  }, [template, sheetIndex, videoRows, activeFolder]);
   const images = template.images ?? [];
   const selectedImageIds = useMemo(
     () => new Set(selection.filter((s) => s.kind === "image").map((s) => s.id)),
@@ -321,7 +351,7 @@ export function SheetView({
   /** The matchline label or north arrow under the pointer, even with the edit overlay on top of it. */
   function planItemUnder(e: { clientX: number; clientY: number }) {
     for (const x of document.elementsFromPoint(e.clientX, e.clientY)) {
-      const hit = x.closest("[data-mlabel],[data-north]");
+      const hit = x.closest("[data-mlabel],[data-north],[data-callout]");
       if (hit) return hit;
     }
     return null;
@@ -391,6 +421,24 @@ export function SheetView({
     const pit = planItemUnder(e);
     if (pit) {
       svgRef.current!.setPointerCapture(e.pointerId);
+      const co = pit.getAttribute("data-callout");
+      if (co) {
+        const { panelId, cid, part } = splitCallout(co);
+        const c0 = calloutsOf(template, panelId).find((x) => x.id === cid);
+        const pj = planProjection.get(panelId);
+        if (c0 && pj) {
+          store().beginGesture();
+          return setDrag({
+            type: "callout",
+            id: `${panelId}|${cid}`,
+            part,
+            start: at,
+            c0,
+            unproject: pj.unproject,
+          });
+        }
+        return;
+      }
       const ml = pit.getAttribute("data-mlabel");
       if (ml) {
         const cur = matchLabelOf(ml);
@@ -897,6 +945,38 @@ export function SheetView({
       });
       return;
     }
+    if (drag.type === "callout") {
+      const { panelId, cid } = splitCallout(drag.id);
+      const ddx = at.x - drag.start.x;
+      const ddy = at.y - drag.start.y;
+      const c = drag.c0;
+      const r1 = (v: number) => Math.round(v * 10) / 10;
+      let patch: Partial<Callout>;
+      if (drag.part === "size")
+        patch = {
+          w: Math.max(10, r1(c.w + ddx)),
+          h: Math.max(4, r1(c.h + ddy)),
+        };
+      else if (drag.part === "box" && e.shiftKey)
+        // Shift: the arrow stays on its point, the leader follows the box.
+        patch = { dx: r1(c.dx + ddx), dy: r1(c.dy + ddy) };
+      else {
+        // The point moves with the cursor (whole callout, or the arrow alone).
+        const [e0, n0] = drag.unproject(0, 0);
+        const [e1, n1] = drag.unproject(ddx, ddy);
+        patch = { e: r1(c.e + e1 - e0), n: r1(c.n + n1 - n0) };
+        if (drag.part === "arrow") {
+          patch.dx = r1(c.dx - ddx);
+          patch.dy = r1(c.dy - ddy);
+        }
+      }
+      store().updateGesture((t) =>
+        withCallouts(t, panelId, (cs) =>
+          cs.map((x) => (x.id === cid ? { ...x, ...patch } : x)),
+        ),
+      );
+      return;
+    }
     if (drag.type === "north") {
       store().updateGesture((t) => ({
         ...t,
@@ -1094,7 +1174,8 @@ export function SheetView({
       drag.type === "frame" ||
       drag.type === "frameFree" ||
       drag.type === "rotate" ||
-      drag.type === "north"
+      drag.type === "north" ||
+      drag.type === "callout"
     ) {
       store().endGesture();
     } else if (drag.type === "marquee") {
@@ -1138,6 +1219,12 @@ export function SheetView({
       (e.target as Element);
     const itemEl = el.closest("[data-item]");
     const pDbl = planItemUnder(e);
+    const coDbl = pDbl?.getAttribute("data-callout");
+    if (coDbl) {
+      const title = calloutMenu(coDbl)[0];
+      if (title && title !== "separator" && "action" in title) title.action?.();
+      return;
+    }
     if (pDbl) {
       const ml = pDbl.getAttribute("data-mlabel");
       return void editPlanItemText(
@@ -1292,6 +1379,14 @@ export function SheetView({
         id: evEl.getAttribute("data-evlabel")!,
       });
     const planEl = planItemUnder(e);
+    const coEl = planEl?.getAttribute("data-callout");
+    if (coEl) {
+      const { panelId, cid } = splitCallout(coEl);
+      return onContextMenu(e.clientX, e.clientY, at, {
+        kind: "callout",
+        id: `${panelId}|${cid}`,
+      });
+    }
     if (planEl) {
       const ml = planEl.getAttribute("data-mlabel");
       const id = ml ?? `${planEl.getAttribute("data-north")}|north`;

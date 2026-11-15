@@ -221,3 +221,40 @@ export function autoVideoText(
     (keys.length === 1 ? keys[0] : null);
   return key ? periodsText(videoPeriods(rows, key, opts.joinHours)) : "";
 }
+
+/** Every calendar day the product's video lines cover, as dd/mm/yyyy. */
+export function surveyDays(rows: VideoRow[], key: string): string[] {
+  const days = new Set<string>();
+  for (const r of rows) {
+    if (productKey(r.product) !== key || !r.start) continue;
+    const a = new Date(r.start.slice(0, 10) + "T00:00:00");
+    const b = new Date((r.end || r.start).slice(0, 10) + "T00:00:00");
+    if (isNaN(a.getTime())) continue;
+    for (
+      let d = a, n = 0;
+      d <= b && n < 400;
+      d = new Date(d.getTime() + 86400000), n++
+    )
+      days.add(`${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}`);
+  }
+  return [...days]
+    .sort()
+    .map((d) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`);
+}
+
+/** "14/03/2025, 18/03/2025, And 19/03/2025": the survey days of the product, as the charts print them. */
+export function autoSurveyDate(
+  rows: VideoRow[],
+  opts: { drawingNo: string; folder: string },
+): string {
+  const keys = productKeys(rows);
+  const key =
+    productIn(rows, opts.drawingNo) ||
+    productIn(rows, opts.folder) ||
+    (keys.length === 1 ? keys[0] : null);
+  if (!key) return "";
+  const d = surveyDays(rows, key);
+  if (d.length <= 1) return d[0] ?? "";
+  if (d.length === 2) return `${d[0]} And ${d[1]}`;
+  return `${d.slice(0, -1).join(", ")}, And ${d[d.length - 1]}`;
+}

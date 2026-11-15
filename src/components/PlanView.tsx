@@ -28,6 +28,7 @@ export { DEFAULT_PLAN, planStyle };
 import { niceGrid } from "./Keyplan";
 import { linesPath, routePath } from "./linework";
 import { LineworkLayer } from "./LineworkLayer";
+import { Callouts, inverseOf, planProjection } from "./Callouts";
 import { lineworkFor } from "../model/datasets";
 import { fontSize, measureText } from "./svgText";
 
@@ -125,6 +126,7 @@ export function PlanView({
 
   if (!geo || !view) return null;
   const project = view.project;
+  planProjection.set(p.id, { project, unproject: inverseOf(project) });
   // The runline's own colour and width, set on import or in its data list entry.
   const routeColor = before?.color ?? st.routeColor;
   const routeWidth = before?.kind === "route" ? before.width : st.routeWidth;
@@ -189,6 +191,9 @@ export function PlanView({
         />
       )}
       {st.showNorth && <PlanNorth p={p} project={project} st={st} />}
+      <g clipPath={`url(#${clipId})`}>
+        <Callouts panelId={p.id} st={st} project={project} />
+      </g>
       {!route && (
         <>
           <text

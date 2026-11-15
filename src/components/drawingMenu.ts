@@ -3,6 +3,7 @@ import { addTexts, editTexts } from "../model/drawingOps";
 import type { DxfText } from "../model/dxf";
 import { useDrawingEdit, type TextFormat } from "../state/drawingEdit";
 import { askText } from "./Dialog";
+import { addCallout } from "./calloutEdit";
 import type { MenuItem } from "./ContextMenu";
 import {
   deleteSelected,
@@ -174,6 +175,11 @@ export function drawingMenu(at: { x: number; y: number }): MenuItem[] {
       action: () => pasteTextsAt(at),
     },
     { label: "Add new text here…", action: () => void addTextAt(at) },
+    {
+      label: "Add text box (with arrow) here",
+      disabled: !de.ctx,
+      action: () => de.ctx && addCallout(de.ctx.panelId, at),
+    },
     "separator",
   ];
   if (hasText) {

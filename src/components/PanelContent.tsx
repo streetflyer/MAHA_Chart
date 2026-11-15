@@ -1039,7 +1039,7 @@ export function titleBlockLayout(p: Panel) {
       label: "Rev:",
       x: p.x + p.w * 0.5,
       w: p.w * 0.1,
-      editable: false,
+      editable: true,
     },
     {
       key: "PLOT_SIZE",
@@ -1082,6 +1082,9 @@ export function titleBlockLayout(p: Panel) {
     ],
   };
 }
+
+const pad3 = (v?: string) =>
+  String(parseInt(v ?? "1", 10) || 1).padStart(3, "0");
 
 function TitleBlock({
   p,
@@ -1194,7 +1197,7 @@ function TitleBlock({
       {L.bottomCols.map((c, i) => {
         const value =
           c.key === "SHEET_NO"
-            ? `${tokens.SHEET} of ${tokens.NUM_CHARTS}`
+            ? `${pad3(tokens.SHEET)} of ${pad3(tokens.NUM_CHARTS)}`
             : (tokens[c.key] ?? "");
         const big = fontSize(
           Math.min(c.key === "CHART_NO" ? 2.3 : 3, bottomH * 0.32),

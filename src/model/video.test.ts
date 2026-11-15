@@ -65,3 +65,38 @@ describe("video log", () => {
     expect(v[0].start).toBe("2026-10-30T12:00");
   });
 });
+
+import { autoSurveyDate } from "./video";
+describe("survey date from the video list", () => {
+  it("lists every day the product's video covers", () => {
+    const rows = [
+      {
+        id: "a",
+        product: "Umbilical UMB2",
+        start: "2025-03-14T14:14",
+        end: "2025-03-14T20:00",
+        remarks: "",
+      },
+      {
+        id: "b",
+        product: "Umbilical UMB2",
+        start: "2025-03-18T22:00",
+        end: "2025-03-19T03:00",
+        remarks: "",
+      },
+      {
+        id: "c",
+        product: "Flowline FL1",
+        start: "2025-03-20T10:00",
+        end: "2025-03-20T12:00",
+        remarks: "",
+      },
+    ];
+    expect(
+      autoSurveyDate(rows, {
+        drawingNo: "33DJ-T1201-UMB2-002.001",
+        folder: "",
+      }),
+    ).toBe("14/03/2025, 18/03/2025, And 19/03/2025");
+  });
+});

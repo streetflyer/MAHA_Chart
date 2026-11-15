@@ -34,7 +34,7 @@ export function defaultStyle(target: ImportTarget): DataStyle {
       return { color, width: 0.35 };
     case "plan":
     case "siteplan":
-      return { color, width: 0.18 };
+      return { color, width: 0.05 };
     case "long":
       return { color: "#e00000", fill: "#6b6b6b" };
     case "trans":

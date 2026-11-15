@@ -12,6 +12,7 @@ import {
   treeFromFiles,
   useProject,
   type FolderNode,
+  type FolderState,
   rootDrawings,
 } from "../state/project";
 import { askCodes, askConfirm } from "./Dialog";
@@ -68,6 +69,33 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
     });
   };
 
+  /**
+   * Opening the folder of a project that was just loaded from a project file: keep what the
+   * file said (which folder is on the chart, its settings) over the folder's own project file.
+   */
+  function keepLoaded(
+    name: string,
+    tree: FolderNode,
+    disk: Record<string, FolderState>,
+  ) {
+    const prev = useProject.getState();
+    if (prev.name !== name || !prev.tree)
+      return {
+        folders: disk,
+        active: null,
+        selected: "",
+        expanded: { "": true },
+      };
+    const active =
+      prev.active !== null && findNode(tree, prev.active) ? prev.active : null;
+    return {
+      folders: { ...disk, ...prev.folders },
+      active,
+      selected: active ?? prev.selected ?? "",
+      expanded: { "": true, ...prev.expanded },
+    };
+  }
+
   async function openRoot() {
     const pick = dirPicker();
     if (!pick) {
@@ -93,10 +121,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
       name: h.name,
       tree,
       handle: h,
-      folders,
-      active: null,
-      selected: "",
-      expanded: { "": true },
+      ...keepLoaded(h.name, tree, folders),
       dirty: false,
     });
     onNotice(`Opened project ${h.name}: ${countFolders(tree)} folders.`);
@@ -109,16 +134,18 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
       name: tree.name,
       tree,
       handle: null,
-      folders: {},
-      active: null,
-      selected: "",
-      expanded: { "": true },
+      ...keepLoaded(tree.name, tree, {}),
       dirty: false,
     });
     if (projectFile)
       void projectFile.text().then((t) => {
         try {
-          useProject.setState({ folders: parseProject(t).folders });
+          useProject.setState({
+            folders: {
+              ...parseProject(t).folders,
+              ...useProject.getState().folders,
+            },
+          });
         } catch {
           // ignore a broken project file
         }

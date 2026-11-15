@@ -33,13 +33,19 @@ import { ThemeButton } from "./ThemeButton";
 import { ImportDialog, useImport } from "./ImportDialog";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { ProjectPanel } from "./ProjectPanel";
-import { downloadBlob, loadWorkspace, workspaceBlob } from "../state/workspace";
+import {
+  type SaveMode,
+  downloadBlob,
+  loadWorkspace,
+  workspaceBlob,
+} from "../state/workspace";
 import { useSmoothTool } from "../state/smoothTool";
 import { eventLabelMenu } from "./eventLabelEdit";
 import { useEventEdit } from "../state/eventEdit";
 import { EventEditBar } from "./EventEditBar";
 import { undoEventLabels } from "./eventLabelEdit";
 import { planItemMenu } from "./planItems";
+import { calloutMenu } from "./calloutEdit";
 import { SheetView, type ContextTarget } from "./SheetView";
 import { useDrawingEdit } from "../state/drawingEdit";
 import { drawingKey } from "./drawingEditing";
@@ -150,27 +156,73 @@ export function Editor({ onExit }: { onExit(): void }) {
       /* not remembered */
     }
   }, [panes]);
-  async function saveProject() {
-    const pick = await askChoice(
-      "Save the project",
-      "Settings only: the paper, scale, overlap, every panel setting, the look and import settings of your files, the video timing list and your saved presets. No survey data, so the file is small (a few hundred KB). Use it to start another product, hand the setup over or move to another machine, then add the data files there.\n\nFull project: all of the above plus the imported data and the drawing lines as they are on the chart, so it opens exactly as you left it. Your raw files are not copied in; they stay in the project folder. The file can be tens of MB.",
-      ["Settings only", "Full project"],
-    );
-    if (pick === null) return;
-    const mode = pick === 0 ? "settings" : "full";
-    try {
-      const blob = await workspaceBlob(mode);
-      const t = s().template!;
-      downloadBlob(
-        blob,
-        `${t.name.replace(/[^\w.-]+/g, "_")}${mode === "settings" ? "_settings" : ""}.mahachart`,
+  /** Where the last Save went (Chrome / Edge can write there again); one per kind of save. */
+  const lastSave = useRef<{
+    mode: SaveMode;
+    handle: FileSystemFileHandle;
+  } | null>(null);
+  const [progress, setProgress] = useState<{
+    label: string;
+    f: number;
+  } | null>(null);
+  async function saveProject(as = false) {
+    let mode: SaveMode;
+    const last = lastSave.current;
+    if (!as && last) mode = last.mode;
+    else {
+      const pick = await askChoice(
+        as ? "Save the project as…" : "Save the project",
+        "Settings only: the paper, scale, overlap, every panel setting, the look and import settings of your files, the video timing list and your saved presets. No survey data, so the file is small (a few hundred KB). Use it to start another product, hand the setup over or move to another machine, then add the data files there.\n\nFull project: all of the above plus the imported data and the drawing lines as they are on the chart, so it opens exactly as you left it. Your raw files are not copied in; they stay in the project folder. The file can be tens of MB.",
+        ["Settings only", "Full project"],
       );
+      if (pick === null) return;
+      mode = pick === 0 ? "settings" : "full";
+    }
+    const t = s().template!;
+    const name = `${t.name.replace(/[^\w.-]+/g, "_")}${mode === "settings" ? "_settings" : ""}.mahachart`;
+    // Save as (or the first save) asks where, when the browser can write files.
+    let handle = !as && last?.mode === mode ? last.handle : null;
+    const picker = (
+      window as unknown as {
+        showSaveFilePicker?: (o: object) => Promise<FileSystemFileHandle>;
+      }
+    ).showSaveFilePicker;
+    if (!handle && picker) {
+      try {
+        handle = await picker({
+          suggestedName: name,
+          types: [
+            {
+              description: "MAHA Chart project",
+              accept: { "application/octet-stream": [".mahachart"] },
+            },
+          ],
+        });
+      } catch {
+        return; // cancelled
+      }
+    }
+    const label =
+      mode === "settings" ? "Saving the settings" : "Saving the full project";
+    setProgress({ label, f: 0 });
+    try {
+      const blob = await workspaceBlob(mode, (f) => setProgress({ label, f }));
+      if (handle) {
+        setProgress({ label: `${label}: writing`, f: 0.98 });
+        const w = await handle.createWritable();
+        await w.write(blob);
+        await w.close();
+        lastSave.current = { mode, handle };
+      } else downloadBlob(blob, name);
+      setProgress({ label, f: 1 });
       s().markSaved(t);
       flash(
-        `Saved ${mode === "settings" ? "the settings" : "the full project"} (${(blob.size / 1048576).toFixed(1)} MB)`,
+        `Saved ${mode === "settings" ? "the settings" : "the full project"}${handle ? ` to ${handle.name}` : ""} (${(blob.size / 1048576).toFixed(1)} MB)`,
       );
     } catch (e) {
       flash(`Could not save: ${(e as Error).message}`);
+    } finally {
+      setTimeout(() => setProgress(null), 400);
     }
   }
   async function loadProject(f: File | undefined) {
@@ -307,6 +359,10 @@ export function Editor({ onExit }: { onExit(): void }) {
         y: clientY,
         items: eventLabelMenu(target.id ?? ""),
       });
+      return;
+    }
+    if (target.kind === "callout") {
+      setMenu({ x: clientX, y: clientY, items: calloutMenu(target.id ?? "") });
       return;
     }
     if (target.kind === "planitem") {
@@ -718,6 +774,12 @@ export function Editor({ onExit }: { onExit(): void }) {
             Save
           </button>
           <button
+            onClick={() => void saveProject(true)}
+            title="Choose settings only or the full project, and where to save it"
+          >
+            Save as…
+          </button>
+          <button
             onClick={() => projectInput.current?.click()}
             title="Load a project file saved with Save: brings back all of it"
           >
@@ -878,6 +940,20 @@ export function Editor({ onExit }: { onExit(): void }) {
             dark={dark}
           />
           <EventEditBar />
+          {progress && (
+            <div
+              className="save-progress"
+              role="progressbar"
+              aria-valuenow={Math.round(progress.f * 100)}
+            >
+              <span>
+                {progress.label}… {Math.round(progress.f * 100)}%
+              </span>
+              <div className="bar">
+                <div style={{ width: `${Math.round(progress.f * 100)}%` }} />
+              </div>
+            </div>
+          )}
           <ChartTabs />
         </div>
         <PaneResizer side="right" panes={panes} setPanes={setPanes} />

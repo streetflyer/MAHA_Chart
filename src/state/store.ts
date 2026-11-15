@@ -610,18 +610,24 @@ export function upgrade(t: ChartTemplate): ChartTemplate {
     scale.routeLength =
       scale.kpPerSheet * (parseInt(t.fields.NUM_CHARTS ?? "1", 10) || 1);
   // Event code definitions used to default to light red; they are black now.
-  const panels = t.panels.map((p) =>
-    p.legendStyle?.codeColor?.toLowerCase() === "#f08080"
-      ? { ...p, legendStyle: { ...p.legendStyle, codeColor: "#000000" } }
-      : p,
-  );
+  // The title gets its KP range under it once (the user may take it out again).
+  const addKp = !t.fields?.KP_LINE_ADDED;
+  const panels = t.panels.map((p) => {
+    let q =
+      p.legendStyle?.codeColor?.toLowerCase() === "#f08080"
+        ? { ...p, legendStyle: { ...p.legendStyle, codeColor: "#000000" } }
+        : p;
+    if (addKp && q.body?.trim() === "{TITLE}")
+      q = { ...q, body: "{TITLE}\nKP {KP_START} to KP {KP_END}" };
+    return q;
+  });
   return {
     ...t,
     panels,
     scale,
     images: t.images ?? [],
     texts: t.texts ?? [],
-    fields: t.fields ?? {},
+    fields: { ...(t.fields ?? {}), KP_LINE_ADDED: "1" },
   };
 }
 

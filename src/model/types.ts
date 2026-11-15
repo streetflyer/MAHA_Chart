@@ -220,6 +220,36 @@ export interface PlanStyle {
   northText?: string;
   /** Matchlines marking where neighbouring charts begin and end (unset = off). */
   match?: Partial<MatchlineStyle>;
+  /** Text boxes with a leader arrow pointing at a coordinate (tie-in points, structures). */
+  callouts?: Callout[];
+}
+
+/** A plan view text box: a coloured title band, the coordinates it points at, and an arrow. */
+export interface Callout {
+  id: string;
+  /** Title band text; new lines allowed. */
+  title: string;
+  /** Grid coordinates the arrow points at. */
+  e: number;
+  n: number;
+  /** Typed by the user, e.g. "213.0°G"; empty leaves the line out. */
+  heading: string;
+  showEN: boolean;
+  /** Box top-left corner from the arrow point, paper mm. */
+  dx: number;
+  dy: number;
+  /** Box size, paper mm. */
+  w: number;
+  h: number;
+  font?: string;
+  /** Cap height of the texts, mm. */
+  size: number;
+  titleColor: string;
+  titleFill: string;
+  textColor: string;
+  fill: string;
+  border: string;
+  arrow: string;
 }
 
 /** Matchlines of the plan view, like AutoChart's Create Matchlines. */

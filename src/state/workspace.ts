@@ -69,10 +69,21 @@ interface Header {
   storage: Record<string, string>;
 }
 
-async function gzip(blob: Blob): Promise<Blob> {
+async function gzip(
+  blob: Blob,
+  onProgress?: (f: number) => void,
+): Promise<Blob> {
   if (typeof CompressionStream === "undefined") return blob;
+  let done = 0;
+  const count = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, c) {
+      done += chunk.byteLength;
+      onProgress?.(done / Math.max(1, blob.size));
+      c.enqueue(chunk);
+    },
+  });
   return new Response(
-    blob.stream().pipeThrough(new CompressionStream("gzip")),
+    blob.stream().pipeThrough(count).pipeThrough(new CompressionStream("gzip")),
   ).blob();
 }
 
@@ -93,7 +104,13 @@ function withoutFiles(n: FolderNode): FolderNode {
 /** Build the project file for the session as it is now. */
 export type SaveMode = "full" | "settings";
 
-export async function workspaceBlob(mode: SaveMode = "full"): Promise<Blob> {
+export async function workspaceBlob(
+  mode: SaveMode = "full",
+  /** Called with 0..1 as the file is built. */
+  onProgress?: (f: number) => void,
+): Promise<Blob> {
+  onProgress?.(0.02);
+  await new Promise((r) => setTimeout(r, 40));
   const ed = useEditor.getState();
   const sv = useSurvey.getState();
   const pr = useProject.getState();
@@ -186,11 +203,15 @@ export async function workspaceBlob(mode: SaveMode = "full"): Promise<Blob> {
   );
   const len = new Uint8Array(4);
   new DataView(len.buffer).setUint32(0, head.length);
-  return gzip(
+  onProgress?.(0.3);
+  const out = await gzip(
     new Blob([MAGIC, len, head, ...parts], {
       type: "application/octet-stream",
     }),
+    (f) => onProgress?.(0.3 + 0.65 * f),
   );
+  onProgress?.(0.97);
+  return out;
 }
 
 /** Put a project file's contents back: chart, data, project and app settings. */
