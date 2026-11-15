@@ -743,6 +743,41 @@ function RowsEditor({ p }: { p: Panel }) {
                 </label>
                 {isVideoRow(r) && (
                   <select
+                    value={r.videoSource ?? "events"}
+                    title="Survey sessions read from the time stamps of the events file, or the Video timing list"
+                    onChange={(e) =>
+                      patch(r.id, {
+                        videoSource: e.target.value as "events" | "timing",
+                      })
+                    }
+                  >
+                    <option value="events">
+                      Sessions from the event times
+                    </option>
+                    <option value="timing">Video timing list</option>
+                  </select>
+                )}
+                {isVideoRow(r) && (r.videoSource ?? "events") === "events" && (
+                  <label
+                    className="field"
+                    title="A pause in the event log longer than this starts a new session"
+                  >
+                    <span>New session after a pause of</span>
+                    <span className="with-suffix">
+                      <DraftNumber
+                        min={1}
+                        step={10}
+                        value={r.sessionGap ?? 60}
+                        onCommit={(v) =>
+                          v > 0 && patch(r.id, { sessionGap: v })
+                        }
+                      />
+                      <span className="suffix">min</span>
+                    </span>
+                  </label>
+                )}
+                {isVideoRow(r) && r.videoSource === "timing" && (
+                  <select
                     value={r.videoProduct ?? ""}
                     title="Which product's video this row shows"
                     onChange={(e) =>

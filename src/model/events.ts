@@ -158,3 +158,57 @@ export function linkPairs(
 /** Burial links get the bold stripe at the foot, freespans at the top. */
 export const isBurialLink = (l: { label: string; start: string }) =>
   /burial/i.test(l.label) || /B/i.test(l.start.split(".")[1] ?? "");
+
+export interface SurveySession {
+  t0: number;
+  t1: number;
+  /** KP span covered, metres. */
+  k0: number;
+  k1: number;
+}
+
+/**
+ * The survey's sessions from the events' time stamps: events in time order, a new session
+ * wherever the log stops for longer than `gapMinutes`. Each session covers the KP span
+ * of its events.
+ */
+export function surveySessions(
+  records: { kp: number; t?: number }[],
+  gapMinutes = 60,
+): SurveySession[] {
+  const timed = records
+    .filter(
+      (r) => r.t !== undefined && Number.isFinite(r.t) && Number.isFinite(r.kp),
+    )
+    .sort((a, b) => a.t! - b.t!);
+  const out: SurveySession[] = [];
+  let cur: SurveySession | null = null;
+  for (const r of timed) {
+    if (cur && r.t! - cur.t1 <= gapMinutes * 60000) {
+      cur.t1 = r.t!;
+      cur.k0 = Math.min(cur.k0, r.kp);
+      cur.k1 = Math.max(cur.k1, r.kp);
+    } else {
+      cur = { t0: r.t!, t1: r.t!, k0: r.kp, k1: r.kp };
+      out.push(cur);
+    }
+  }
+  return out.sort((a, b) => a.k0 - b.k0);
+}
+
+const p2 = (n: number) => String(n).padStart(2, "0");
+const day = (d: Date) =>
+  `${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${d.getFullYear()}`;
+const clock = (d: Date) => {
+  const h = d.getHours();
+  return `${p2(h % 12 || 12)}:${p2(d.getMinutes())} ${h >= 12 ? "PM" : "AM"}`;
+};
+
+/** "12/06/2025 01:19 AM to 01:32 AM", with the second date only when the day changes. */
+export function sessionText(s: SurveySession): string {
+  const a = new Date(s.t0);
+  const b = new Date(s.t1);
+  return day(a) === day(b)
+    ? `${day(a)} ${clock(a)} to ${clock(b)}`
+    : `${day(a)} ${clock(a)} to ${day(b)} ${clock(b)}`;
+}

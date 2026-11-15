@@ -119,6 +119,8 @@ export interface EventRecord {
   kp: number;
   code: string;
   value: string;
+  /** When the event was logged (ms since 1970, local time), if the file has a time stamp. */
+  t?: number;
   /** Freespan / burial listings: length and height (m) carried on the start record. */
   length?: number;
   height?: number;

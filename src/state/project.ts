@@ -63,6 +63,8 @@ interface ProjectState {
   folders: Record<string, FolderState>;
   /** Settings from a settings-only project file, given to any folder charted that has none of its own. */
   carry: FolderState | null;
+  /** A project file was loaded: its folder is still to be read from the disk. */
+  reconnect?: string | null;
   /** Folder whose data is on the chart now. */
   active: string | null;
   /** Folder picked in the tree. */

@@ -32,6 +32,9 @@ import {
   type EventMark,
   type EventRange,
   type LinkedEvent,
+  sessionText,
+  surveySessions,
+  type SurveySession,
 } from "../model/events";
 import { kpInterval, planStyle } from "../model/planStyle";
 import { chartGeometry, gridToPlan, pointAt, type Route } from "../model/route";
@@ -985,6 +988,11 @@ function EventsPanel({
     () => sets.map((d) => ({ d, ...splitRanges(d.records, d.links) })),
     [sets],
   );
+  const sessionCache = useMemo(
+    () => new Map<number, SurveySession[]>(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sets],
+  );
   if (!rows.length) return null;
   const rh = p.h / rows.length;
   const x1 = p.x + p.w;
@@ -993,6 +1001,43 @@ function EventsPanel({
     const y0 = p.y + ri * rh;
     // A video row prints "start to end" of its product, as a stripe along the row.
     let r = row;
+    // Survey sessions read from the events' time stamps: one span per session along KP.
+    if (
+      isVideoRow(row) &&
+      !isKpRow(row) &&
+      row.video !== false &&
+      row.videoSource !== "timing"
+    ) {
+      const gap = row.sessionGap ?? 60;
+      let sessions = sessionCache.get(gap);
+      if (!sessions) {
+        sessions = surveySessions(
+          sets.flatMap((d) => d.records),
+          gap,
+        );
+        sessionCache.set(gap, sessions);
+      }
+      if (sessions.length) {
+        const font = split[0]?.d.font ?? DEFAULT_FONT;
+        sessions.forEach((ss, j) => {
+          if (ss.k1 < span[0] || ss.k0 > span[1]) return;
+          out.push(
+            <SessionSpan
+              key={`vs${row.id}-${j}`}
+              s={ss}
+              y={y0 + rh / 2}
+              rh={rh}
+              toX={toX}
+              x0={x0}
+              x1={x1}
+              font={font}
+              fill={row.stripeColor ?? "#d9d9d9"}
+            />,
+          );
+        });
+        return;
+      }
+    }
     if (
       isVideoRow(row) &&
       !isKpRow(row) &&
@@ -1349,6 +1394,82 @@ function PointTicks({
     <g>
       <path d={path} stroke={color} strokeWidth={0.15} fill="none" />
       {texts}
+    </g>
+  );
+}
+
+/** One survey session in the video row: |◄ line ►| over its KP span, its times in a grey label. */
+function SessionSpan({
+  s,
+  y,
+  rh,
+  toX,
+  x0,
+  x1,
+  font,
+  fill,
+}: {
+  s: SurveySession;
+  y: number;
+  rh: number;
+  toX: (kp: number) => number;
+  x0: number;
+  x1: number;
+  font: DataFont;
+  fill: string;
+}) {
+  const a = toX(s.k0);
+  const b = toX(s.k1);
+  const ca = Math.max(x0, a);
+  const cb = Math.min(x1, b);
+  if (cb <= ca) return null;
+  const tick = Math.min(1.6, rh * 0.3);
+  const ah = Math.min(1.4, (b - a) / 4);
+  const text = sessionText(s);
+  let cap = Math.min(font.size, 1.4, rh * 0.35);
+  const w = () => measureText(text, cap, false, font.family);
+  while (cap > 0.7 && w() + 2 > cb - ca) cap -= 0.1;
+  const tw = w() + 1.6;
+  const fs = fontSize(cap);
+  const mid = (ca + cb) / 2;
+  let d = `M${ca} ${y}H${cb}`;
+  if (a >= x0) d += `M${a} ${y - tick}v${2 * tick}`;
+  if (b <= x1) d += `M${b} ${y - tick}v${2 * tick}`;
+  return (
+    <g>
+      <path d={d} stroke="currentColor" strokeWidth={0.15} fill="none" />
+      {a >= x0 && ah > 0.2 && (
+        <path
+          d={`M${a} ${y}l${ah} ${-ah * 0.35}v${ah * 0.7}z`}
+          fill="currentColor"
+        />
+      )}
+      {b <= x1 && ah > 0.2 && (
+        <path
+          d={`M${b} ${y}l${-ah} ${-ah * 0.35}v${ah * 0.7}z`}
+          fill="currentColor"
+        />
+      )}
+      {tw < cb - ca && (
+        <>
+          <rect
+            x={mid - tw / 2}
+            y={y - fs * 0.75}
+            width={tw}
+            height={fs * 1.5}
+            style={{ fill }}
+          />
+          <text
+            x={mid}
+            y={y + fs * 0.35}
+            fontSize={fs}
+            textAnchor="middle"
+            {...fontProps(font)}
+          >
+            {text}
+          </text>
+        </>
+      )}
     </g>
   );
 }

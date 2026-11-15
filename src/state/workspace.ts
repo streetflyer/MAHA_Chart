@@ -307,6 +307,7 @@ export async function loadWorkspace(file: File): Promise<string> {
           }
         : h.project.expanded,
       handle: null,
+      reconnect: h.project.name,
       dirty: false,
     });
   }

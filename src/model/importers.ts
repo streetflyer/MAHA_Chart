@@ -126,6 +126,11 @@ export const FIELDS: Partial<Record<ImportTarget, FieldSpec[]>> = {
       label: "Description",
       names: ["VALUE", "DESC", "EVENTDESC", "COMMENT", "REMARK"],
     },
+    {
+      key: "time",
+      label: "Time stamp",
+      names: ["TIMESTAMP", "DATETIME", "TIME"],
+    },
   ],
   cp: [
     { key: "kp", label: "KP", names: KP_NAMES, required: true },
@@ -526,14 +531,25 @@ export function buildDataset(
         records.push({ kp: b * kpScale, code: m.span.end, value: "" });
       }
     }
+    // Settings saved before time stamps were read still find the column by its header.
+    let timeCol = col("time");
+    if (timeCol === undefined && t && m.header) {
+      const h = (t.rows[m.skip] ?? []).map((c) =>
+        c.toUpperCase().replace(/[^A-Z0-9]/g, ""),
+      );
+      const i = h.findIndex((c) => c === "TIMESTAMP" || c === "DATETIME");
+      if (i >= 0) timeCol = i;
+    }
     for (const r of m.span ? [] : data) {
       const k = num(r[col("kp")]);
       const code = (r[col("code")] ?? "").trim();
       if (!Number.isFinite(k) || !code) continue;
+      const t = timeCol !== undefined ? parseStamp(r[timeCol] ?? "") : NaN;
       records.push({
         kp: k * kpScale,
         code,
         value: col("value") !== undefined ? (r[col("value")] ?? "").trim() : "",
+        ...(Number.isFinite(t) ? { t } : {}),
       });
     }
     records.push(
@@ -762,4 +778,39 @@ export function fromPreset(
   }
   m.series = p.series.map(find).filter((i) => i >= 0);
   return m;
+}
+
+/**
+ * A logged time: "01/11/2026 01:58:50" (day first), "2026-11-01 01:58:50",
+ * "20261101015850" (VisualWorks); NaN when it is none of these.
+ */
+export function parseStamp(v: string): number {
+  const s = v.trim();
+  let m =
+    /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(
+      s,
+    );
+  if (m)
+    return new Date(
+      +m[3],
+      +m[2] - 1,
+      +m[1],
+      +m[4],
+      +m[5],
+      +(m[6] ?? 0),
+    ).getTime();
+  m = /^(\d{4})-(\d{2})-(\d{2})[ T]+(\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(s);
+  if (m)
+    return new Date(
+      +m[1],
+      +m[2] - 1,
+      +m[3],
+      +m[4],
+      +m[5],
+      +(m[6] ?? 0),
+    ).getTime();
+  m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/.exec(s);
+  if (m)
+    return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+  return NaN;
 }

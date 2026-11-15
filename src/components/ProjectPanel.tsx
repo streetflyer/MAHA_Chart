@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { canRead, recallHandle, rememberHandle } from "../state/folderHandles";
 import { useEditor } from "../state/store";
 import { useSurvey } from "../state/surveyData";
 import {
@@ -108,6 +109,12 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
     } catch {
       return; // cancelled
     }
+    void rememberHandle(h.name, h);
+    await openHandle(h);
+  }
+
+  /** Read a project folder from the disk into the tree (keeping a just-loaded project's state). */
+  async function openHandle(h: FileSystemDirectoryHandle) {
     onNotice(`Reading ${h.name}…`);
     const tree = await readHandle(h);
     let folders = {};
@@ -122,9 +129,38 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
       tree,
       handle: h,
       ...keepLoaded(h.name, tree, folders),
+      reconnect: null,
       dirty: false,
     });
     onNotice(`Opened project ${h.name}: ${countFolders(tree)} folders.`);
+  }
+
+  // After a project file is loaded, read its folder again: at once when the browser still
+  // allows it, otherwise with one click on "Reconnect".
+  const reconnect = useProject((x) => x.reconnect ?? null);
+  const [canReconnect, setCanReconnect] = useState(false);
+  useEffect(() => {
+    if (!reconnect) return;
+    let stop = false;
+    void (async () => {
+      const h = await recallHandle(reconnect);
+      if (stop) return;
+      if (!h) return setCanReconnect(false);
+      if (await canRead(h, false)) await openHandle(h);
+      else setCanReconnect(true);
+    })();
+    return () => {
+      stop = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reconnect]);
+  async function reconnectNow() {
+    const name = useProject.getState().reconnect;
+    const h = name ? await recallHandle(name) : null;
+    if (h && (await canRead(h, true))) {
+      setCanReconnect(false);
+      await openHandle(h);
+    } else void openRoot();
   }
 
   function openFromFiles(files: File[]) {
@@ -206,7 +242,16 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
       });
     }
     const saved = useProject.getState().folder(path).template;
-    if (saved) useEditor.getState().open(saved);
+    // Logos belong to the job, not to one product: a folder template without any keeps the ones on the chart.
+    const logos = useEditor.getState().template?.images ?? [];
+    if (saved)
+      useEditor
+        .getState()
+        .open(
+          saved.images?.length || !logos.length
+            ? saved
+            : { ...saved, images: structuredClone(logos) },
+        );
     useProject.setState({ active: path, selected: path });
     // Job number from the root folder, product name and chart number from this folder.
     syncChartNumbers();
@@ -513,6 +558,22 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
           Load…
         </button>
       </div>
+      {pr.reconnect && (
+        <div className="reconnect">
+          <span>
+            {canReconnect
+              ? `Read the files of ${pr.reconnect} from this computer again.`
+              : `Open the ${pr.reconnect} folder once on this computer to see its files; after that it is opened by itself when you load.`}
+          </span>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => void reconnectNow()}
+          >
+            {canReconnect ? "Reconnect folder" : "Open folder…"}
+          </button>
+        </div>
+      )}
       {!pr.tree && (
         <p className="hint">
           Open the project’s root folder (e.g. 01_Listing). Each folder in it
