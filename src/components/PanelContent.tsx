@@ -281,7 +281,8 @@ function EventRows({
       />
       {rows.map((r, i) => {
         const y = p.y + i * rh;
-        const cap = Math.min(1.8, rh / 4);
+        const tf = { ...p.rowTitleFont, ...r.titleFont };
+        const cap = Math.min(tf.size ?? 1.8, tf.size ? rh * 0.8 : rh / 4);
         const lines = wrapLines(r.label, lw - 2, cap);
         const lh = fontSize(cap) * 1.15;
         return (
@@ -319,6 +320,14 @@ function EventRows({
               fontSize={fontSize(cap)}
               textAnchor="middle"
               dominantBaseline="middle"
+              fontFamily={
+                tf.family
+                  ? `${tf.family}, Arial, Helvetica, sans-serif`
+                  : undefined
+              }
+              fontWeight={tf.bold ? 700 : undefined}
+              fontStyle={tf.italic ? "italic" : undefined}
+              style={tf.color ? { fill: tf.color } : undefined}
             >
               {lines.map((l, j) => (
                 <tspan key={j} x={p.x + lw / 2} dy={j === 0 ? 0 : lh}>

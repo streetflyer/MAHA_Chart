@@ -135,6 +135,18 @@ export interface EventRow {
   stripeOpacity?: number;
   /** Band thickness, mm (0 = a thin line in the middle); unset fills the row. */
   stripeWidth?: number;
+  /** This row's own text look (title in the label column, and the text along the row); unset follows the panel. */
+  titleFont?: Partial<RowFont>;
+  font?: Partial<RowFont>;
+}
+
+/** Text look for event rows: family, cap height (mm), colour, bold, italic. */
+export interface RowFont {
+  family: string;
+  size: number;
+  color: string;
+  bold?: boolean;
+  italic?: boolean;
 }
 
 export interface Panel {
@@ -165,6 +177,9 @@ export interface Panel {
   rows?: EventRow[];
   /** Width of the row label column for row-based panels. */
   labelWidth?: number;
+  /** Events panel: text look of every row's title and of the text along the rows. */
+  rowTitleFont?: Partial<RowFont>;
+  rowFont?: Partial<RowFont>;
   /** Second text column shown to the right of body (e.g. datum shift parameters). */
   body2?: string;
   /** Header bar fill, e.g. the CHART INFORMATION banner. */

@@ -1841,3 +1841,40 @@ table.preview thead th.mapped {
   border-radius: 6px;
   font-size: 12px;
 }
+
+/* Event rows in the properties panel: one card each, alternating light green and light blue. */
+ol.rows li.row-card {
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--row-a);
+}
+ol.rows li.row-card:nth-child(even) {
+  background: var(--row-b);
+}
+:root {
+  --row-a: #eaf6ea;
+  --row-b: #e7f0fb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --row-a: #1d2b22;
+    --row-b: #1b2634;
+  }
+}
+:root[data-theme="dark"] {
+  --row-a: #1d2b22;
+  --row-b: #1b2634;
+}
+.row-text {
+  flex: 1 1 100%;
+}
+.row-text summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+}
+.row-text h5 {
+  margin: 6px 0 2px;
+  font-size: 12px;
+}

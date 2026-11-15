@@ -39,7 +39,13 @@ import type {
 import { PANEL_DEFAULTS } from "../state/panelDefaults";
 import { useEditor } from "../state/store";
 import { useSurvey } from "../state/surveyData";
-import { TARGETS, targetInfo, type Dataset } from "../model/datasets";
+import {
+  DEFAULT_FONT,
+  TARGETS,
+  targetInfo,
+  type DataFont,
+  type Dataset,
+} from "../model/datasets";
 import {
   codeMatcher,
   defaultRowCodes,
@@ -630,6 +636,56 @@ function PanelProps({ p }: { p: Panel }) {
   );
 }
 
+/** Font, size, colour and style of a row's title and of its text along the row: for every row (default) or just this one. */
+function RowTextLook({ p, r }: { p: Panel; r: EventRow }) {
+  const [scope, setScope] = useState<"all" | "row">(
+    r.font || r.titleFont ? "row" : "all",
+  );
+  const datasets = useSurvey((x) => x.datasets);
+  const ev = datasets.find((d) => d.kind === "events" && d.visible);
+  const base = ev?.kind === "events" ? ev.font : DEFAULT_FONT;
+  const title: DataFont = {
+    family: p.fontFamily ?? "Arial",
+    size: 1.8,
+    color: "#111111",
+    ...p.rowTitleFont,
+    ...r.titleFont,
+  };
+  const text: DataFont = { ...base, ...p.rowFont, ...r.font };
+  const ed = useEditor.getState();
+  const set = (which: "titleFont" | "font", f: DataFont) => {
+    const rows = p.rows ?? [];
+    if (scope === "row")
+      return ed.updatePanel(p.id, {
+        rows: rows.map((x) => (x.id === r.id ? { ...x, [which]: f } : x)),
+      });
+    // Same for all rows: the panel takes it and the rows' own settings go.
+    ed.updatePanel(p.id, {
+      [which === "font" ? "rowFont" : "rowTitleFont"]: f,
+      rows: rows.map((x) => ({ ...x, [which]: undefined })),
+    });
+  };
+  return (
+    <details className="row-text">
+      <summary>Text look</summary>
+      <label className="field">
+        <span>Apply</span>
+        <select
+          value={scope}
+          onChange={(e) => setScope(e.target.value as "all" | "row")}
+        >
+          <option value="all">Make the same for all rows</option>
+          <option value="row">Only for this row</option>
+        </select>
+      </label>
+      <h5>Row title</h5>
+      <FontControls font={title} onChange={(f) => set("titleFont", f)} />
+      <h5>Text along the row (codes, values, video)</h5>
+      <FontControls font={text} onChange={(f) => set("font", f)} />
+    </details>
+  );
+}
+
 function RowsEditor({ p }: { p: Panel }) {
   const s = useEditor.getState();
   const rows = p.rows ?? [];
@@ -690,7 +746,7 @@ function RowsEditor({ p }: { p: Panel }) {
       />
       <ol className="rows">
         {rows.map((r, i) => (
-          <li key={r.id}>
+          <li key={r.id} className="row-card">
             <input
               defaultValue={r.label}
               onBlur={(e) =>
@@ -933,6 +989,7 @@ function RowsEditor({ p }: { p: Panel }) {
                 )}
               </div>
             )}
+            {p.type === "events" && <RowTextLook p={p} r={r} />}
           </li>
         ))}
       </ol>

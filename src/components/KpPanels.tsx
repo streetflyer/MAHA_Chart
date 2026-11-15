@@ -1001,6 +1001,12 @@ function EventsPanel({
   const out: ReactElement[] = [];
   rows.forEach((row, ri) => {
     const y0 = p.y + ri * rh;
+    /** The data font with the panel's and this row's own text settings on top. */
+    const rf = (base: DataFont): DataFont => ({
+      ...base,
+      ...p.rowFont,
+      ...row.font,
+    });
     // A video row prints "start to end" of its product, as a stripe along the row.
     let r = row;
     // Survey sessions read from the events' time stamps: one span per session along KP.
@@ -1020,7 +1026,7 @@ function EventsPanel({
         sessionCache.set(gap, sessions);
       }
       if (sessions.length) {
-        const font = split[0]?.d.font ?? DEFAULT_FONT;
+        const font = rf(split[0]?.d.font ?? DEFAULT_FONT);
         const joined = connectSessions(sessions, row.sessionKp);
         joined.forEach((ss, j) => {
           if (ss.k1 < span[0] || ss.k0 > span[1]) return;
@@ -1070,7 +1076,9 @@ function EventsPanel({
       };
     }
     if (isKpRow(r)) {
-      const cap = Math.min(1.8, rh / 3);
+      const own = { ...p.rowFont, ...row.font };
+      const kf = rf(DEFAULT_FONT);
+      const cap = Math.min(own.size ?? 1.8, rh / 3);
       for (const [kp, x] of ticks) {
         out.push(
           <g key={`kp${kp}`}>
@@ -1087,6 +1095,9 @@ function EventsPanel({
               y={y0 + rh / 2 + fontSize(cap) * 0.35}
               fontSize={fontSize(cap)}
               textAnchor="middle"
+              {...(own.family || own.color || own.bold || own.italic
+                ? fontProps(kf)
+                : {})}
             >
               {kpText(kp)}
             </text>
@@ -1096,7 +1107,7 @@ function EventsPanel({
       return;
     }
     if (r.textOnly) {
-      const font = split[0]?.d.font ?? DEFAULT_FONT;
+      const font = rf(split[0]?.d.font ?? DEFAULT_FONT);
       const text = r.text ?? "";
       const stripeH = Math.min(rh, Math.max(0.15, r.stripeWidth ?? rh - 2));
       if (r.stripe)
@@ -1153,7 +1164,7 @@ function EventsPanel({
             x1={x1}
             routeEnd={routeEnd}
             color={d.color}
-            font={d.font}
+            font={rf(d.font)}
             n={rs.length}
             j={j}
           />,
@@ -1170,7 +1181,7 @@ function EventsPanel({
             y0={y0}
             rh={rh}
             toX={toX}
-            font={d.font}
+            font={rf(d.font)}
             labels={d.labels}
           />,
         );
@@ -1185,7 +1196,7 @@ function EventsPanel({
           rh={rh}
           toX={toX}
           color={d.color}
-          font={d.font}
+          font={rf(d.font)}
           labels={d.labels}
           layout={d.layout ?? DEFAULT_EVENT_LAYOUT}
           datasetId={d.id}
