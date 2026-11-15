@@ -757,7 +757,13 @@ export async function chartsToDxf(
   let k = 0;
   for (const i of sheets) {
     const svg = await draw(i);
-    if (svg) writeSheet(svg, w, k * (paperW + 50));
+    if (svg) {
+      // Paper widths, not the on-screen one-pixel minimum.
+      const px = svg.style.getPropertyValue("--px");
+      svg.style.setProperty("--px", "0px");
+      writeSheet(svg, w, k * (paperW + 50));
+      svg.style.setProperty("--px", px);
+    }
     k++;
   }
   return w.toString();

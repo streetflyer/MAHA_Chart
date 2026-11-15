@@ -123,6 +123,9 @@ export function LineworkLayer({
               fill="none"
               stroke={p.color}
               strokeWidth={d.width * widthScale}
+              style={{
+                strokeWidth: `max(${d.width * widthScale}px, var(--px, 0px))`,
+              }}
               strokeLinejoin="round"
             />
           ))}

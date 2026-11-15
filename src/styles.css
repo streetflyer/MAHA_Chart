@@ -1946,3 +1946,23 @@ fieldset.plain {
 .code-defs input:not([type]) {
   min-width: 0;
 }
+/* Each imported drawing / dataset in the properties panel is a card, alternating light green and light blue. */
+.data-list > li.data-entry {
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--row-a);
+}
+.data-list > li.data-entry:nth-child(even) {
+  background: var(--row-b);
+}
+.style-row .field.pen-weight {
+  flex: 1 1 100%;
+}
+.pen-weight .with-suffix select {
+  flex: 1 1 auto;
+}
+.pen-weight .with-suffix input {
+  width: 64px;
+  flex: 0 0 64px;
+}

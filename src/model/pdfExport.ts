@@ -461,7 +461,11 @@ export async function chartsToPdf(
       images: new Map(),
       alphas: new Map(),
     };
+    // Paper widths, not the on-screen one-pixel minimum.
+    const px = svg.style.getPropertyValue("--px");
+    svg.style.setProperty("--px", "0px");
     await drawSheet(svg, pg, imgs);
+    svg.style.setProperty("--px", px);
     pages.push(pg);
   }
 

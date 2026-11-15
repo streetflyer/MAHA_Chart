@@ -218,6 +218,11 @@ export function SheetView({
   const editing = useEditor((s) => s.editing);
   const sheetIndex = useEditor((s) => s.sheetIndex);
   const svgRef = useRef<SVGSVGElement>(null);
+  // One screen pixel in sheet mm: drawing lines never show thinner than that, as AutoCAD shows them.
+  useLayoutEffect(() => {
+    const a = svgRef.current?.getScreenCTM()?.a;
+    if (a) svgRef.current!.style.setProperty("--px", `${1 / a}px`);
+  });
   const wrapRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ViewBox>({
     x: -10,

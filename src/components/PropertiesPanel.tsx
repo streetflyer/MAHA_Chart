@@ -436,8 +436,25 @@ function PanelProps({ p }: { p: Panel }) {
   const parent = p.parentId
     ? template.panels.find((x) => x.id === p.parentId)
     : undefined;
+  // A click on the sheet shows the top of the settings; a click on a text box scrolls to its own section instead.
+  const selection = useEditor((st) => st.selection);
+  const top = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const toTop = () => {
+      if (Date.now() - useCalloutFocus.getState().n < 1500) return;
+      top.current?.closest(".props-wrap")?.scrollTo({ top: 0 });
+    };
+    toTop();
+    // A click on the sheet that keeps this panel selected also goes back to the top.
+    const up = (e: PointerEvent) => {
+      if ((e.target as Element | null)?.closest?.("svg.sheet"))
+        setTimeout(toTop, 60);
+    };
+    document.addEventListener("pointerup", up);
+    return () => document.removeEventListener("pointerup", up);
+  }, [selection]);
   return (
-    <aside className="props">
+    <aside className="props" ref={top}>
       <h3>{PANEL_DEFAULTS[p.type].label}</h3>
       {p.type === "plan" && <DrawingEditPanel panelId={p.id} when="active" />}
       {parent && <p className="muted">Section of {parent.title}</p>}
@@ -623,7 +640,6 @@ function PanelProps({ p }: { p: Panel }) {
       {p.type === "plan" && <DrawingEditPanel panelId={p.id} when="idle" />}
       <DataList panelType={p.type} />
       {p.type === "keyplan" && <KeyplanEditor p={p} />}
-      {p.type === "plan" && <DrawingWeights />}
       {p.type === "plan" && <CalloutEditor p={p} />}
       {p.type === "plan" && <PlanStyleEditor p={p} />}
       {p.type === "titleBlock" && (
@@ -2277,7 +2293,7 @@ function CalloutFields({
   const focus = useCalloutFocus();
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (focus.id !== c.id) return;
+    if (focus.id !== c.id || Date.now() - focus.n > 1500) return;
     setOpen(true);
     requestAnimationFrame(() =>
       ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
@@ -2472,58 +2488,6 @@ function CalloutFields({
         </>
       )}
     </div>
-  );
-}
-
-const PEN_WIDTHS = [0.03, 0.05, 0.09, 0.13, 0.18, 0.25, 0.35, 0.5];
-
-/** Line weight of each drawing (DWG / DXF) in the plan view: thin pens keep small details sharp, as in CAD. */
-function DrawingWeights() {
-  const all = useSurvey((x) => x.datasets);
-  const sets = all.filter(
-    (d): d is Extract<Dataset, { kind: "linework" }> =>
-      d.kind === "linework" && (d.target === "plan" || d.target === "siteplan"),
-  );
-  if (!sets.length) return null;
-  const sv = useSurvey.getState();
-  return (
-    <>
-      <h4>Drawing line weight</h4>
-      {sets.map((d) => (
-        <div key={d.id} className="style-row" title={d.name}>
-          <label className="field">
-            <span className="ellipsis">{d.name}</span>
-            <span className="with-suffix">
-              <select
-                value={PEN_WIDTHS.includes(d.width) ? String(d.width) : ""}
-                onChange={(e) =>
-                  e.target.value &&
-                  sv.updateDataset(d.id, { width: Number(e.target.value) })
-                }
-              >
-                {PEN_WIDTHS.map((w) => (
-                  <option key={w} value={w}>
-                    {w === 0.03 ? "Hairline (0.03)" : w.toFixed(2)}
-                  </option>
-                ))}
-                {!PEN_WIDTHS.includes(d.width) && <option value="">Own</option>}
-              </select>
-              <DraftNumber
-                min={0.01}
-                step={0.01}
-                value={d.width}
-                onCommit={(v) => v > 0 && sv.updateDataset(d.id, { width: v })}
-              />
-              <span className="suffix">mm</span>
-            </span>
-          </label>
-        </div>
-      ))}
-      <p className="hint">
-        Pen width on paper for every line of the drawing. 0.03 to 0.09 mm keeps
-        small details (structures, valves) as fine as in CAD.
-      </p>
-    </>
   );
 }
 

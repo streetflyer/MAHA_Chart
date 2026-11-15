@@ -756,6 +756,9 @@ function LongSetup({
 }
 
 /** Colour, width, fill, symbol and font controls for one kind of data. */
+/** AutoCAD's lineweights up to 0.5 mm, in mm. */
+const PEN_WIDTHS = [0.03, 0.05, 0.09, 0.13, 0.18, 0.25, 0.35, 0.5];
+
 export function StyleControls({
   target,
   style,
@@ -782,13 +785,51 @@ export function StyleControls({
             value={s.color!}
             onChange={(color) => onChange({ color })}
           />
-          <Num
-            label="Line width"
-            value={s.width!}
-            step={1}
-            suffix="mm"
-            onChange={(width) => onChange({ width })}
-          />
+          {target === "plan" || target === "siteplan" ? (
+            <label
+              className="field pen-weight"
+              title="Pen width on paper for every line of the drawing. 0.03 to 0.09 mm keeps small details as fine as in CAD; 0.25 mm is AutoCAD's default lineweight. On screen a line never shows thinner than one pixel, as in AutoCAD."
+            >
+              <span>Line weight</span>
+              <span className="with-suffix">
+                <select
+                  value={PEN_WIDTHS.includes(s.width!) ? String(s.width) : ""}
+                  onChange={(e) =>
+                    e.target.value &&
+                    onChange({ width: Number(e.target.value) })
+                  }
+                >
+                  {PEN_WIDTHS.map((w) => (
+                    <option key={w} value={w}>
+                      {w === 0.03
+                        ? "Hairline (0.03)"
+                        : w === 0.25
+                          ? "0.25 (AutoCAD default)"
+                          : w.toFixed(2)}
+                    </option>
+                  ))}
+                  {!PEN_WIDTHS.includes(s.width!) && (
+                    <option value="">Own</option>
+                  )}
+                </select>
+                <DraftNumber
+                  min={0.01}
+                  step={0.01}
+                  value={s.width!}
+                  onCommit={(v) => v > 0 && onChange({ width: v })}
+                />
+                <span className="suffix">mm</span>
+              </span>
+            </label>
+          ) : (
+            <Num
+              label="Line width"
+              value={s.width!}
+              step={1}
+              suffix="mm"
+              onChange={(width) => onChange({ width })}
+            />
+          )}
         </div>
       )}
       {target === "long" && (
