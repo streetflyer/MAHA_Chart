@@ -163,7 +163,7 @@ export function alignmentSheetA1(): ChartTemplate {
         "dX\t: 0.0 m\ndY\t: 0.0 m\ndZ\t: 0.0 m\nRx\t: 0.0 sec\nRy\t: 0.0 sec\nRz\t: 0.0 sec\nScale Factor at CM\t: 0.0999600 ppm",
     }),
     section("s_equipment", "equipment", "EQUIPMENT USED", 222.8, 265.7, {
-      body: "Primary DGPS Positioning System\t: {PRIMARY_DGPS}\nSecondary DGPS Positioning System\t: {SECONDARY_DGPS}\nMultibeam Echosounder\t: {MBES}",
+      body: EQUIPMENT_BODY,
     }),
     section("s_scale", "scale", "SCALE", 265.7, 292.7),
     section("s_disclaimer", "text", "DISCLAIMER", 292.7, 301.7, {
@@ -254,10 +254,27 @@ export function alignmentSheetA1(): ChartTemplate {
       PROJECTION: "UTM Zone 50 South",
       PRIMARY_DGPS: "Veripos LD900 c/w APEX Correction",
       SECONDARY_DGPS: "Veripos LD900 c/w APEX Correction",
-      MBES: "",
+      MBES: "R2 Sonic 2024 Dual Head System",
     },
   };
 }
+
+/** Equipment used on the survey (agung, 2026-11-15). */
+export const EQUIPMENT_BODY = [
+  "Primary DGPS Positioning System\t: {PRIMARY_DGPS}",
+  "Secondary DGPS Positioning System\t: {SECONDARY_DGPS}",
+  "Navigation Software\t: EIVA Navipac 4.14",
+  "Vessel Gyro\t: Kongsberg MGC R2 Combined Heading and Motion Sensor",
+  "Subsea Positioning System\t: USBL HiPAP 502 System",
+  "ROV MRU/Gyro\t: iXblue Octans G4 Subsea FOG Gyrocompass & Motion Sensor",
+  "MBES\t: {MBES}",
+  "Sound Velocity Profiler\t: Valeport MIDAS SVX2",
+  "Depth Sensor\t: Tritech Bathy c/w PA500 Altimeter",
+].join("\n");
+
+/** The equipment text earlier versions started with. */
+export const OLD_EQUIPMENT_BODY =
+  "Primary DGPS Positioning System\t: {PRIMARY_DGPS}\nSecondary DGPS Positioning System\t: {SECONDARY_DGPS}\nMultibeam Echosounder\t: {MBES}";
 
 /** The same sheet with the cathodic protection panel removed, as discussed for this job. */
 export function alignmentSheetA1NoCp(): ChartTemplate {
