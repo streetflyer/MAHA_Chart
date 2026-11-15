@@ -10,6 +10,8 @@ export interface Linework {
   layers: string[];
   /** Colour each polyline has in the drawing ('#rrggbb'; '' = none given), same order as lines. */
   colors: string[];
+  /** AutoCAD lineweight of each polyline on paper, mm; -1 = Default (the drawing's Line weight setting). Unset: all Default. */
+  weights?: number[];
   /** The drawing object each polyline belongs to (a block insert is one object), same order as lines. */
   groups: number[];
   texts: DxfText[];
@@ -154,7 +156,13 @@ function bulged(vs: [number, number, number][], closed: boolean): number[] {
 interface LayerDef {
   color: string;
   off: boolean;
+  /** Lineweight, mm; -1 = Default. */
+  lw: number;
 }
+
+/** DXF group 370 (hundredths of a mm; -1 by layer, -2 by block, -3 default) to mm, -1 for Default. */
+const LW_BYLAYER = -1;
+const LW_BYBLOCK = -2;
 
 /** Read the group pairs of the BLOCKS and ENTITIES sections into entities, and the layer table. */
 function readEntities(text: string): {
@@ -180,6 +188,10 @@ function readEntities(text: string): {
       layerDefs.set(str(cur, 2) ?? "0", {
         color: Number.isFinite(tc) ? trueHex(tc) : aciHex(Math.abs(c) || 7),
         off: c < 0 || (num(cur, 70, 0) & 1) === 1,
+        lw: (() => {
+          const v = num(cur, 370, -3);
+          return v >= 0 ? v / 100 : -1;
+        })(),
       });
     } else if (section === "BLOCKS" && t === "BLOCK") {
       block = {
@@ -251,6 +263,7 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
   const lines: Float64Array[] = [];
   const layers: string[] = [];
   const colors: string[] = [];
+  const weights: number[] = [];
   const groups: number[] = [];
   const texts: DxfText[] = [];
   // The drawing object being read: every line and text of it carries this number.
@@ -267,6 +280,15 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
     return aciHex(Math.abs(c));
   };
 
+  /** Lineweight of an entity in mm (-1 = Default): its own, its layer's, or its block insert's. */
+  const weightOf = (e: Ent, layer: string, inherit: number): number => {
+    const v = num(e, 370);
+    if (!Number.isFinite(v) || v === LW_BYLAYER)
+      return layerDefs.get(layer)?.lw ?? -1;
+    if (v === LW_BYBLOCK) return inherit;
+    return v >= 0 ? v / 100 : -1;
+  };
+  let weight = -1;
   const pushPts = (pts: number[], m: Xf, layer: string, color: string) => {
     if (pts.length < 4) return;
     const out = new Float64Array(pts.length);
@@ -278,6 +300,7 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
     lines.push(out);
     layers.push(layer);
     colors.push(color);
+    weights.push(weight);
     groups.push(group);
   };
   const scaleOf = (m: Xf) =>
@@ -339,10 +362,13 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
     inherit: string,
     depth: number,
     inheritColor: string,
+    inheritWeight = -1,
   ) => {
     const own = str(e, 8) ?? "0";
     const layer = own === "0" && inherit ? inherit : own;
     const color = colorOf(e, layer, inheritColor);
+    const w = weightOf(e, layer, inheritWeight);
+    weight = w;
     switch (e.type) {
       case "LINE":
         pushPts(
@@ -498,7 +524,7 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
                   (b.base[0] * sx * sin + b.base[1] * sy * cos),
               ];
               const mm = mul(m, local);
-              for (const k of b.ents) draw(k, mm, layer, depth + 1, color);
+              for (const k of b.ents) draw(k, mm, layer, depth + 1, color, w);
             }
         }
         // Attributes are already placed in drawing coordinates.
@@ -540,6 +566,7 @@ export function parseDxfLinework(text: string, name: string): Linework | null {
     lines,
     layers,
     colors,
+    ...(weights.some((x) => x >= 0) ? { weights } : {}),
     groups,
     texts,
     layerInfo,

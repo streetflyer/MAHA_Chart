@@ -50,6 +50,13 @@ function derive(datasets: Dataset[], reversed: boolean) {
       lines: site.flatMap((d) => d.lw.lines),
       layers: site.flatMap((d) => d.lw.layers),
       colors: site.flatMap((d) => d.lw.colors),
+      ...(site.some((d) => d.lw.weights)
+        ? {
+            weights: site.flatMap(
+              (d) => d.lw.weights ?? d.lw.lines.map(() => -1),
+            ),
+          }
+        : {}),
       groups: site.flatMap((d) => d.lw.groups),
       texts: site.flatMap((d) => d.lw.texts),
       layerInfo: [],

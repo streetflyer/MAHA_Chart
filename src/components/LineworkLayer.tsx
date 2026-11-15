@@ -62,22 +62,29 @@ export function colourPaths(
   area: Bounds,
   project: Project,
   skip?: Set<number>,
-): { color: string; d: string }[] {
-  const byColour = new Map<string, Float64Array[]>();
+): { color: string; width: number; d: string }[] {
+  // One path per colour and lineweight; Default lines take the drawing's Line weight.
+  const byKey = new Map<
+    string,
+    { color: string; width: number; list: Float64Array[] }
+  >();
   const lines = d.lw.lines;
+  const ws = d.lw.weights;
   for (let i = 0; i < lines.length; i++) {
     if (!layerShown(d, d.lw.layers[i])) continue;
     if (skip?.has(d.lw.groups[i])) continue;
     const c = lineColour(d, i);
-    let list = byColour.get(c);
-    if (!list) byColour.set(c, (list = []));
-    list.push(lines[i]);
+    const w = ws && ws[i] >= 0 ? ws[i] : d.width;
+    const k = `${c}|${w}`;
+    let e = byKey.get(k);
+    if (!e) byKey.set(k, (e = { color: c, width: w, list: [] }));
+    e.list.push(lines[i]);
   }
-  const out: { color: string; d: string }[] = [];
-  for (const [color, list] of byColour) {
+  const out: { color: string; width: number; d: string }[] = [];
+  for (const { color, width, list } of byKey.values()) {
     // Every vertex is kept (to 0.001 mm on paper) so small symbols keep their shape.
     const path = linesPath(list, area, project, 0.001);
-    if (path) out.push({ color, d: path });
+    if (path) out.push({ color, width, d: path });
   }
   return out;
 }
@@ -118,13 +125,13 @@ export function LineworkLayer({
         <g key={d.id}>
           {paths[i].map((p) => (
             <path
-              key={p.color}
+              key={`${p.color}|${p.width}`}
               d={p.d}
               fill="none"
               stroke={p.color}
-              strokeWidth={d.width * widthScale}
+              strokeWidth={p.width * widthScale}
               style={{
-                strokeWidth: `max(${d.width * widthScale}px, var(--px, 0px))`,
+                strokeWidth: `max(${p.width * widthScale}px, var(--px, 0px))`,
               }}
               strokeLinejoin="round"
             />

@@ -74,6 +74,7 @@ export function deleteGroups(lw: Linework, groups: GroupSet): Linework {
     lines: pick(lw.lines),
     layers,
     colors: pick(lw.colors),
+    ...(lw.weights ? { weights: pick(lw.weights) } : {}),
     groups: pick(lw.groups),
     texts,
     layerInfo: lw.layerInfo.map((l) => ({
