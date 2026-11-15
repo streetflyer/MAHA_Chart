@@ -26,26 +26,43 @@ export interface MatchSpec {
  * Matchlines for chart `index` given every chart's KP range (metres).
  * overlap: the end of the previous chart and the start of the next one, as they fall inside this chart.
  * profile: this chart's own start and end.
+ *
+ * `shown` gives the KPs each chart's plan view really shows. A chart that was panned,
+ * turned or fitted to a curve can show another stretch than its own range; where a
+ * matchline from the ranges would fall outside what this chart shows, the shown KPs are
+ * used instead, so the line is still drawn where the two charts meet.
  */
 export function matchSpecs(
   ranges: { start: number; end: number }[],
   index: number,
   mode: MatchlineStyle["mode"],
+  shown?: ({ start: number; end: number } | null | undefined)[],
 ): MatchSpec[] {
   const out: MatchSpec[] = [];
   const me = ranges[index];
   const prev = ranges[index - 1];
   const next = ranges[index + 1];
   if (!me) return out;
+  const mine = shown?.[index];
+  const seen = (kp: number) =>
+    !mine || (kp >= mine.start - 0.5 && kp <= mine.end + 0.5);
+  const pick = (kp: number, other: number | undefined) =>
+    seen(kp) || other === undefined || !seen(other) ? kp : other;
   if (prev)
     out.push({
-      kp: mode === "overlap" ? prev.end : me.start,
+      kp:
+        mode === "overlap"
+          ? pick(prev.end, shown?.[index - 1]?.end)
+          : pick(me.start, mine?.start),
       side: -1,
       chart: index,
     });
   if (next)
     out.push({
-      kp: mode === "overlap" ? next.start : me.end,
+      kp:
+        mode === "overlap"
+          ? pick(next.start, shown?.[index + 1]?.start)
+          : pick(me.end, mine?.end),
       side: 1,
       chart: index + 2,
     });

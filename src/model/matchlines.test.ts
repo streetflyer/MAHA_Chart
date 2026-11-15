@@ -53,3 +53,39 @@ describe("drawing number", () => {
     expect(drawingNoOf(t, 2)).toBe("33DJ100160-LCV-CH-002.003");
   });
 });
+
+import { matchSpecs } from "./matchlines";
+describe("matchlines on panned charts", () => {
+  // FJ1: chart 2 was panned, so its own range (-43..83) is not what its plan view shows (86..169).
+  const ranges = [
+    { start: 0, end: 124 },
+    { start: -43, end: 83 },
+    { start: 171, end: 297 },
+  ];
+  const shown = [
+    { start: 0, end: 117 },
+    { start: 86, end: 169 },
+    { start: 168, end: 289 },
+  ];
+  it("uses the shown KPs where the range's KP is not on the chart", () => {
+    expect(matchSpecs(ranges, 0, "overlap", shown).map((m) => m.kp)).toEqual([
+      86,
+    ]);
+    expect(matchSpecs(ranges, 2, "overlap", shown).map((m) => m.kp)).toEqual([
+      169,
+    ]);
+    expect(matchSpecs(ranges, 1, "overlap", shown).map((m) => m.kp)).toEqual([
+      124, 168,
+    ]);
+  });
+  it("keeps the range's KP when the chart shows it", () => {
+    const even = [
+      { start: 0, end: 1000 },
+      { start: 900, end: 1900 },
+    ];
+    expect(matchSpecs(even, 0, "overlap", even).map((m) => m.kp)).toEqual([
+      900,
+    ]);
+    expect(matchSpecs(even, 0, "overlap").map((m) => m.kp)).toEqual([900]);
+  });
+});

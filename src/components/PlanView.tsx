@@ -1,4 +1,4 @@
-import { drawingNoOf } from "../model/tokens";
+import { chartKpRange, drawingNoOf } from "../model/tokens";
 import { useEffect, useMemo, type ReactElement, type ReactNode } from "react";
 import {
   DEFAULT_MATCHLINES,
@@ -249,7 +249,12 @@ function Matchlines({
   });
   const out: ReactNode[] = [];
   const cap = st.textSize;
-  matchSpecs(ranges, sheetIndex, st.mode).forEach((m, k) => {
+  // What each plan view really shows (a panned or fitted chart differs from its own range).
+  const shown = ranges.map((_, i) => {
+    const r = chartKpRange(template, i);
+    return { start: r.start * 1000, end: r.end * 1000 };
+  });
+  matchSpecs(ranges, sheetIndex, st.mode, shown).forEach((m, k) => {
     const c = project(...pointAt(route, m.kp - k0));
     const a = project(...pointAt(route, m.kp - k0 + 1));
     const b = project(...pointAt(route, m.kp - k0 - 1));
