@@ -1,5 +1,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { ACI, rgbHex } from "../model/aci";
+
+/** '#rrggbb' of an AutoCAD colour index. 7 is white on screen in AutoCAD but black on paper, so it is black here. */
+const aci = (i: number) =>
+  i === 7 ? "#000000" : rgbHex(ACI[i][0], ACI[i][1], ACI[i][2]);
+/** AutoCAD's "Index Colors" row: 1 red … 9 light grey. */
+const ACI_BASE = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+/** The full AutoCAD Colour Index: 24 hues (10, 20, … 240) down 10 shades, then the greys 250–255. */
+const ACI_GRID = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((v) =>
+  Array.from({ length: 24 }, (_, h) => 10 + h * 10 + v),
+);
+const ACI_GREYS = [250, 251, 252, 253, 254, 255];
 
 /** Office theme colours: the top row of Excel's colour box. */
 const THEME = [
@@ -107,6 +119,7 @@ export function ColourBox({
   const pop = useRef<HTMLDivElement>(null);
   const more = useRef<HTMLInputElement>(null);
   const [pos, setPos] = useState({ left: 0, top: 0 });
+  const [allAci, setAllAci] = useState(false);
 
   useLayoutEffect(() => {
     if (!open || !btn.current) return;
@@ -119,7 +132,7 @@ export function ColourBox({
         ? Math.max(8, r.top - h - 4)
         : r.bottom + 4;
     setPos({ left, top });
-  }, [open]);
+  }, [open, allAci]);
 
   useEffect(() => {
     if (!open) return;
@@ -142,6 +155,20 @@ export function ColourBox({
     saveRecent(c);
     onChange(c.toLowerCase());
     setOpen(false);
+  };
+  const aciSwatch = (i: number) => {
+    const c = aci(i);
+    const [r, g, b] = ACI[i];
+    return (
+      <button
+        key={`aci${i}`}
+        type="button"
+        className={"cb-swatch" + (same(c, value) ? " on" : "")}
+        style={{ background: c }}
+        title={`AutoCAD colour ${i} · ${i === 7 ? "0,0,0 (white/black)" : `${r},${g},${b}`}`}
+        onClick={() => choose(c)}
+      />
+    );
   };
   const swatch = (c: string, k: string | number) => (
     <button
@@ -189,6 +216,25 @@ export function ColourBox({
             </div>
             <div className="cb-head">Standard Colours</div>
             <div className="cb-row">{STANDARD.map(swatch)}</div>
+            <div className="cb-head">AutoCAD Index Colours</div>
+            <div className="cb-row">{ACI_BASE.map(aciSwatch)}</div>
+            <button
+              type="button"
+              className="cb-more"
+              onClick={() => setAllAci(!allAci)}
+            >
+              {allAci ? "▾" : "▸"} All AutoCAD colours (1–255)
+            </button>
+            {allAci && (
+              <div className="cb-aci">
+                {ACI_GRID.map((row, i) => (
+                  <div key={i} className="cb-row tight">
+                    {row.map(aciSwatch)}
+                  </div>
+                ))}
+                <div className="cb-row tight">{ACI_GREYS.map(aciSwatch)}</div>
+              </div>
+            )}
             {recent.length > 0 && (
               <>
                 <div className="cb-head">Recent Colours</div>

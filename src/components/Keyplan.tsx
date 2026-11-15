@@ -56,6 +56,7 @@ export function Keyplan({
   sheetIndex: number;
 }) {
   const route = useSurvey((s) => s.route);
+  const routeShown = useSurvey((s) => s.routeShown);
   const datasets = useSurvey((s) => s.datasets);
   const sets = useMemo(() => lineworkFor(datasets, "siteplan"), [datasets]);
   const background = sets[0]?.lw ?? null;
@@ -170,7 +171,7 @@ export function Keyplan({
             widthScale={lw * 3.3}
           />
         )}
-        {route && (
+        {route && routeShown && (
           <path
             d={routePath(route, project, 0.05)}
             fill="none"

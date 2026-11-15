@@ -1900,3 +1900,28 @@ ol.rows li.row-card:nth-child(even) {
 .user-time > input {
   grid-column: 1 / -1;
 }
+fieldset.plain {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.data-entry.greyed {
+  opacity: 0.5;
+}
+.cb-pop {
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+}
+.cb-aci {
+  margin: 2px 0 4px;
+}
+.cb-aci .cb-row {
+  grid-template-columns: repeat(24, 8px);
+  gap: 1px;
+}
+.cb-aci .cb-swatch {
+  width: 8px;
+  height: 9px;
+  border-width: 0;
+}

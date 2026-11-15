@@ -81,15 +81,14 @@ export function PlanView({
       geo ? { project: gridToPlan(geo, rect), area: frameBounds(geo) } : null,
     [geo, rect],
   );
+  const routeShown = useSurvey((s) => s.routeShown);
   const routeD = useMemo(
     () => (view && route ? routePath(route, view.project, 0.05) : ""),
     [view, route],
   );
   // Runline before KP 0 (a platform approach): drawn, but not part of the KP line.
   const before = useSurvey((s) =>
-    s.reversed
-      ? undefined
-      : s.datasets.find((d) => d.kind === "route" && d.visible),
+    s.reversed ? undefined : s.datasets.find((d) => d.kind === "route"),
   );
   const beforeD = useMemo(
     () =>
@@ -148,7 +147,7 @@ export function PlanView({
           skip={skip}
         />
         {st.showGrid && <PlanGrid geo={geo} rect={rect} st={st} />}
-        {beforeD && (
+        {routeShown && beforeD && (
           <path
             d={beforeD}
             fill="none"
@@ -157,7 +156,7 @@ export function PlanView({
             strokeDasharray="2 1"
           />
         )}
-        {routeD && (
+        {routeShown && routeD && (
           <path
             d={routeD}
             fill="none"

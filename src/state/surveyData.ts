@@ -14,6 +14,8 @@ interface SurveyData {
   /** The line as it was read from the file. */
   source: Route | null;
   reversed: boolean;
+  /** The runline is ticked: drawn. Unticked it still sets the charts and KPs, only the line is hidden. */
+  routeShown: boolean;
   /** Key plan background: every visible site plan drawing, merged. */
   background: Linework | null;
   addDataset(d: Dataset): void;
@@ -27,7 +29,10 @@ interface SurveyData {
 }
 
 function derive(datasets: Dataset[], reversed: boolean) {
-  const r = datasets.find((d) => d.kind === "route" && d.visible);
+  // A hidden runline still lays out the charts: only its line is not drawn.
+  const r =
+    datasets.find((d) => d.kind === "route" && d.visible) ??
+    datasets.find((d) => d.kind === "route");
   const source = r && r.kind === "route" ? r.route : null;
   const site = datasets.filter(
     (d): d is Extract<Dataset, { kind: "linework" }> =>
@@ -56,6 +61,7 @@ function derive(datasets: Dataset[], reversed: boolean) {
     source,
     route: source && reversed ? reverseRoute(source) : source,
     background,
+    routeShown: !!r?.visible,
   };
 }
 
@@ -64,6 +70,7 @@ export const useSurvey = create<SurveyData>((set, get) => ({
   route: null,
   source: null,
   reversed: false,
+  routeShown: false,
   background: null,
   addDataset: (d) => {
     // One proposed route at a time: a new one replaces the old.

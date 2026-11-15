@@ -2740,168 +2740,191 @@ function EventList({ d }: { d: Extract<Dataset, { kind: "events" }> }) {
 /** One imported dataset in the properties list: a caret folds its settings away. */
 function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
   const sv = useSurvey.getState();
-  const [open, setOpen] = useState(true);
+  // The as-built line is greyed out when the runline is a copy of it: the runline entry is the one to use.
+  const copied = useSurvey(
+    (s) =>
+      d.target === "asbuilt" &&
+      s.datasets.some(
+        (x) => x.kind === "route" && /\(survey line as runline\)$/.test(x.name),
+      ),
+  );
+  const [open, setOpen] = useState(!copied);
   return (
-    <li className="data-entry">
-      <div className="data-row">
-        <button
-          type="button"
-          className="link caret"
-          title={open ? "Fold the settings away" : "Show the settings"}
-          aria-expanded={open}
-          onClick={() => setOpen(!open)}
-        >
-          {open ? "▾" : "▸"}
-        </button>
-        <input
-          type="checkbox"
-          checked={d.visible}
-          title="Show"
-          onChange={(e) =>
-            sv.updateDataset(d.id, { visible: e.target.checked })
-          }
-        />
-        <span className="fname" title={d.name}>
-          {d.name}
-        </span>
-        <button
-          className="link"
-          title="Remove"
-          onClick={() => sv.removeDataset(d.id)}
-        >
-          ×
-        </button>
-      </div>
-      <div className="data-meta">
-        {targetInfo(d.target).label}
-        {d.kind === "route" && ` · ${(d.route.length / 1000).toFixed(3)} km`}
-        {d.kind === "linework" &&
-          ` · ${d.lw.lines.length.toLocaleString()} lines, ${d.lw.texts.length.toLocaleString()} texts`}
-        {d.kind === "long" && ` · ${d.kp.length.toLocaleString()} rows`}
-        {d.kind === "trans" && ` · ${d.kp.length.toLocaleString()} profiles`}
-        {d.kind === "events" && ` · ${d.records.length} events`}
-        {d.kind === "cp" && ` · ${d.kp.length} readings`}
-      </div>
-      {open && (
-        <>
-          {d.kind === "linework" && <DrawingLook d={d} />}
-          {d.kind === "linework" && (
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={!!d.both}
-                onChange={(e) =>
-                  sv.updateDataset(d.id, { both: e.target.checked })
-                }
-              />
-              {d.target === "plan"
-                ? "Also show in the key plan"
-                : "Also show in the plan view"}
-            </label>
-          )}
-          <StyleControls
-            target={d.target}
-            style={styleOf(d)}
-            seriesNames={
-              d.kind === "long"
-                ? d.series
-                    .filter((_, i) => i !== d.top && i !== d.bop)
-                    .map((x) => x.name)
-                : []
-            }
-            onChange={(patch) =>
-              sv.updateDataset(d.id, applyStyle(d, { ...styleOf(d), ...patch }))
+    <li
+      className={"data-entry" + (copied ? " greyed" : "")}
+      title={
+        copied
+          ? "The runline is made from this survey line: set its look in the runline entry"
+          : undefined
+      }
+    >
+      <fieldset className="plain" disabled={copied}>
+        <div className="data-row">
+          <button
+            type="button"
+            className="link caret"
+            title={open ? "Fold the settings away" : "Show the settings"}
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
+            {open ? "▾" : "▸"}
+          </button>
+          <input
+            type="checkbox"
+            checked={d.visible}
+            title="Show"
+            onChange={(e) =>
+              sv.updateDataset(d.id, { visible: e.target.checked })
             }
           />
-          {d.kind === "long" && (
-            <div className="checks">
-              {d.series.map((se, i) => (
-                <div key={i} className="series-row">
-                  <ColourBox
-                    value={se.color}
-                    onChange={(c) =>
-                      sv.updateDataset(d.id, {
-                        series: d.series.map((x, j) =>
-                          j === i ? { ...x, color: c } : x,
-                        ),
-                      })
-                    }
-                  />
-                  <DraftNumber
-                    step={1}
-                    min={0}
-                    className="small-num"
-                    title="Line width (mm)"
-                    placeholder={String(
-                      i === d.top || i === d.bop
-                        ? (d.opts?.pipeWidth ?? 0.3)
-                        : (d.opts?.lineWidth ?? 0.2),
-                    )}
-                    value={se.width ?? ""}
-                    onCommit={(v) =>
-                      sv.updateDataset(d.id, {
-                        series: d.series.map((x, j) =>
-                          j === i ? { ...x, width: v > 0 ? v : undefined } : x,
-                        ),
-                      })
-                    }
-                  />
-                  <span className="muted">mm</span>
-                  <span className="series-name">{se.name}</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {d.kind === "long" && d.top !== undefined && <LongSmooth d={d} />}
-          {d.kind === "events" && (
-            <>
-              <LinksEditor
-                links={d.links}
-                onChange={(links) => sv.updateDataset(d.id, { links })}
-                codes={[
-                  ...new Set(d.records.map((r) => r.code.toUpperCase())),
-                ].sort()}
-              />
-              {events && <UnplacedCodes d={d} rows={events.rows ?? []} />}
-            </>
-          )}
-          {d.kind === "trans" && (
-            <>
-              <label
-                className="check"
-                title="Draw the pipe as a true circle at the lateral scale, so the vertical scale does not make it oval"
-              >
+          <span className="fname" title={d.name}>
+            {d.name}
+          </span>
+          <button
+            className="link"
+            title="Remove"
+            onClick={() => sv.removeDataset(d.id)}
+          >
+            ×
+          </button>
+        </div>
+        <div className="data-meta">
+          {copied && "Used as the runline · "}
+          {targetInfo(d.target).label}
+          {d.kind === "route" && ` · ${(d.route.length / 1000).toFixed(3)} km`}
+          {d.kind === "linework" &&
+            ` · ${d.lw.lines.length.toLocaleString()} lines, ${d.lw.texts.length.toLocaleString()} texts`}
+          {d.kind === "long" && ` · ${d.kp.length.toLocaleString()} rows`}
+          {d.kind === "trans" && ` · ${d.kp.length.toLocaleString()} profiles`}
+          {d.kind === "events" && ` · ${d.records.length} events`}
+          {d.kind === "cp" && ` · ${d.kp.length} readings`}
+        </div>
+        {open && (
+          <>
+            {d.kind === "linework" && <DrawingLook d={d} />}
+            {d.kind === "linework" && (
+              <label className="check">
                 <input
                   type="checkbox"
-                  checked={!!d.pipeRound}
+                  checked={!!d.both}
                   onChange={(e) =>
-                    sv.updateDataset(d.id, { pipeRound: e.target.checked })
+                    sv.updateDataset(d.id, { both: e.target.checked })
                   }
                 />
-                Keep the pipe diameter ratio (round pipe)
+                {d.target === "plan"
+                  ? "Also show in the key plan"
+                  : "Also show in the plan view"}
               </label>
-            </>
-          )}
-          {d.kind === "cp" && <CpReadings d={d} />}
-          {d.kind === "events" && <EventList d={d} />}
-          {d.kind === "cp" && (
-            <label className="field">
-              <span>Draw as</span>
-              <select
-                value={d.style}
-                onChange={(e) =>
-                  sv.updateDataset(d.id, {
-                    style: e.target.value as "line" | "ticks",
-                  })
-                }
-              >
-                <option value="ticks">Ticks with readings</option>
-                <option value="line">Line (gradient CP)</option>
-              </select>
-            </label>
-          )}
-        </>
-      )}
+            )}
+            <StyleControls
+              target={d.target}
+              style={styleOf(d)}
+              seriesNames={
+                d.kind === "long"
+                  ? d.series
+                      .filter((_, i) => i !== d.top && i !== d.bop)
+                      .map((x) => x.name)
+                  : []
+              }
+              onChange={(patch) =>
+                sv.updateDataset(
+                  d.id,
+                  applyStyle(d, { ...styleOf(d), ...patch }),
+                )
+              }
+            />
+            {d.kind === "long" && (
+              <div className="checks">
+                {d.series.map((se, i) => (
+                  <div key={i} className="series-row">
+                    <ColourBox
+                      value={se.color}
+                      onChange={(c) =>
+                        sv.updateDataset(d.id, {
+                          series: d.series.map((x, j) =>
+                            j === i ? { ...x, color: c } : x,
+                          ),
+                        })
+                      }
+                    />
+                    <DraftNumber
+                      step={1}
+                      min={0}
+                      className="small-num"
+                      title="Line width (mm)"
+                      placeholder={String(
+                        i === d.top || i === d.bop
+                          ? (d.opts?.pipeWidth ?? 0.3)
+                          : (d.opts?.lineWidth ?? 0.2),
+                      )}
+                      value={se.width ?? ""}
+                      onCommit={(v) =>
+                        sv.updateDataset(d.id, {
+                          series: d.series.map((x, j) =>
+                            j === i
+                              ? { ...x, width: v > 0 ? v : undefined }
+                              : x,
+                          ),
+                        })
+                      }
+                    />
+                    <span className="muted">mm</span>
+                    <span className="series-name">{se.name}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {d.kind === "long" && d.top !== undefined && <LongSmooth d={d} />}
+            {d.kind === "events" && (
+              <>
+                <LinksEditor
+                  links={d.links}
+                  onChange={(links) => sv.updateDataset(d.id, { links })}
+                  codes={[
+                    ...new Set(d.records.map((r) => r.code.toUpperCase())),
+                  ].sort()}
+                />
+                {events && <UnplacedCodes d={d} rows={events.rows ?? []} />}
+              </>
+            )}
+            {d.kind === "trans" && (
+              <>
+                <label
+                  className="check"
+                  title="Draw the pipe as a true circle at the lateral scale, so the vertical scale does not make it oval"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!d.pipeRound}
+                    onChange={(e) =>
+                      sv.updateDataset(d.id, { pipeRound: e.target.checked })
+                    }
+                  />
+                  Keep the pipe diameter ratio (round pipe)
+                </label>
+              </>
+            )}
+            {d.kind === "cp" && <CpReadings d={d} />}
+            {d.kind === "events" && <EventList d={d} />}
+            {d.kind === "cp" && (
+              <label className="field">
+                <span>Draw as</span>
+                <select
+                  value={d.style}
+                  onChange={(e) =>
+                    sv.updateDataset(d.id, {
+                      style: e.target.value as "line" | "ticks",
+                    })
+                  }
+                >
+                  <option value="ticks">Ticks with readings</option>
+                  <option value="line">Line (gradient CP)</option>
+                </select>
+              </label>
+            )}
+          </>
+        )}
+      </fieldset>
     </li>
   );
 }
