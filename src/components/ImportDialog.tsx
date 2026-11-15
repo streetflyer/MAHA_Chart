@@ -55,7 +55,12 @@ import {
   type Table,
 } from "../model/tables";
 import { useEditor } from "../state/store";
-import { rootDrawings, useProject, type ImportRecipe } from "../state/project";
+import {
+  freshFile,
+  rootDrawings,
+  useProject,
+  type ImportRecipe,
+} from "../state/project";
 import {
   applyFolderSettings,
   copyFolderSettings,
@@ -115,18 +120,15 @@ const BIG_FILE = 24 * 1024 * 1024;
 function guessTarget(
   name: string,
   panelType: string | undefined,
-  hasRoute: boolean,
+  _hasRoute: boolean,
   firstRows?: string[][],
 ): ImportTarget {
   const ext = extOf(name);
   if (IMAGE_EXT.includes(ext)) return "logo";
   if (ext === "rlx" || ext === "rlxp") return "route";
+  // A drawing is never taken as the runline by itself: the user picks the runline.
   if (ext === "dxf" || ext === "dwg")
-    return panelType === "keyplan"
-      ? "siteplan"
-      : !hasRoute && panelType === undefined
-        ? "route"
-        : "plan";
+    return panelType === "keyplan" ? "siteplan" : "plan";
   if (ext === "dig" || ext === "xyz") return "asbuilt";
   if (ext === "long") return "long";
   const byPanel = targetsFor(name).find(
@@ -296,6 +298,15 @@ export function ImportDialog({
     setCurrent(fresh[0]?.id ?? null);
     for (const it of fresh) {
       try {
+        // A file from the project folder is read as it is on disk now (an older reference
+        // goes unreadable once the file changes, e.g. a drawing dropped on the root folder again).
+        const f = await freshFile(it.file);
+        if (f !== it.file) {
+          it.file = f;
+          setItems((xs) =>
+            xs.map((x) => (x.id === it.id ? { ...x, file: f } : x)),
+          );
+        }
         const got = await readItem(it.file, it.target);
         // Content can sharpen the guess (e.g. a CSV whose header says CODE).
         const t0 = got.tables?.[got.mapping?.sheet ?? 0];

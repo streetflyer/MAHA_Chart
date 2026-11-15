@@ -268,6 +268,37 @@ export async function subHandle(
   return h;
 }
 
+/** The folder in the tree that lists this file. */
+function nodeOf(t: FolderNode | null, f: File): FolderNode | null {
+  if (!t) return null;
+  if (t.files.includes(f)) return t;
+  for (const c of t.children) {
+    const hit = nodeOf(c, f);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+/**
+ * The file as it is on disk now. A File read from the project folder goes stale
+ * (NotReadableError) once the file on disk changes, e.g. when a copy is written over
+ * it; this reads it again through the folder handle and puts the new one in the tree.
+ */
+export async function freshFile(f: File): Promise<File> {
+  const s = useProject.getState();
+  const node = nodeOf(s.tree, f);
+  if (!s.handle || !node) return f;
+  try {
+    const dir = await subHandle(s.handle, node.path);
+    const g = await (await dir.getFileHandle(f.name)).getFile();
+    node.files = node.files.map((x) => (x === f ? g : x));
+    useProject.setState({ tree: { ...s.tree! } });
+    return g;
+  } catch {
+    return f;
+  }
+}
+
 /** Ask for write access to a folder handle (needs a click to have just happened). */
 export async function canWrite(h: FileSystemDirectoryHandle): Promise<boolean> {
   const x = h as unknown as {

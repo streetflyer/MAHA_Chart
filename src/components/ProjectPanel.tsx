@@ -271,12 +271,15 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
     if (s.handle && (await canWrite(s.handle))) {
       try {
         const dir = await subHandle(s.handle, path);
-        for (const f of files) {
-          const w = await (
-            await dir.getFileHandle(f.name, { create: true })
-          ).createWritable();
-          await w.write(f);
+        for (const [i, f] of files.entries()) {
+          // Read it first: the dropped file may be the very one on disk being replaced.
+          const data = await f.arrayBuffer();
+          const fh = await dir.getFileHandle(f.name, { create: true });
+          const w = await fh.createWritable();
+          await w.write(data);
           await w.close();
+          // Keep the copy on disk, which stays readable (the dropped one may not).
+          files[i] = await fh.getFile();
         }
         written = true;
       } catch (e) {
