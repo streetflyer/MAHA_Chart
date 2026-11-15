@@ -497,6 +497,8 @@ export interface SheetFrame {
   /** Map nudged inside the plan view by the user, in metres along and across the frame. */
   panU?: number;
   panV?: number;
+  /** One straight part of a curved stretch ("Fit to curved line"): the KP panels and title cover only start to end. */
+  part?: boolean;
 }
 
 export interface PaperSettings {

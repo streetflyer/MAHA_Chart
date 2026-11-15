@@ -46,13 +46,17 @@ export function withLineEnd(
   to: number,
   interval: number,
   end: number,
+  /** A regular mark closer than this (m) to the end gives way to the end mark. */
+  minGap = 0.5,
 ): number[] {
   const out: number[] = [];
   for (let kp = from; kp <= to + 1e-6 && out.length < 400; kp += interval)
-    out.push(kp);
-  if (!out.some((k) => Math.abs(k - end) < 0.5)) {
-    out.push(end);
-    out.sort((a, b) => a - b);
-  }
+    if (Math.abs(kp - end) >= Math.max(0.5, minGap)) out.push(kp);
+  out.push(end);
+  out.sort((a, b) => a - b);
   return out;
 }
+
+/** Ground metres a KP block needs from the next, so two never overprint. */
+export const kpMarkGap = (st: PlanStyle, scale: number) =>
+  (st.kpBlockSize * 1.6 * scale) / 1000;

@@ -24,6 +24,7 @@ import {
   kpInterval,
   planStyle,
   withLineEnd,
+  kpMarkGap,
 } from "../model/planStyle";
 import { useSurvey } from "../state/surveyData";
 import { useDrawingEdit } from "../state/drawingEdit";
@@ -365,6 +366,7 @@ function KpBlocks({
     k0 + route.length,
     interval,
     k0 + route.length,
+    kpMarkGap(st, template.scale.horizontal),
   )) {
     const [x, y] = project(...pointAt(route, kp - k0));
     if (x < rect.x || x > rect.x + rect.w || y < rect.y || y > rect.y + rect.h)

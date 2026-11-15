@@ -1,6 +1,25 @@
 import { scaleTokens, sheetCount, sheetRange } from "./scale";
 import type { ChartTemplate } from "./types";
 
+/**
+ * KP range (km) of the runline the plan view of a chart shows. Set by the drawing code,
+ * which knows the line; without it, the chart's own range is used.
+ */
+let shownRange:
+  | ((t: ChartTemplate, i: number) => { start: number; end: number } | null)
+  | null = null;
+export function setShownRange(f: typeof shownRange) {
+  shownRange = f;
+}
+
+/** The KP range a chart shows: the runline in its plan view, else its nominal range. */
+export function chartKpRange(
+  t: ChartTemplate,
+  i: number,
+): { start: number; end: number } {
+  return shownRange?.(t, i) ?? sheetRange(t, i);
+}
+
 /** Newest revision that has a revision code, used for the title block's Rev box. */
 export function currentRevision(t: ChartTemplate): string {
   const tb = t.panels.find((p) => p.type === "titleBlock");
@@ -61,7 +80,7 @@ export function templateTokens(
   sheetIndex = 0,
 ): Record<string, string> {
   const n = sheetCount(t);
-  const { start, end } = sheetRange(t, sheetIndex);
+  const { start, end } = chartKpRange(t, sheetIndex);
   return {
     ...scaleTokens(t),
     PLOT_SIZE: `ISO ${t.paper.size}`,

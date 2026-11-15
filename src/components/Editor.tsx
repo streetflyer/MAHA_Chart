@@ -1,9 +1,9 @@
-import { drawingNoOf } from "../model/tokens";
+import { chartKpRange, drawingNoOf } from "../model/tokens";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { newId } from "../model/ids";
 import { PAPER_SIZES } from "../model/paper";
 import { BUILTIN_TEMPLATES } from "../model/builtinTemplates";
-import { autoSheets } from "../model/route";
+import { autoSheets, fitCurvedParts } from "../model/route";
 import {
   deleteSheet,
   editSheet,
@@ -12,6 +12,7 @@ import {
   sheetCount,
   sheetRange,
   sheetRotation,
+  splitSheet,
 } from "../model/scale";
 import {
   exportTemplateFile,
@@ -962,7 +963,7 @@ export function Editor({ onExit }: { onExit(): void }) {
               </div>
             </div>
           )}
-          <ChartTabs />
+          <ChartTabs onNotice={flash} />
         </div>
         <PaneResizer side="right" panes={panes} setPanes={setPanes} />
         <div ref={propsRef} className="props-wrap">
@@ -1035,23 +1036,82 @@ export function Editor({ onExit }: { onExit(): void }) {
 }
 
 /** One tab per chart needed to cover the survey line; each chart starts where the previous one ends. */
-function ChartTabs() {
+function ChartTabs({ onNotice }: { onNotice(m: string): void }) {
   const template = useEditor((s) => s.template)!;
   const current = useEditor((s) => s.sheetIndex);
   const panMap = useEditor((s) => s.panMap);
   const n = sheetCount(template);
   const st = () => useEditor.getState();
+  const route = useSurvey((s) => s.route);
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    i: number;
+  } | null>(null);
+  const fitCurve = (i: number) => {
+    if (!route) return;
+    const parts = fitCurvedParts(
+      template,
+      route,
+      i,
+      0.97,
+      chartKpRange(template, i),
+    );
+    if (!parts || parts.length < 2) {
+      onNotice(
+        parts
+          ? `Chart ${i + 1}: the line is already straight enough.`
+          : "No line on this chart.",
+      );
+      return;
+    }
+    st().commit((t) => splitSheet(t, i, parts));
+    st().setSheet(i);
+    onNotice(
+      `Chart ${i + 1} split into ${parts.length} charts along the straight parts of the line.`,
+    );
+  };
   return (
     <div className="chart-bar">
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+          items={[
+            {
+              label: "Fit to curved line",
+              disabled: !route,
+              action: () => fitCurve(menu.i),
+            },
+            "separator",
+            {
+              label: "Add chart after this one",
+              action: () => st().commit((t) => insertSheet(t, menu.i)),
+            },
+            {
+              label: "Delete this chart",
+              disabled: n <= 1,
+              action: () => st().commit((t) => deleteSheet(t, menu.i)),
+            },
+          ]}
+        />
+      )}
       <nav className="chart-tabs" aria-label="Charts">
         {Array.from({ length: n }, (_, i) => {
-          const r = sheetRange(template, i);
+          // The KPs of the runline in the chart's plan view (as the title block gives them).
+          const r = chartKpRange(template, i);
           return (
             <button
               key={i}
               className={i === current ? "active" : ""}
               onClick={() => st().setSheet(i)}
-              title={`KP ${r.start.toFixed(3)} to KP ${r.end.toFixed(3)}`}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                st().setSheet(i);
+                setMenu({ x: e.clientX, y: e.clientY, i });
+              }}
+              title={`KP ${r.start.toFixed(3)} to KP ${r.end.toFixed(3)}. Right-click: fit to a curved line, add or delete a chart.`}
             >
               Chart {i + 1}
               <span>

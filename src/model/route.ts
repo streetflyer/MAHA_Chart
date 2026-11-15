@@ -382,3 +382,62 @@ export function robustBounds(lines: Float64Array[]): Bounds {
     maxN: q(ns, 0.99),
   };
 }
+
+/**
+ * Split one chart's stretch of a curved line into charts that each cover a nearly
+ * straight part, so KP runs evenly across the plan view and the profiles below it.
+ * A part is straight enough while its chord is at least `ratio` of its length along the
+ * line (0.97: about a 50° turn at most) and it stays inside the frame.
+ */
+export function fitCurvedParts(
+  t: ChartTemplate,
+  r: Route,
+  index: number,
+  ratio = 0.97,
+  /** The KPs (km) the chart covers, when its plan view shows another stretch than its nominal range (a panned chart). */
+  range?: { start: number; end: number },
+): SheetFrame[] | null {
+  const plan = planPanel(t);
+  if (!plan) return null;
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+  const { start, end } = range ?? sheetRange(t, index);
+  const s0 = Math.max(0, start * 1000 - k0);
+  const s1 = Math.min(r.length, end * 1000 - k0);
+  if (!(s1 > s0)) return null;
+  const L = (plan.w * t.scale.horizontal) / 1000;
+  const W = (plan.h * t.scale.horizontal) / 1000;
+  const minPart = Math.max(1, (s1 - s0) / 40);
+  const straight = (a: number, b: number) => {
+    const p = pointAt(r, a);
+    const q = pointAt(r, b);
+    const chord = Math.hypot(q[0] - p[0], q[1] - p[1]);
+    if (chord < 1e-6) return false;
+    const u: [number, number] = [(q[0] - p[0]) / chord, (q[1] - p[1]) / chord];
+    const x = extents(r, a, b, p, u);
+    return (
+      chord >= ratio * (b - a) &&
+      x.uMax - x.uMin <= L * 0.98 &&
+      x.vMax - x.vMin <= W * 0.7
+    );
+  };
+  const parts: SheetFrame[] = [];
+  let a = s0;
+  while (a < s1 - 1e-6 && parts.length < 60) {
+    let b = s1;
+    if (!straight(a, b)) {
+      let lo = Math.min(s1, a + minPart);
+      let hi = s1;
+      for (let k = 0; k < 18; k++) {
+        const mid = (lo + hi) / 2;
+        if (straight(a, mid)) lo = mid;
+        else hi = mid;
+      }
+      b = lo;
+    }
+    // A sliver at the end joins the part before it.
+    if (s1 - b < minPart) b = s1;
+    parts.push({ start: k0 + a, end: k0 + b, rotation: 0, part: true });
+    a = b;
+  }
+  return parts;
+}

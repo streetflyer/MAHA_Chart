@@ -1,4 +1,4 @@
-import { drawingNoOf } from "../model/tokens";
+import { drawingNoOf, setShownRange } from "../model/tokens";
 import { Cp } from "./CpPanel";
 import { askText } from "./Dialog";
 import { useEditor } from "../state/store";
@@ -38,9 +38,14 @@ import {
   surveySessions,
   type SurveySession,
 } from "../model/events";
-import { kpInterval, planStyle, withLineEnd } from "../model/planStyle";
+import {
+  kpInterval,
+  kpMarkGap,
+  planStyle,
+  withLineEnd,
+} from "../model/planStyle";
 import { chartGeometry, gridToPlan, pointAt, type Route } from "../model/route";
-import { planPanel, sheetRange } from "../model/scale";
+import { planPanel, sheetFrame, sheetRange } from "../model/scale";
 import type { ChartTemplate, Panel } from "../model/types";
 import { useSurvey } from "../state/surveyData";
 import { niceGrid } from "./Keyplan";
@@ -187,6 +192,13 @@ export function planKpRange(
       lo = Math.min(lo, kp);
       hi = Math.max(hi, kp);
     }
+  }
+  if (!(lo <= hi)) return null;
+  // A straight part of a fitted curve covers only its own KPs, though the frame shows more of the line.
+  const f = sheetFrame(t, sheetIndex);
+  if (f?.part && f.end !== undefined) {
+    lo = Math.max(lo, f.start);
+    hi = Math.min(hi, f.end);
   }
   return lo <= hi ? [lo, hi] : null;
 }
@@ -387,6 +399,7 @@ function kpTicks(
     k0 + len,
     interval,
     k0 + len,
+    kpMarkGap(planStyle(plan), t.scale.horizontal),
   )) {
     const x = toX(kp);
     if (x >= x0 - 0.01 && x <= x1 + 0.01) out.push([kp, x]);
@@ -1910,3 +1923,27 @@ export function CpMark({
     />
   );
 }
+
+// The title block and chart tabs give the KPs of the runline each plan view shows.
+const shownCache = new WeakMap<
+  ChartTemplate,
+  {
+    route: Route | null;
+    byIndex: Map<number, { start: number; end: number } | null>;
+  }
+>();
+setShownRange((t, i) => {
+  const route = useSurvey.getState().route;
+  if (!route) return null;
+  let c = shownCache.get(t);
+  if (!c || c.route !== route) {
+    c = { route, byIndex: new Map() };
+    shownCache.set(t, c);
+  }
+  if (!c.byIndex.has(i)) {
+    const toX = kpToX(t, route, i);
+    const r = toX ? planKpRange(t, route, i, toX) : null;
+    c.byIndex.set(i, r ? { start: r[0] / 1000, end: r[1] / 1000 } : null);
+  }
+  return c.byIndex.get(i) ?? null;
+});

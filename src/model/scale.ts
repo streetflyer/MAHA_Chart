@@ -169,6 +169,18 @@ export function insertSheet(t: ChartTemplate, index: number): ChartTemplate {
   return { ...t, scale: { ...t.scale, sheets } };
 }
 
+/** Replace one chart with several (a curved stretch split into straight parts). */
+export function splitSheet(
+  t: ChartTemplate,
+  index: number,
+  parts: SheetFrame[],
+): ChartTemplate {
+  const sheets = materializeSheets(t);
+  if (!sheets[index] || !parts.length) return t;
+  sheets.splice(index, 1, ...parts);
+  return { ...t, scale: { ...t.scale, sheets } };
+}
+
 export function deleteSheet(t: ChartTemplate, index: number): ChartTemplate {
   const sheets = materializeSheets(t);
   if (sheets.length <= 1) return t;
