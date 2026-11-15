@@ -1,4 +1,4 @@
-import { isBurialLink } from "./events";
+import { isBurialLink, linkLook } from "./events";
 import type { Dataset } from "./datasets";
 import type { LegendGroup, LegendItem, LegendStyle } from "./types";
 
@@ -150,6 +150,14 @@ export function dataLegend(
             symbolText: "Length (m)",
             datasetId: d.id,
             colorOf: `link:${i}`,
+            ...(() => {
+              const k = linkLook(l);
+              return {
+                boldPos: k.boldPos,
+                boldColor: k.boldColor,
+                boldDash: k.dashed,
+              };
+            })(),
           });
       });
   }

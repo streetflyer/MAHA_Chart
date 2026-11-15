@@ -127,6 +127,8 @@ export interface EventRow {
   videoSource?: "events" | "timing";
   /** A pause in the event log longer than this (minutes) starts a new session. */
   sessionGap?: number;
+  /** KP span the user set for a survey session (metres), keyed by the session's start time. */
+  sessionKp?: Record<string, { k0?: number; k1?: number }>;
   /** Zebra stripe: a coloured band behind the text along the row. */
   stripe?: boolean;
   stripeColor?: string;
@@ -366,6 +368,10 @@ export interface LegendItem {
   fill?: string;
   outline?: string;
   cpSymbol?: string;
+  /** Linked event symbols: bold bar place, colour and pattern. */
+  boldPos?: "top" | "middle" | "bottom";
+  boldColor?: string;
+  boldDash?: boolean;
 }
 
 /** Text look of a legend panel. */

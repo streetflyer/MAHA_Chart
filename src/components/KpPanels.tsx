@@ -1,5 +1,6 @@
 import { drawingNoOf } from "../model/tokens";
 import { Cp } from "./CpPanel";
+import { askText } from "./Dialog";
 import { useEditor } from "../state/store";
 import { useProject } from "../state/project";
 import { useVideo } from "../state/video";
@@ -26,7 +27,8 @@ import {
   codeMatcher,
   isKpRow,
   isVideoRow,
-  isBurialLink,
+  connectSessions,
+  linkLook,
   rowCodes,
   splitRanges,
   type EventMark,
@@ -1019,7 +1021,8 @@ function EventsPanel({
       }
       if (sessions.length) {
         const font = split[0]?.d.font ?? DEFAULT_FONT;
-        sessions.forEach((ss, j) => {
+        const joined = connectSessions(sessions, row.sessionKp);
+        joined.forEach((ss, j) => {
           if (ss.k1 < span[0] || ss.k0 > span[1]) return;
           out.push(
             <SessionSpan
@@ -1032,6 +1035,9 @@ function EventsPanel({
               x1={x1}
               font={font}
               fill={row.stripeColor ?? "#d9d9d9"}
+              editKey={sessionKey(p.id, row.id, j, () =>
+                editSession(p, row.id, joined, j),
+              )}
             />,
           );
         });
@@ -1398,6 +1404,70 @@ function PointTicks({
   );
 }
 
+/** The sheet's double-click finds a session by its data-session key and runs its editor. */
+const sessionEditors = new Map<string, () => Promise<void>>();
+function sessionKey(
+  panelId: string,
+  rowId: string,
+  j: number,
+  edit: () => Promise<void>,
+) {
+  const k = `${panelId}|${rowId}|${j}`;
+  sessionEditors.set(k, edit);
+  return k;
+}
+export function editSessionAt(key: string): boolean {
+  const f = sessionEditors.get(key);
+  if (f) void f();
+  return !!f;
+}
+
+/** Ask for a session's start and end KP (km); the sessions either side follow so the line stays joined. */
+async function editSession(
+  p: Panel,
+  rowId: string,
+  list: SurveySession[],
+  j: number,
+) {
+  const ss = list[j];
+  const v = await askText(
+    `Session ${sessionText(ss)}: start and end KP (km), e.g. 0.000 to 2.846. Leave empty to go back to the KPs read from the events.`,
+    `${(ss.k0 / 1000).toFixed(3)} to ${(ss.k1 / 1000).toFixed(3)}`,
+  );
+  if (v === null) return;
+  const ed = useEditor.getState();
+  const panel = ed.template?.panels.find((q) => q.id === p.id);
+  const row = panel?.rows?.find((r) => r.id === rowId);
+  if (!panel?.rows || !row) return;
+  const edits = { ...(row.sessionKp ?? {}) };
+  const key = String(ss.t0);
+  const prev = list[j - 1];
+  const next = list[j + 1];
+  // The neighbours' own settings at the shared ends give way to this one.
+  const drop = (s: SurveySession | undefined, end: "k0" | "k1") => {
+    if (!s) return;
+    const k = String(s.t0);
+    if (!edits[k]) return;
+    const { [end]: _gone, ...rest } = edits[k];
+    if (Object.keys(rest).length) edits[k] = rest;
+    else delete edits[k];
+  };
+  const nums = (v.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+  if (!v.trim()) delete edits[key];
+  else if (nums.length >= 2 && nums[1] > nums[0]) {
+    edits[key] = { k0: nums[0] * 1000, k1: nums[1] * 1000 };
+    drop(prev, "k1");
+    drop(next, "k0");
+  } else return;
+  ed.updatePanel(p.id, {
+    rows: panel.rows.map((r) =>
+      r.id === rowId
+        ? { ...r, sessionKp: Object.keys(edits).length ? edits : undefined }
+        : r,
+    ),
+  });
+}
+
 /** One survey session in the video row: |◄ line ►| over its KP span, its times in a grey label. */
 function SessionSpan({
   s,
@@ -1408,7 +1478,9 @@ function SessionSpan({
   x1,
   font,
   fill,
+  editKey,
 }: {
+  editKey: string;
   s: SurveySession;
   y: number;
   rh: number;
@@ -1436,7 +1508,15 @@ function SessionSpan({
   if (a >= x0) d += `M${a} ${y - tick}v${2 * tick}`;
   if (b <= x1) d += `M${b} ${y - tick}v${2 * tick}`;
   return (
-    <g>
+    <g data-session={editKey} style={{ cursor: "pointer" }}>
+      <title>Double-click to set this session's start and end KP</title>
+      <rect
+        x={ca}
+        y={y - rh / 2}
+        width={cb - ca}
+        height={rh}
+        style={{ fill: "transparent", pointerEvents: "all" }}
+      />
       <path d={d} stroke="currentColor" strokeWidth={0.15} fill="none" />
       {a >= x0 && ah > 0.2 && (
         <path
@@ -1473,6 +1553,9 @@ function SessionSpan({
     </g>
   );
 }
+
+/** Dash and gap of an intermittent bold bar, mm. */
+export const DASH: [number, number] = [1.2, 0.6];
 
 /**
  * Linked events (freespan, burial): a line at each end, a bar between them, the
@@ -1511,11 +1594,16 @@ function LinkedEvents({
         const half = (rh * (l.lineExtent ?? 0.8)) / 2;
         const lineTop = Math.max(y0 + gap * 0.5, centre - half);
         const lineBot = Math.min(y0 + rh - gap * 0.5, centre + half);
-        // Freespan: bold stripe along the top; burial: along the bottom; a light tint fills between the end lines.
-        const burial = isBurialLink(l);
-        const bold = Math.min(bh, (lineBot - lineTop) / 2);
-        const barTop = burial ? lineBot - bold : lineTop;
-        const barBot = burial ? lineBot : lineTop + bold;
+        // The type sets the bold bar: freespan along the top, burial along the bottom, intermittent broken; a light tint fills between the end lines.
+        const look = linkLook(l);
+        const bold = Math.min(bh, lineBot - lineTop);
+        const barTop =
+          look.boldPos === "bottom"
+            ? lineBot - bold
+            : look.boldPos === "middle"
+              ? (lineTop + lineBot - bold) / 2
+              : lineTop;
+        const barBot = barTop + bold;
         // Texts keep their gap from the symbol and stay clear of the row's own lines.
         const lengthY = Math.max(y0 + gap + cap, lineTop - gap);
         const heightY = Math.min(y0 + rh - gap, lineBot + gap + cap);
@@ -1531,13 +1619,23 @@ function LinkedEvents({
               fill={c}
               fillOpacity={0.45}
             />
-            <rect
-              x={xa}
-              y={barTop}
-              width={Math.max(0.1, xb - xa)}
-              height={Math.max(0.1, barBot - barTop)}
-              fill={c}
-            />
+            {look.dashed ? (
+              <path
+                d={`M${xa.toFixed(2)} ${((barTop + barBot) / 2).toFixed(2)}H${xb.toFixed(2)}`}
+                stroke={look.boldColor}
+                strokeWidth={Math.max(0.1, barBot - barTop)}
+                strokeDasharray={`${DASH[0]} ${DASH[1]}`}
+                fill="none"
+              />
+            ) : (
+              <rect
+                x={xa}
+                y={barTop}
+                width={Math.max(0.1, xb - xa)}
+                height={Math.max(0.1, barBot - barTop)}
+                fill={look.boldColor}
+              />
+            )}
             <path
               d={lines}
               stroke={font.color}

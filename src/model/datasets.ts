@@ -1,3 +1,4 @@
+import type { BoldPos, LinkKind } from "./events";
 import type { Linework } from "./dxf";
 import type { Route } from "./route";
 import type { CrossProfile } from "./crossProfile";
@@ -175,6 +176,14 @@ export interface EventLink {
   textGap?: number;
   /** Length of the end lines as a fraction of the row height, centred on the bar. */
   lineExtent?: number;
+  /** Event type, which sets the symbol; unset is guessed from the legend text and code. */
+  type?: LinkKind;
+  /** Where the bold bar sits on the light bar; unset follows the type. */
+  boldPos?: BoldPos;
+  /** Bold bar colour; unset is the link colour. */
+  boldColor?: string;
+  /** A broken (dashed) bold bar; unset follows the type (intermittent = broken). */
+  boldDash?: boolean;
 }
 
 /** What the user changed about one event's code text. */

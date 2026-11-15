@@ -1,3 +1,4 @@
+import { editSessionAt } from "./KpPanels";
 import {
   useCallback,
   useEffect,
@@ -1276,6 +1277,9 @@ export function SheetView({
       }
       return;
     }
+    // Double-click on a survey session in a video row sets its KP span.
+    const sess = el.closest("[data-session]")?.getAttribute("data-session");
+    if (sess && editSessionAt(sess)) return;
     // Double-click in an events panel that has data switches to editing its codes.
     const evPanel = template.panels.find(
       (q) =>

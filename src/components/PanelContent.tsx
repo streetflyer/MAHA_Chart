@@ -915,7 +915,14 @@ function LegendSymbolView({
       const top = cy - 1.3;
       const bot = cy + 1.9;
       const bold = 0.7;
-      const burial = it.symbol === "burial";
+      const pos = it.boldPos ?? (it.symbol === "burial" ? "bottom" : "top");
+      const by =
+        pos === "bottom"
+          ? bot - bold
+          : pos === "middle"
+            ? (top + bot - bold) / 2
+            : top;
+      const bc = it.boldColor ?? c;
       return (
         <g>
           <text
@@ -934,13 +941,25 @@ function LegendSymbolView({
             height={bot - top}
             style={{ fill: c, fillOpacity: 0.45 }}
           />
-          <rect
-            x={xa}
-            y={burial ? bot - bold : top}
-            width={xb - xa}
-            height={bold}
-            style={{ fill: c }}
-          />
+          {it.boldDash ? (
+            <path
+              d={`M${xa} ${by + bold / 2}H${xb}`}
+              style={{
+                stroke: bc,
+                strokeWidth: bold,
+                strokeDasharray: "0.6 0.3",
+                fill: "none",
+              }}
+            />
+          ) : (
+            <rect
+              x={xa}
+              y={by}
+              width={xb - xa}
+              height={bold}
+              style={{ fill: bc }}
+            />
+          )}
           <path
             d={`M${xa} ${top} V${bot} M${xb} ${top} V${bot}`}
             style={{ stroke: c, strokeWidth: 0.25, fill: "none" }}

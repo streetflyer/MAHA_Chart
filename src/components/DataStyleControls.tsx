@@ -1,3 +1,11 @@
+import {
+  LINK_KINDS,
+  LINK_PRESETS,
+  linkKind,
+  linkLook,
+  type BoldPos,
+  type LinkKind,
+} from "../model/events";
 import { ColourBox } from "./ColourBox";
 import {
   CP_SYMBOLS,
@@ -1256,6 +1264,32 @@ export function LinksEditor({
             <span>End code</span>
             {codeSelect(l.end, (end) => set(i, { end }))}
           </label>
+          <label className="field wide">
+            <span>Event type</span>
+            <select
+              value={linkKind(l)}
+              title="Sets the symbol: where the bold bar sits and whether it is broken"
+              onChange={(e) => {
+                const type = e.target.value as LinkKind;
+                const pre = LINK_PRESETS[type];
+                const stock = Object.values(LINK_PRESETS).map((x) => x.label);
+                set(i, {
+                  type,
+                  boldPos: undefined,
+                  boldDash: undefined,
+                  ...(pre.label && (!l.label || stock.includes(l.label))
+                    ? { label: pre.label }
+                    : {}),
+                });
+              }}
+            >
+              {Object.entries(LINK_KINDS).map(([k, v]) => (
+                <option key={k} value={k}>
+                  {v}
+                </option>
+              ))}
+            </select>
+          </label>
           <Colour
             label="Colour"
             value={l.color}
@@ -1301,13 +1335,39 @@ export function LinksEditor({
             onChange={(v) => set(i, { barPos: v / 100 })}
           />
           <Any
-            label="Bar thickness"
+            label="Bold bar thickness"
             value={l.barHeight ?? 0}
             step={0.1}
             min={0}
             suffix="mm (0 = auto)"
             onChange={(v) => set(i, { barHeight: v > 0 ? v : undefined })}
           />
+          <label className="field">
+            <span>Bold bar position</span>
+            <select
+              value={linkLook(l).boldPos}
+              onChange={(e) => set(i, { boldPos: e.target.value as BoldPos })}
+            >
+              <option value="top">Top of the light bar</option>
+              <option value="middle">Middle of the light bar</option>
+              <option value="bottom">Bottom of the light bar</option>
+            </select>
+          </label>
+          <Colour
+            label="Bold bar colour"
+            value={linkLook(l).boldColor}
+            onChange={(boldColor) => set(i, { boldColor })}
+          />
+          <label className="field">
+            <span>Bold bar pattern</span>
+            <select
+              value={linkLook(l).dashed ? "dash" : "solid"}
+              onChange={(e) => set(i, { boldDash: e.target.value === "dash" })}
+            >
+              <option value="solid">Solid</option>
+              <option value="dash">Broken (intermittent)</option>
+            </select>
+          </label>
           <Any
             label="Text gap"
             value={l.textGap ?? 0.6}

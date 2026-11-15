@@ -155,6 +155,79 @@ export function linkPairs(
   return out;
 }
 
+export type LinkKind =
+  | "freespan"
+  | "freespanInt"
+  | "burial"
+  | "burialInt"
+  | "custom";
+export const LINK_KINDS: Record<LinkKind, string> = {
+  freespan: "Freespan",
+  freespanInt: "Freespan intermittent",
+  burial: "Burial",
+  burialInt: "Burial intermittent",
+  custom: "User defined",
+};
+export type BoldPos = "top" | "middle" | "bottom";
+
+/** What each event type looks like: where its bold bar sits and whether it is broken. */
+export const LINK_PRESETS: Record<
+  LinkKind,
+  { boldPos: BoldPos; dashed: boolean; label: string }
+> = {
+  freespan: {
+    boldPos: "top",
+    dashed: false,
+    label: "Flowline Status - Freespan",
+  },
+  freespanInt: {
+    boldPos: "top",
+    dashed: true,
+    label: "Flowline Status - Intermittent Freespan",
+  },
+  burial: {
+    boldPos: "bottom",
+    dashed: false,
+    label: "Flowline Status - Burial",
+  },
+  burialInt: {
+    boldPos: "bottom",
+    dashed: true,
+    label: "Flowline Status - Intermittent Burial",
+  },
+  custom: { boldPos: "top", dashed: false, label: "" },
+};
+
+/** The event type of a link: the one picked, or guessed from its legend text and start code. */
+export function linkKind(l: {
+  type?: LinkKind;
+  label: string;
+  start: string;
+}): LinkKind {
+  if (l.type) return l.type;
+  const int = /intermit/i.test(l.label);
+  if (isBurialLink(l)) return int ? "burialInt" : "burial";
+  return int ? "freespanInt" : "freespan";
+}
+
+/** How a link's symbol is drawn: bold bar place, colour, thickness and pattern. */
+export function linkLook(l: {
+  type?: LinkKind;
+  label: string;
+  start: string;
+  color: string;
+  boldPos?: BoldPos;
+  boldColor?: string;
+  boldDash?: boolean;
+}) {
+  const pre = LINK_PRESETS[linkKind(l)];
+  return {
+    boldPos: l.boldPos ?? pre.boldPos,
+    boldColor: l.boldColor ?? l.color,
+    dashed: l.boldDash ?? pre.dashed,
+  };
+}
+
 /** Burial links get the bold stripe at the foot, freespans at the top. */
 export const isBurialLink = (l: { label: string; start: string }) =>
   /burial/i.test(l.label) || /B/i.test(l.start.split(".")[1] ?? "");
@@ -194,6 +267,35 @@ export function surveySessions(
     }
   }
   return out.sort((a, b) => a.k0 - b.k0);
+}
+
+export type SessionEdits = Record<string, { k0?: number; k1?: number }>;
+
+/**
+ * Sessions joined end to end along KP, so the video row never shows a gap: each
+ * session runs to where the next one starts. The user's own start / end KPs
+ * (keyed by the session's start time) win over the ones read from the events.
+ */
+export function connectSessions(
+  sessions: SurveySession[],
+  edits: SessionEdits = {},
+): SurveySession[] {
+  const list = sessions
+    .map((s) => {
+      const e = edits[String(s.t0)];
+      return { ...s, k0: e?.k0 ?? s.k0, k1: e?.k1 ?? s.k1 };
+    })
+    .sort((a, b) => a.k0 - b.k0);
+  for (let j = 0; j + 1 < list.length; j++) {
+    const a = list[j];
+    const b = list[j + 1];
+    const edA = edits[String(a.t0)]?.k1;
+    const edB = edits[String(b.t0)]?.k0;
+    const at = edA ?? edB ?? b.k0;
+    a.k1 = at;
+    b.k0 = at;
+  }
+  return list;
 }
 
 const p2 = (n: number) => String(n).padStart(2, "0");
