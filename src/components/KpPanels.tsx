@@ -246,7 +246,10 @@ export function KpPanelData({
     : p.x + p.w;
   const dataClip = `kp-dclip-${p.id}`;
   const mine = datasets.filter((d) => d.visible && targetPanel(d) === p.type);
-  const ticks = kpTicks(t, toX, x0, p.x + p.w, k0, len);
+  // Grid lines and KP labels only over the stretch the plan view shows.
+  const ticks = kpTicks(t, toX, x0, p.x + p.w, k0, len).filter(
+    ([kp]) => !shown || (kp >= shown[0] - 0.5 && kp <= shown[1] + 0.5),
+  );
   const lines = route || mine.length > 0;
   return (
     <g pointerEvents="none">
