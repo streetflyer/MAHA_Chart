@@ -1,4 +1,4 @@
-import type { Dataset, KpMatch } from "./datasets";
+import { isRunlineOf, type Dataset, type KpMatch } from "./datasets";
 import { makeRoute, pointAt, type Route } from "./route";
 
 /** First and last KP (m) of the visible longitudinal profiles. */
@@ -93,12 +93,7 @@ export function kpMatchPatches(
   ];
   let routeStart: number | null = null;
   let routeLength: number | null = null;
-  const rd = datasets.find(
-    (d) =>
-      d.kind === "route" &&
-      (d.fromSurvey === sl.id ||
-        d.name === `${sl.name} (survey line as runline)`),
-  );
+  const rd = datasets.find((d) => isRunlineOf(d, sl));
   if (rd && rd.kind === "route") {
     const route =
       mode === "none" && rd.fullRoute

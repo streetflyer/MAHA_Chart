@@ -24,6 +24,8 @@ npm test          # unit tests for layout and scale linking
 npm run build
 ```
 
+The app's modes, busy states and multi-step flows are listed in [docs/STATE_MACHINES.md](docs/STATE_MACHINES.md), with the function and the `data-*` attribute to read each one. Read it before adding a mode or a flag.
+
 All geometry is in millimetres on paper (origin top-left). Text can use `{TOKENS}` such as `{H_SCALE}`, `{V_SCALE_LONG}`, `{KP_START}`, `{KP_END}` or any template field.
 
 ## DWG drawings

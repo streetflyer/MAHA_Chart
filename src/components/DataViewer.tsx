@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useEffect, useState } from "react";
-import type { Dataset } from "../model/datasets";
+import { runlineName, type Dataset } from "../model/datasets";
 import { pointsOf } from "../model/cpEdit";
 import { parseDelimited, readXlsx, type Table } from "../model/tables";
 import { nearestChainage } from "../model/route";
@@ -114,9 +114,7 @@ export function datasetTable(d: Dataset): Table {
 export function datasetsOf(name: string): Dataset[] {
   return useSurvey
     .getState()
-    .datasets.filter(
-      (d) => d.name === name || d.name === `${name} (survey line as runline)`,
-    );
+    .datasets.filter((d) => d.name === name || d.name === runlineName(name));
 }
 
 /** Open the window with a file's contents and, when it is charted, its data as charted. */

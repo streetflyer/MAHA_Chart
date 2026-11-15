@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Dataset } from "../model/datasets";
+import { isRunlineOf, type Dataset } from "../model/datasets";
 import { emptyBounds, extend, reverseRoute, type Route } from "../model/route";
 import type { Linework } from "../model/dxf";
 
@@ -102,12 +102,8 @@ export const useSurvey = create<SurveyData>((set, get) => ({
         // A runline copied from a survey line goes with it.
         get().datasets.filter((d) => {
           if (d.id === id) return false;
-          if (d.kind !== "route") return true;
           const gone = get().datasets.find((x) => x.id === id);
-          return !(
-            d.fromSurvey === id ||
-            (gone && d.name === `${gone.name} (survey line as runline)`)
-          );
+          return !(gone && isRunlineOf(d, gone));
         }),
         get().reversed,
       ),

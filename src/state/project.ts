@@ -347,3 +347,38 @@ export function rootDrawings(): File[] {
   const t = useProject.getState().tree;
   return (t?.files ?? []).filter((f) => /\.(dwg|dxf)$/i.test(f.name));
 }
+
+/**
+ * The state of one project folder, read from the project store in one place.
+ *
+ *   empty ──files dropped──▶ files ──"Chart this folder"──▶ onScreen
+ *   onScreen ──another folder opened──▶ charted ──"Open this chart"──▶ onScreen
+ *
+ * `onScreen`: its data is on the chart now. `charted`: its chart is kept as it was left.
+ */
+export type FolderStatus = "onScreen" | "charted" | "files" | "empty";
+
+export function folderStatus(
+  s: Pick<ProjectState, "active" | "charts">,
+  path: string,
+  fileCount: number,
+): FolderStatus {
+  if (s.active === path) return "onScreen";
+  if (s.charts[path]) return "charted";
+  return fileCount > 0 ? "files" : "empty";
+}
+
+/**
+ * How the project is tied to the disk: `none` (no project), `linked` (a folder handle:
+ * files can be read again and written), `readOnly` (opened with a plain folder picker),
+ * `reconnect` (a project file was loaded and its folder is still to be opened).
+ */
+export type ProjectLink = "none" | "linked" | "readOnly" | "reconnect";
+
+export function projectLink(
+  s: Pick<ProjectState, "tree" | "handle" | "reconnect">,
+): ProjectLink {
+  if (s.reconnect) return "reconnect";
+  if (!s.tree) return "none";
+  return s.handle ? "linked" : "readOnly";
+}

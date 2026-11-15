@@ -46,6 +46,8 @@ import { useSmoothTool } from "../state/smoothTool";
 import { eventLabelMenu } from "./eventLabelEdit";
 import { useEventEdit } from "../state/eventEdit";
 import { EventEditBar } from "./EventEditBar";
+import { ModeBar } from "./ModeBar";
+import { exitMode, useMode } from "../state/mode";
 import { undoEventLabels } from "./eventLabelEdit";
 import { planItemMenu } from "./planItems";
 import { calloutMenu } from "./calloutEdit";
@@ -108,6 +110,9 @@ export function Editor({ onExit }: { onExit(): void }) {
     }
   });
   const [toast, setToast] = useState<string | null>(null);
+  const mode = useMode();
+  /** Writing a PDF/DXF flips through the charts: one export at a time. */
+  const [exporting, setExporting] = useState(false);
   const propsRef = useRef<HTMLDivElement>(null);
   const s = useEditor.getState;
 
@@ -600,6 +605,7 @@ export function Editor({ onExit }: { onExit(): void }) {
 
   /** Chart(s) as PDF or DXF: the current one or all of them (PDF: one page each; DXF: side by side in one file). */
   async function saveAs() {
+    if (exporting) return flash("Still writing the last file…");
     const n = sheetCount(template);
     const cur = s().sheetIndex;
     const fmt = await askChoice(
@@ -623,6 +629,9 @@ export function Editor({ onExit }: { onExit(): void }) {
       if (pick === 2) files = all.map((i) => [i]);
     }
     flash(`Writing ${ext.toUpperCase()}…`);
+    setExporting(true);
+    // The export draws each chart as it is on screen: leave any edit mode so its outlines are not printed.
+    exitMode();
     const prevSel = s().selection;
     useEditor.setState({ selection: [] });
     const frame = () =>
@@ -671,6 +680,7 @@ export function Editor({ onExit }: { onExit(): void }) {
     } finally {
       s().setSheet(cur);
       useEditor.setState({ selection: prevSel });
+      setExporting(false);
     }
     flash(
       saved.length > 1
@@ -767,7 +777,11 @@ export function Editor({ onExit }: { onExit(): void }) {
   const hasInfo = template.panels.some((p) => p.type === "chartInfo");
 
   return (
-    <div className="editor">
+    <div
+      className="editor"
+      data-mode={mode}
+      data-busy={exporting ? "export" : progress ? "save" : undefined}
+    >
       <header className="toolbar">
         <button onClick={exit} title="Back to template list">
           ← Templates
@@ -826,6 +840,7 @@ export function Editor({ onExit }: { onExit(): void }) {
             Export file
           </button>
           <button
+            disabled={exporting}
             onClick={() => void saveAs()}
             title="Save the chart as a PDF or an AutoCAD DXF (DWG: save the DXF as DWG in AutoCAD)"
           >
@@ -950,6 +965,7 @@ export function Editor({ onExit }: { onExit(): void }) {
             dark={dark}
           />
           <EventEditBar />
+          <ModeBar />
           {progress && (
             <div
               className="save-progress"

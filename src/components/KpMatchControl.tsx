@@ -1,4 +1,4 @@
-import type { KpMatch } from "../model/datasets";
+import { isRunlineOf, type KpMatch } from "../model/datasets";
 import { kpMatchPatches, longExtent } from "../model/kpMatch";
 import { useEditor } from "../state/store";
 import { useSurvey } from "../state/surveyData";
@@ -38,11 +38,7 @@ export function KpMatchControl() {
   const mode: KpMatch =
     (sl?.kind === "linework" ? sl.kpMatch : undefined) ?? "none";
   const route = datasets.find((d) => d.kind === "route");
-  const fromSurvey =
-    route?.kind === "route" &&
-    !!sl &&
-    (route.fromSurvey === sl.id ||
-      route.name === `${sl.name} (survey line as runline)`);
+  const fromSurvey = !!route && !!sl && isRunlineOf(route, sl);
   return (
     <fieldset className="plain kp-match">
       <label className="field">

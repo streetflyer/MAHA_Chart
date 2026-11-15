@@ -578,9 +578,7 @@ export function lineworkFor(
 ): LineworkSet[] {
   // A survey line copied into the runline is greyed out in the panel and never drawn (nor printed):
   // the runline is drawn in its place.
-  const copied = datasets.some(
-    (d) => d.kind === "route" && /\(survey line as runline\)$/.test(d.name),
-  );
+  const copied = datasets.some(isCopiedRunline);
   return datasets.filter(
     (d): d is LineworkSet =>
       d.kind === "linework" &&
@@ -601,3 +599,29 @@ export const GRID_DASHES: [string, string][] = [
   ["Dash-dot-dot", "4 1.5 0.8 1.5 0.8 1.5"],
   ["Long dash", "8 3"],
 ];
+
+/**
+ * A runline copied from the as-built survey line. The link is `fromSurvey` (the survey
+ * line's id); charts saved before that field existed are known by the name they were given.
+ */
+const RUNLINE_SUFFIX = " (survey line as runline)";
+export const runlineName = (surveyName: string) =>
+  `${surveyName}${RUNLINE_SUFFIX}`;
+
+/** Is this dataset a runline copied from some survey line? */
+export function isCopiedRunline(d: Dataset): boolean {
+  return (
+    d.kind === "route" && (!!d.fromSurvey || d.name.endsWith(RUNLINE_SUFFIX))
+  );
+}
+
+/** Is this dataset the runline copied from this survey line? */
+export function isRunlineOf(
+  d: Dataset,
+  survey: { id: string; name: string },
+): boolean {
+  return (
+    d.kind === "route" &&
+    (d.fromSurvey === survey.id || d.name === runlineName(survey.name))
+  );
+}

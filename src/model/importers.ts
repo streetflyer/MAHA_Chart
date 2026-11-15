@@ -8,6 +8,7 @@ import {
   type EventLink,
   type EventRecord,
   type ImportTarget,
+  runlineName,
 } from "./datasets";
 import { plainLinework, type Linework } from "./dxf";
 import { newId } from "./ids";
@@ -634,7 +635,7 @@ export function routeFromSurveyLine(d: Dataset, id: string): Dataset | null {
   if (longest.length < 4) return null;
   return {
     id,
-    name: `${d.name} (survey line as runline)`,
+    name: runlineName(d.name),
     fromSurvey: d.id,
     target: "route",
     visible: true,

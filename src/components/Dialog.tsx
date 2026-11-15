@@ -23,20 +23,35 @@ interface Request {
 
 const useDialog = create<{ req: Request | null }>(() => ({ req: null }));
 
+/**
+ * One question at a time. A question asked while another is open waits its turn, so no
+ * caller is ever left waiting on an answer that can't come.
+ */
+const waiting: Request[] = [];
+function show(req: Request) {
+  if (useDialog.getState().req) waiting.push(req);
+  else useDialog.setState({ req });
+}
+/** The open question is answered: the next one in line comes up. */
+function next() {
+  useDialog.setState({ req: waiting.shift() ?? null });
+}
+/** How many questions are open or waiting (for tests and automation). */
+export const dialogsPending = () =>
+  (useDialog.getState().req ? 1 : 0) + waiting.length;
+
 export function askText(
   title: string,
   initial = "",
   okLabel = "OK",
 ): Promise<string | null> {
   return new Promise((resolve) =>
-    useDialog.setState({
-      req: {
-        kind: "text",
-        title,
-        initial,
-        okLabel,
-        resolve: (v) => resolve(v as string | null),
-      },
+    show({
+      kind: "text",
+      title,
+      initial,
+      okLabel,
+      resolve: (v) => resolve(v as string | null),
     }),
   );
 }
@@ -48,15 +63,13 @@ export function askConfirm(
   danger = false,
 ): Promise<boolean> {
   return new Promise((resolve) =>
-    useDialog.setState({
-      req: {
-        kind: "confirm",
-        title,
-        message,
-        okLabel,
-        danger,
-        resolve: (v) => resolve(v === true),
-      },
+    show({
+      kind: "confirm",
+      title,
+      message,
+      okLabel,
+      danger,
+      resolve: (v) => resolve(v === true),
     }),
   );
 }
@@ -68,15 +81,13 @@ export function askChoice(
   choices: string[],
 ): Promise<number | null> {
   return new Promise((resolve) =>
-    useDialog.setState({
-      req: {
-        kind: "choice",
-        title,
-        message,
-        choices,
-        okLabel: "",
-        resolve: (v) => resolve(typeof v === "string" ? Number(v) : null),
-      },
+    show({
+      kind: "choice",
+      title,
+      message,
+      choices,
+      okLabel: "",
+      resolve: (v) => resolve(typeof v === "string" ? Number(v) : null),
     }),
   );
 }
@@ -89,15 +100,13 @@ export function askPair(
   okLabel = "OK",
 ): Promise<[string, string] | null> {
   return new Promise((resolve) =>
-    useDialog.setState({
-      req: {
-        kind: "pair",
-        title,
-        pair: { labels, values },
-        okLabel,
-        resolve: (v) =>
-          resolve(Array.isArray(v) ? [v[0] ?? "", v[1] ?? ""] : null),
-      },
+    show({
+      kind: "pair",
+      title,
+      pair: { labels, values },
+      okLabel,
+      resolve: (v) =>
+        resolve(Array.isArray(v) ? [v[0] ?? "", v[1] ?? ""] : null),
     }),
   );
 }
@@ -111,16 +120,14 @@ export function askCodes(
   single = false,
 ): Promise<string[] | null> {
   return new Promise((resolve) =>
-    useDialog.setState({
-      req: {
-        kind: "codes",
-        title,
-        message,
-        items,
-        single,
-        okLabel,
-        resolve: (v) => resolve(Array.isArray(v) ? v : null),
-      },
+    show({
+      kind: "codes",
+      title,
+      message,
+      items,
+      single,
+      okLabel,
+      resolve: (v) => resolve(Array.isArray(v) ? v : null),
     }),
   );
 }
@@ -227,7 +234,7 @@ export function DialogHost() {
 
   if (!req) return null;
   const close = (v: string | boolean | string[] | null) => {
-    useDialog.setState({ req: null });
+    next();
     req.resolve(v);
   };
   const ok = () => {

@@ -17,6 +17,8 @@ import {
   type FolderState,
   rootDrawings,
   freshFile,
+  folderStatus,
+  projectLink,
 } from "../state/project";
 import { askCodes, askConfirm } from "./Dialog";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
@@ -578,7 +580,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
   const recipes = sel ? pr.folder(sel.path).recipes : [];
 
   return (
-    <aside className="project-panel">
+    <aside className="project-panel" data-project-link={projectLink(pr)}>
       <div className="project-head">
         <h4>Project{pr.dirty ? " •" : ""}</h4>
         <button
@@ -854,9 +856,11 @@ function TreeNode({
   const pr = useProject();
   const open = pr.expanded[n.path] ?? depth < 2;
   const fileCount = n.files.length;
+  const status = folderStatus(pr, n.path, fileCount);
   return (
     <div role="treeitem" aria-expanded={n.children.length ? open : undefined}>
       <div
+        data-folder-status={status}
         className={`tree-row${pr.selected === n.path ? " selected" : ""}${pr.active === n.path ? " active" : ""}${over === n.path ? " over" : ""}`}
         style={{ paddingLeft: 4 + depth * 14 }}
         onClick={() => useProject.setState({ selected: n.path })}
@@ -891,16 +895,16 @@ function TreeNode({
         </button>
         <span className="tree-icon">📁</span>
         <span className="tree-name">{n.name}</span>
-        {(pr.active === n.path || pr.charts[n.path]) && (
+        {(status === "onScreen" || status === "charted") && (
           <span
             className="tree-chart"
             title={
-              pr.active === n.path
+              status === "onScreen"
                 ? "The chart on screen"
                 : "Has a chart: double-click to open it as you left it"
             }
           >
-            {pr.active === n.path ? "●" : "○"}
+            {status === "onScreen" ? "●" : "○"}
           </span>
         )}
         {fileCount > 0 && <span className="tree-count">{fileCount}</span>}

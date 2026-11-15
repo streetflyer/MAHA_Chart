@@ -2079,3 +2079,6 @@ fieldset.plain {
   font-size: 10px;
   margin-left: 2px;
 }
+.mode-bar .mode-hint {
+  color: var(--muted);
+}
