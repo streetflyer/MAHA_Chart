@@ -670,7 +670,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
               </li>
             )}
           </ul>
-          <ChartNumbers path={sel.path} name={sel.name || pr.name || ""} />
+          <ChartNumbers path={sel.path} />
           <div className="project-actions">
             <button
               type="button"
@@ -756,10 +756,10 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
 
 /**
  * The root folder holds the job number for every product; each product folder holds its
- * chart number. Drawing No. of every sheet: JOB-PRODUCT-CCC.SSS. Editable any time; every
+ * chart number. Drawing No. of every sheet: JOB-CH-CCC.SSS. Editable any time; every
  * chart of the project follows at once.
  */
-function ChartNumbers({ path, name }: { path: string; name: string }) {
+function ChartNumbers({ path }: { path: string }) {
   const job = useProject((s) => s.folders[""]?.jobNo ?? "");
   const seq = useProject((s) => s.folders[path]?.chartNo ?? "");
   const set = (patch: { jobNo?: string; chartNo?: string }) => {
@@ -779,11 +779,11 @@ function ChartNumbers({ path, name }: { path: string; name: string }) {
           />
         </label>
         <span className="sample">
-          Used by every product folder: {job.trim() || "JOB"}-PRODUCT-002.001
+          Used by every product folder: {job.trim() || "JOB"}-CH-002.001
         </span>
       </div>
     );
-  const sample = `${job.trim() || "JOB"}-${name}-${String(parseInt(seq, 10) || 1).padStart(3, "0")}.001`;
+  const sample = `${job.trim() || "JOB"}-CH-${String(parseInt(seq, 10) || 1).padStart(3, "0")}.001`;
   return (
     <div className="chart-numbers">
       <label>

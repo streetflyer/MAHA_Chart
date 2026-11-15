@@ -51,7 +51,7 @@ const lastName = (path: string) => path.split("/").filter(Boolean).pop() ?? "";
 /**
  * Write the job number (kept on the root folder) and each product's chart number into the
  * templates: the chart on screen and every folder's saved template. The Drawing No. of
- * every sheet is then JOB-PRODUCT-CCC.SSS.
+ * every sheet is then JOB-CH-CCC.SSS.
  */
 export function syncChartNumbers() {
   const pr = useProject.getState();

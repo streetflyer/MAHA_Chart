@@ -41,16 +41,15 @@ export function surveyDateOf(t: ChartTemplate, auto: string): string {
 
 /**
  * The drawing number of a sheet. With a job number and a product name set it is built as
- * JOB-PRODUCT-CCC.SSS (chart number typed by the user, then the sheet's own sequence);
+ * JOB-CH-CCC.SSS (chart number typed by the user, then the sheet's own sequence);
  * otherwise it is the typed CHART_NO.
  */
 export function drawingNoOf(t: ChartTemplate, sheetIndex = 0): string {
   const f = t.fields;
   const job = (f.JOB_NO ?? "").trim();
-  const prod = (f.PRODUCT ?? "").trim();
-  if (!job || !prod) return f.CHART_NO ?? "";
+  if (!job) return f.CHART_NO ?? "";
   const seq = String(parseInt(f.CHART_SEQ ?? "1", 10) || 1).padStart(3, "0");
-  return `${job}-${prod}-${seq}.${String(sheetIndex + 1).padStart(3, "0")}`;
+  return `${job}-CH-${seq}.${String(sheetIndex + 1).padStart(3, "0")}`;
 }
 
 /**
