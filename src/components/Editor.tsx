@@ -1,3 +1,4 @@
+import { drawingNoOf } from "../model/tokens";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { newId } from "../model/ids";
 import { PAPER_SIZES } from "../model/paper";
@@ -649,10 +650,17 @@ export function Editor({ onExit }: { onExit(): void }) {
             );
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
+        // Named by the drawing number: 33DJ100160-LCV-CH-002.001.pdf, or …-002.001_to_003.pdf for several charts.
+        const dn = (i: number) =>
+          (drawingNoOf(template, i) || `${base}_chart${i + 1}`).replace(
+            /[^\w.-]+/g,
+            "_",
+          );
+        const last = sheets[sheets.length - 1];
         a.download =
           sheets.length > 1
-            ? `${base}_all_charts.${ext}`
-            : `${base}_chart${String(sheets[0] + 1).padStart(2, "0")}.${ext}`;
+            ? `${dn(sheets[0])}_to_${dn(last).split(".").pop()}.${ext}`
+            : `${dn(sheets[0])}.${ext}`;
         a.click();
         saved.push(a.download);
         setTimeout(() => URL.revokeObjectURL(a.href), 4000);

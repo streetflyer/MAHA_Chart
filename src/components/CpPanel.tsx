@@ -30,11 +30,13 @@ export function Cp({
   p,
   toX,
   span,
+  sheetIndex = 0,
 }: {
   d: CpSet;
   p: Panel;
   toX: (kp: number) => number;
   span: [number, number];
+  sheetIndex?: number;
 }) {
   const editing = useCpEdit(
     (s) => s.active && s.panelId === p.id && s.datasetId === d.id,
@@ -139,7 +141,8 @@ export function Cp({
       );
     if (!look.showText) continue;
     const label = cpLabel(pt, look);
-    const clock = pt.textClock ?? look.textClock;
+    const clock =
+      pt.textClock ?? look.sheetClock?.[String(sheetIndex)] ?? look.textClock;
     const rot = look.textRotation;
     const horizontal = Math.abs(Math.sin((rot * Math.PI) / 180)) < 0.5;
     // Neighbouring readings on the same side must not print over each other.

@@ -1031,6 +1031,7 @@ function CpLookControls({
   onChange(l: CpLook): void;
 }) {
   const set = (patch: Partial<CpLook>) => onChange({ ...look, ...patch });
+  const sheetIndex = useEditor((s) => s.sheetIndex);
   const opt = (label: string, v: number | null, key: "yMin" | "yMax") => (
     <label className="field">
       <span>{label}</span>
@@ -1173,6 +1174,38 @@ function CpLookControls({
           ))}
         </select>
       </label>
+      <label className="field">
+        <span>On Chart {sheetIndex + 1}</span>
+        <select
+          value={look.sheetClock?.[String(sheetIndex)] ?? ""}
+          onChange={(e) => {
+            const sc = { ...look.sheetClock };
+            if (e.target.value === "") delete sc[String(sheetIndex)];
+            else sc[String(sheetIndex)] = Number(e.target.value);
+            set({ sheetClock: sc });
+          }}
+        >
+          <option value="">Same as all charts</option>
+          {[12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((h) => (
+            <option key={h} value={h}>
+              {h} o'clock (this chart only)
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={look.showOutside !== false}
+          onChange={(e) => set({ showOutside: e.target.checked })}
+        />
+        Show readings outside the plan view's KP range
+      </label>
+      <p className="hint">
+        Double-click the CP panel to edit readings one by one: click a reading,
+        then right-click for its text position, text, size, colour, KP and
+        value, or drag it. Double-click a reading to change its text.
+      </p>
       <Any
         label="Reading gap"
         value={look.textGap}

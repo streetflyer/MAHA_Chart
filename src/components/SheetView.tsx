@@ -69,7 +69,13 @@ import { approxTextWidth, fontSize } from "./svgText";
 import { useDrawingEdit } from "../state/drawingEdit";
 import { useCpEdit } from "../state/cpEdit";
 import { useSmoothTool } from "../state/smoothTool";
-import { cpDatasetFor, pickCp, pickCpInBox, moveChosen } from "./cpEditing";
+import {
+  cpDatasetFor,
+  pickCp,
+  pickCpInBox,
+  moveChosen,
+  editText as editCpText,
+} from "./cpEditing";
 import { moveGroups, rotateGroups } from "../model/drawingOps";
 import {
   pickInBox,
@@ -1281,6 +1287,18 @@ export function SheetView({
       if (!useCpEdit.getState().active) {
         useCpEdit.getState().enter(cpPanel.id, cpData.id);
         store().select({ kind: "panel", id: cpPanel.id });
+      } else {
+        // In edit mode a double-click on a reading or a note edits its text.
+        const hit = pickCp(dblAt.x, dblAt.y, 6 / pxPerMm());
+        if (hit) {
+          useCpEdit
+            .getState()
+            .select(
+              hit.kind === "pt" ? [hit.i] : [],
+              hit.kind === "note" ? [hit.i] : [],
+            );
+          void editCpText(hit.kind === "note");
+        }
       }
       return;
     }

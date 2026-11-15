@@ -254,7 +254,7 @@ async function editReading() {
     patchChosen({ kp: k * 1000, mv: m });
 }
 
-async function editText(note: boolean) {
+export async function editText(note: boolean) {
   const ce = useCpEdit.getState();
   const d = dataset();
   if (!d) return;

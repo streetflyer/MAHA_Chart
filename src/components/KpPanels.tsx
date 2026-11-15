@@ -238,7 +238,8 @@ export function KpPanelData({
   const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
   const len = route?.length ?? t.scale.routeLength;
   const shown = planKpRange(t, route, sheetIndex, toX);
-  const span = cutToPlan(kpSpan(toX, x0, p.x + p.w, len, k0), shown);
+  const fullSpan = kpSpan(toX, x0, p.x + p.w, len, k0);
+  const span = cutToPlan(fullSpan, shown);
   // The data is clipped to the x of the plan view's stretch too, so a reading just past it does not draw a tail.
   const dx0 = shown ? Math.max(x0, Math.min(toX(shown[0]), p.x + p.w)) : x0;
   const dx1 = shown
@@ -289,8 +290,17 @@ export function KpPanelData({
                     span={span}
                   />
                 );
-              if (d.kind === "cp")
-                return <Cp key={d.id} d={d} p={p} toX={toX} span={span} />;
+              if (d.kind === "cp" && d.look?.showOutside === false)
+                return (
+                  <Cp
+                    key={d.id}
+                    d={d}
+                    p={p}
+                    toX={toX}
+                    span={span}
+                    sheetIndex={sheetIndex}
+                  />
+                );
               if (d.kind === "trans")
                 return (
                   <TransProfiles
@@ -305,6 +315,20 @@ export function KpPanelData({
               return null;
             })}
         </g>
+        {/* CP readings are shown across the whole panel unless the user cuts them to the plan view. */}
+        {fullSpan &&
+          mine.map((d) =>
+            d.kind === "cp" && d.look?.showOutside !== false ? (
+              <Cp
+                key={d.id}
+                d={d}
+                p={p}
+                toX={toX}
+                span={fullSpan}
+                sheetIndex={sheetIndex}
+              />
+            ) : null,
+          )}
         {p.type === "events" && span && (
           <EventsPanel
             p={p}

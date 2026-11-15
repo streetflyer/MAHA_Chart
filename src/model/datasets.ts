@@ -291,6 +291,10 @@ export interface CpLook {
   showAll: boolean;
   /** Axis labels without the minus sign (-1046 reads 1046), as on AutoChart sheets. */
   yAbs: boolean;
+  /** Draw readings across the whole panel, also outside the KPs the plan view shows. */
+  showOutside: boolean;
+  /** Where the readings sit on one chart only (chart index → clock hour), over textClock. */
+  sheetClock?: Record<string, number>;
 }
 
 export const DEFAULT_CP_LOOK: CpLook = {
@@ -313,6 +317,7 @@ export const DEFAULT_CP_LOOK: CpLook = {
   gridDash: "",
   showAll: true,
   yAbs: false,
+  showOutside: true,
 };
 
 /** One CP reading as drawn; the fields after `mv` override the dataset's look for this reading only. */
