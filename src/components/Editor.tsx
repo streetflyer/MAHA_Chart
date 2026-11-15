@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { newId } from "../model/ids";
 import { PAPER_SIZES } from "../model/paper";
 import { BUILTIN_TEMPLATES } from "../model/builtinTemplates";
-import { autoSheets, fitCurvedParts } from "../model/route";
+import { autoSheets, fitCurvedParts, fitCurvedPartsN } from "../model/route";
 import {
   deleteSheet,
   editSheet,
@@ -11,6 +11,7 @@ import {
   planPanel,
   sheetCount,
   sheetRange,
+  sheetFrame,
   sheetRotation,
   splitSheet,
 } from "../model/scale";
@@ -1048,16 +1049,29 @@ function ChartTabs({ onNotice }: { onNotice(m: string): void }) {
     y: number;
     i: number;
   } | null>(null);
-  const fitCurve = (i: number) => {
+  const fitCurve = async (i: number, ask = false) => {
     if (!route) return;
-    const parts = fitCurvedParts(
-      template,
-      route,
-      i,
-      0.97,
-      chartKpRange(template, i),
-    );
-    if (!parts || parts.length < 2) {
+    const range = chartKpRange(template, i);
+    let parts = fitCurvedParts(template, route, i, 0.97, range);
+    if (ask) {
+      const v = await askText(
+        `Fit Chart ${i + 1} to the curved line: number of charts (the automatic fit makes ${parts?.length ?? 1}; fewer charts allow more curve in each)`,
+        String(parts?.length ?? 2),
+      );
+      const n = parseInt(v ?? "", 10);
+      if (!(n >= 1)) return;
+      parts = fitCurvedPartsN(template, route, i, n, range);
+      if (n === 1)
+        parts = [
+          {
+            start: range.start * 1000,
+            end: range.end * 1000,
+            rotation: 0,
+            part: true,
+          },
+        ];
+    }
+    if (!parts || (parts.length < 2 && !ask)) {
       onNotice(
         parts
           ? `Chart ${i + 1}: the line is already straight enough.`
@@ -1082,7 +1096,12 @@ function ChartTabs({ onNotice }: { onNotice(m: string): void }) {
             {
               label: "Fit to curved line",
               disabled: !route,
-              action: () => fitCurve(menu.i),
+              action: () => void fitCurve(menu.i),
+            },
+            {
+              label: "Fit to curved line in a number of charts…",
+              disabled: !route,
+              action: () => void fitCurve(menu.i, true),
             },
             "separator",
             {
@@ -1135,6 +1154,23 @@ function ChartTabs({ onNotice }: { onNotice(m: string): void }) {
             )
           }
         />
+        {sheetFrame(template, current)?.end !== undefined && (
+          <ChartNumber
+            label="End KP"
+            suffix="km"
+            title="KP where this chart hands over to the next. For the parts of a fitted curve the next part starts here."
+            value={((sheetFrame(template, current)!.end ?? 0) / 1000).toFixed(
+              3,
+            )}
+            onCommit={(v) =>
+              st().commit((t) =>
+                editSheet(t, current, {
+                  end: Math.round(v * 1000 * 1000) / 1000,
+                }),
+              )
+            }
+          />
+        )}
         <ChartNumber
           label="Rotate"
           suffix="°"

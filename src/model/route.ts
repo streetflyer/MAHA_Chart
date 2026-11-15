@@ -441,3 +441,40 @@ export function fitCurvedParts(
   }
   return parts;
 }
+
+/**
+ * Split a chart's curved stretch into exactly `n` charts: the straightest split the
+ * greedy fit gives with at most n parts, then the longest parts halved until there are n.
+ */
+export function fitCurvedPartsN(
+  t: ChartTemplate,
+  r: Route,
+  index: number,
+  n: number,
+  range?: { start: number; end: number },
+): SheetFrame[] | null {
+  n = Math.max(1, Math.min(60, Math.round(n)));
+  let lo = 0.3;
+  let hi = 0.99999;
+  let best = fitCurvedParts(t, r, index, lo, range);
+  if (!best) return null;
+  for (let k = 0; k < 24; k++) {
+    const mid = (lo + hi) / 2;
+    const p = fitCurvedParts(t, r, index, mid, range);
+    if (p && p.length <= n) {
+      best = p;
+      lo = mid;
+    } else hi = mid;
+  }
+  const parts = best.map((p) => ({ ...p }));
+  while (parts.length < n) {
+    let j = 0;
+    parts.forEach((p, i) => {
+      if (p.end! - p.start > parts[j].end! - parts[j].start) j = i;
+    });
+    const p = parts[j];
+    const mid = (p.start + p.end!) / 2;
+    parts.splice(j, 1, { ...p, end: mid }, { ...p, start: mid });
+  }
+  return parts;
+}

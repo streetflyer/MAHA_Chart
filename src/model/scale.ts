@@ -155,6 +155,21 @@ export function editSheet(
     const old = sheetRange(t, index);
     sheets[index].end = patch.start + (old.end - old.start) * 1000;
   }
+  // Parts of a fitted curve stay joined: the neighbouring parts stretch or shrink to meet the moved one.
+  const me = sheets[index];
+  if (me.part && (patch.start !== undefined || patch.end !== undefined)) {
+    const prev = sheets[index - 1];
+    const next = sheets[index + 1];
+    if (prev?.part && prev.end !== undefined && me.start > prev.start + 1)
+      prev.end = me.start;
+    if (
+      next?.part &&
+      next.end !== undefined &&
+      me.end !== undefined &&
+      me.end < next.end - 1
+    )
+      next.start = me.end;
+  }
   return { ...t, scale: { ...t.scale, sheets } };
 }
 
