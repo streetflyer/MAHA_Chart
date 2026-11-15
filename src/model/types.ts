@@ -224,6 +224,17 @@ export interface PlanStyle {
   callouts?: Callout[];
 }
 
+/** One line of a text box: the arrow's easting or northing, or a typed value (heading, depth...). */
+export interface CalloutRow {
+  id: string;
+  label: string;
+  kind: "e" | "n" | "text";
+  /** Typed value for "text" lines. */
+  value: string;
+  /** Printed after the value: m, °G... */
+  suffix: string;
+}
+
 /** A plan view text box: a coloured title band, the coordinates it points at, and an arrow. */
 export interface Callout {
   id: string;
@@ -238,9 +249,11 @@ export interface Callout {
   /** Box top-left corner from the arrow point, paper mm. */
   dx: number;
   dy: number;
-  /** Box size, paper mm. */
+  /** Box size, paper mm; no height = just tall enough for every line. */
   w: number;
-  h: number;
+  h?: number;
+  /** The lines under the title; unset: easting, northing and heading. */
+  rows?: CalloutRow[];
   font?: string;
   /** Cap height of the texts, mm. */
   size: number;

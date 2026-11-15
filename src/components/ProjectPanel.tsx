@@ -174,6 +174,10 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
     if (s.active === path) {
       const files = withRoot(node.files);
       if (files.length) useImport.getState().request(files);
+      else
+        onNotice(
+          "The data is on the chart, but its files have not been read on this computer yet: use Open folder… on the project folder, then Check imported data.",
+        );
       return;
     }
     if (useSurvey.getState().datasets.length && s.active === null) {
@@ -547,9 +551,22 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
                 {f.name}
               </li>
             ))}
+            {!sel.files.length &&
+              (sel.names ?? []).map((n) => (
+                <li
+                  key={n}
+                  className="missing"
+                  title="Saved in the project file; open the project folder again to read it"
+                >
+                  {recipes.some((r) => r.file === n) ? "✓ " : ""}
+                  {n}
+                </li>
+              ))}
             {!sel.files.length && (
               <li className="hint">
-                No files. Drop files here or on the folder.
+                {sel.names?.length || pr.active === sel.path
+                  ? "Files are not kept inside the project file: use Open folder… on this project's folder to read them again."
+                  : "No files. Drop files here or on the folder."}
               </li>
             )}
           </ul>

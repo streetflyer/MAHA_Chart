@@ -98,7 +98,12 @@ async function gunzip(buf: ArrayBuffer): Promise<ArrayBuffer> {
 }
 
 function withoutFiles(n: FolderNode): FolderNode {
-  return { ...n, files: [], children: n.children.map(withoutFiles) };
+  return {
+    ...n,
+    files: [],
+    names: n.files.length ? n.files.map((f) => f.name) : n.names,
+    children: n.children.map(withoutFiles),
+  };
 }
 
 /** Build the project file for the session as it is now. */
@@ -273,12 +278,38 @@ export async function loadWorkspace(file: File): Promise<string> {
     joinHours: h.video?.joinHours ?? 12,
     image: h.video?.image ?? null,
   });
-  if (h.project)
+  if (h.project) {
+    // Files saved before the folder was marked as charted: find the folder by its import settings.
+    let active = h.project.active;
+    if (active === null && h.datasets.length) {
+      let best = 0;
+      for (const [path, f] of Object.entries(h.project.folders)) {
+        const hits = h.datasets.filter((d) =>
+          f.recipes.some(
+            (r) => d.name === r.file || d.name.startsWith(`${r.file} `),
+          ),
+        ).length;
+        if (path && hits > best) [best, active] = [hits, path];
+      }
+    }
     useProject.setState({
       ...h.project,
+      active,
+      selected: active ?? h.project.selected,
+      expanded: active
+        ? {
+            ...h.project.expanded,
+            ...Object.fromEntries(
+              active
+                .split("/")
+                .map((_, i, a) => [a.slice(0, i).join("/"), true]),
+            ),
+          }
+        : h.project.expanded,
       handle: null,
       dirty: false,
     });
+  }
   return h.template.name;
 }
 

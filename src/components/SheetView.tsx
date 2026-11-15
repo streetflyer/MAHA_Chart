@@ -41,12 +41,14 @@ import { useSurvey } from "../state/surveyData";
 import { useImport } from "./ImportDialog";
 import { editPlanItemText, matchLabelOf } from "./planItems";
 import {
-  calloutMenu,
   calloutsOf,
+  editCalloutPart,
+  useCalloutFocus,
   splitCallout,
   withCallouts,
 } from "./calloutEdit";
 import { planProjection } from "./Callouts";
+import { calloutLayout } from "../model/callout";
 import {
   eventLabelOf,
   patchEventLabel,
@@ -152,6 +154,7 @@ type Drag =
       start: Pt;
       c0: Callout;
       unproject: (x: number, y: number) => [number, number];
+      moved?: boolean;
     }
   | {
       type: "frame";
@@ -433,7 +436,7 @@ export function SheetView({
             id: `${panelId}|${cid}`,
             part,
             start: at,
-            c0,
+            c0: { ...c0, h: c0.h ?? calloutLayout(c0, fontSize(c0.size)).need },
             unproject: pj.unproject,
           });
         }
@@ -950,14 +953,16 @@ export function SheetView({
       const ddx = at.x - drag.start.x;
       const ddy = at.y - drag.start.y;
       const c = drag.c0;
+      if (!drag.moved && Math.hypot(ddx, ddy) < 0.6) return;
+      drag.moved = true;
       const r1 = (v: number) => Math.round(v * 10) / 10;
       let patch: Partial<Callout>;
       if (drag.part === "size")
         patch = {
           w: Math.max(10, r1(c.w + ddx)),
-          h: Math.max(4, r1(c.h + ddy)),
+          h: Math.max(4, r1((c.h ?? 10) + ddy)),
         };
-      else if (drag.part === "box" && e.shiftKey)
+      else if (drag.part !== "arrow" && e.shiftKey)
         // Shift: the arrow stays on its point, the leader follows the box.
         patch = { dx: r1(c.dx + ddx), dy: r1(c.dy + ddy) };
       else {
@@ -1178,6 +1183,12 @@ export function SheetView({
       drag.type === "callout"
     ) {
       store().endGesture();
+      // A click (no drag) on a text box opens its settings in the Properties panel.
+      if (drag.type === "callout" && !drag.moved) {
+        const { panelId, cid } = splitCallout(drag.id);
+        store().select({ kind: "panel", id: panelId });
+        useCalloutFocus.setState({ id: cid, n: Date.now() });
+      }
     } else if (drag.type === "marquee") {
       const x0 = Math.min(drag.start.x, drag.cur.x);
       const x1 = Math.max(drag.start.x, drag.cur.x);
@@ -1221,8 +1232,7 @@ export function SheetView({
     const pDbl = planItemUnder(e);
     const coDbl = pDbl?.getAttribute("data-callout");
     if (coDbl) {
-      const title = calloutMenu(coDbl)[0];
-      if (title && title !== "separator" && "action" in title) title.action?.();
+      void editCalloutPart(coDbl);
       return;
     }
     if (pDbl) {

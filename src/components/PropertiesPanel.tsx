@@ -6,11 +6,12 @@ import {
   SCALE_BAR_STYLES,
   scaleBarStyleOf,
   type Callout,
+  type CalloutRow,
   type MatchlineStyle,
   type ScaleBarStyle,
 } from "../model/types";
 import { ColourBox } from "./ColourBox";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { newId } from "../model/ids";
 import { PAPER_SIZES } from "../model/paper";
 import { formatScale, sheetCount } from "../model/scale";
@@ -72,7 +73,15 @@ import { keyplanStyle } from "./Keyplan";
 import { planStyle } from "./PlanView";
 import { DrawingEditPanel, DrawingLook } from "./DrawingProps";
 import { BarShape } from "./scaleBars";
-import { addCallout, patchCallout, withCallouts } from "./calloutEdit";
+import {
+  addCallout,
+  newRow,
+  patchCallout,
+  patchRows,
+  useCalloutFocus,
+  withCallouts,
+} from "./calloutEdit";
+import { rowsOf } from "../model/callout";
 
 /** Text/number box that commits on Enter or blur, so typing doesn't create one undo step per key. */
 function Field({
@@ -2006,9 +2015,26 @@ function CalloutFields({
   n: number;
 }) {
   const [open, setOpen] = useState(false);
+  const focus = useCalloutFocus();
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (focus.id !== c.id) return;
+    setOpen(true);
+    requestAnimationFrame(() =>
+      ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    );
+  }, [focus, c.id]);
   const set = (patch: Partial<Callout>) => patchCallout(panelId, c.id, patch);
+  const rows = rowsOf(c);
+  const setRows = (fn: (r: CalloutRow[]) => CalloutRow[]) =>
+    patchRows(panelId, c.id, fn);
+  const setRow = (id: string, patch: Partial<CalloutRow>) =>
+    setRows((rs) => rs.map((r) => (r.id === id ? { ...r, ...patch } : r)));
   return (
-    <div className="callout-fields">
+    <div
+      ref={ref}
+      className={`callout-fields${focus.id === c.id ? " focused" : ""}`}
+    >
       <div className="style-row">
         <button
           type="button"
@@ -2046,34 +2072,91 @@ function CalloutFields({
           </label>
           <div className="row2">
             <Field
-              label="Easting"
+              label="Arrow easting"
               type="number"
               suffix="m"
               value={c.e}
               onCommit={(v) => Number.isFinite(num(v)) && set({ e: num(v) })}
             />
             <Field
-              label="Northing"
+              label="Arrow northing"
               type="number"
               suffix="m"
               value={c.n}
               onCommit={(v) => Number.isFinite(num(v)) && set({ n: num(v) })}
             />
           </div>
-          <div className="row2">
-            <Field
-              label="Heading"
-              value={c.heading}
-              onCommit={(v) => set({ heading: v })}
-            />
-            <label className="check">
-              <input
-                type="checkbox"
-                checked={c.showEN}
-                onChange={(e) => set({ showEN: e.target.checked })}
-              />{" "}
-              Show easting / northing
-            </label>
+          <h5>Lines</h5>
+          <div className="callout-rows">
+            {rows.map((r, i) => (
+              <div key={r.id} className="callout-row">
+                <input
+                  title="Label"
+                  value={r.label}
+                  onChange={(e) => setRow(r.id, { label: e.target.value })}
+                />
+                {r.kind === "text" ? (
+                  <input
+                    title="Value"
+                    value={r.value}
+                    placeholder="value"
+                    onChange={(e) => setRow(r.id, { value: e.target.value })}
+                  />
+                ) : (
+                  <span className="muted" title="Follows the arrow point">
+                    {(r.kind === "e" ? c.e : c.n).toFixed(1)}
+                  </span>
+                )}
+                <input
+                  className="suffix-in"
+                  title="Suffix after the value"
+                  value={r.suffix}
+                  list="callout-suffixes"
+                  onChange={(e) => setRow(r.id, { suffix: e.target.value })}
+                />
+                <button
+                  type="button"
+                  className="link"
+                  title="Move up"
+                  disabled={i === 0}
+                  onClick={() => setRows((rs) => swap(rs, i, i - 1))}
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  className="link"
+                  title="Remove this line"
+                  onClick={() =>
+                    setRows((rs) => rs.filter((x) => x.id !== r.id))
+                  }
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <datalist id="callout-suffixes">
+              <option value="m" />
+              <option value=" m" />
+              <option value="°G" />
+              <option value="°" />
+              <option value="°T" />
+              <option value="" />
+            </datalist>
+          </div>
+          <div className="style-row">
+            <select
+              value=""
+              onChange={(e) => {
+                const k = e.target.value as CalloutRow["kind"];
+                if (k) setRows((rs) => [...rs, newRow(k)]);
+              }}
+            >
+              <option value="">Add a line…</option>
+              <option value="e">Easting</option>
+              <option value="n">Northing</option>
+              <option value="text">Text (heading, depth…)</option>
+            </select>
           </div>
           <FontPick
             value={c.font}
@@ -2099,11 +2182,15 @@ function CalloutFields({
           </div>
           <div className="row2">
             <Field
-              label="Box height"
+              label="Box height (empty = fit the lines)"
               type="number"
               suffix="mm"
-              value={c.h}
-              onCommit={(v) => num(v) > 3 && set({ h: num(v) })}
+              value={c.h ?? ""}
+              onCommit={(v) =>
+                v.trim() === ""
+                  ? set({ h: undefined })
+                  : num(v) > 3 && set({ h: num(v) })
+              }
             />
           </div>
           <div className="colour-grid">

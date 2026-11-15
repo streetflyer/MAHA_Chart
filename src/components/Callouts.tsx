@@ -1,6 +1,6 @@
 import type { Callout, PlanStyle } from "../model/types";
-import { calloutLines, leaderStart } from "../model/callout";
-import { fontSize } from "./svgText";
+import { calloutLayout, leaderStart } from "../model/callout";
+import { fontSize, measureText } from "./svgText";
 
 type Pt = [number, number];
 
@@ -56,13 +56,10 @@ function CalloutView({
   project: (e: number, n: number) => Pt;
 }) {
   const [tx, ty] = project(c.e, c.n);
-  const box = { x: tx + c.dx, y: ty + c.dy, w: c.w, h: c.h };
   const fs = fontSize(c.size);
-  const lh = fs * 1.2;
-  const titles = c.title.split("\n");
-  const lines = calloutLines(c);
-  const pad = c.size * 0.5;
-  const head = Math.min(box.h, titles.length * lh + pad * 1.4);
+  const L = calloutLayout(c, fs);
+  const box = { x: tx + c.dx, y: ty + c.dy, w: c.w, h: c.h ?? L.need };
+  const head = Math.min(box.h, L.head);
   const family = c.font ? `${c.font}, Arial, sans-serif` : undefined;
   const [sx, sy] = leaderStart(box, tx, ty);
   // Arrow head along the leader, its tip on the point.
@@ -81,9 +78,13 @@ function CalloutView({
       cursor: part === "size" ? "nwse-resize" : "move",
     },
   });
-  const labelW = Math.max(0, ...lines.map((l) => l[0].length)) * fs * 0.55;
+  const labelW = Math.max(
+    0,
+    ...L.lines.map((l) => measureText(l[0], c.size, false, c.font)),
+  );
+  const hs = Math.max(1.2, c.size * 0.8);
   return (
-    <g style={{ fontFamily: family }}>
+    <g className="callout" style={{ fontFamily: family }}>
       {len > 0.2 && (
         <>
           <line
@@ -121,7 +122,7 @@ function CalloutView({
         width={box.w}
         height={head}
         fill={c.titleFill}
-        style={{ pointerEvents: "none" }}
+        {...grab("title")}
       />
       <rect
         x={box.x}
@@ -133,11 +134,11 @@ function CalloutView({
         strokeWidth={0.18}
         style={{ pointerEvents: "none" }}
       />
-      {titles.map((t, i) => (
+      {L.titles.map((t, i) => (
         <text
           key={i}
           x={box.x + box.w / 2}
-          y={box.y + pad + fs * 0.85 + i * lh}
+          y={box.y + L.pad + fs * 0.85 + i * L.lh}
           fontSize={fs}
           textAnchor="middle"
           style={{ fill: c.titleColor, pointerEvents: "none" }}
@@ -145,45 +146,55 @@ function CalloutView({
           {t}
         </text>
       ))}
-      {lines.map(([k, v], i) => {
-        const y = box.y + head + pad * 0.8 + fs * 0.85 + i * lh;
+      {L.lines.map(([k, v, rid], i) => {
+        const y = box.y + head + L.pad * 0.8 + fs * 0.85 + i * L.lh;
         if (y > box.y + box.h + 0.01) return null;
         return (
-          <g key={k} style={{ pointerEvents: "none" }}>
-            <text
-              x={box.x + pad * 2}
-              y={y}
-              fontSize={fs}
-              style={{ fill: c.textColor }}
-            >
-              {k}
-            </text>
-            <text
-              x={box.x + pad * 2 + labelW + fs * 0.4}
-              y={y}
-              fontSize={fs}
-              style={{ fill: c.textColor }}
-            >
-              -
-            </text>
-            <text
-              x={box.x + box.w - pad * 2}
-              y={y}
-              fontSize={fs}
-              textAnchor="end"
-              style={{ fill: c.textColor }}
-            >
-              {v}
-            </text>
+          <g key={rid}>
+            <rect
+              x={box.x}
+              y={y - fs * 0.95}
+              width={box.w}
+              height={L.lh}
+              fill="transparent"
+              {...grab(`row:${rid}`)}
+            />
+            <g style={{ pointerEvents: "none" }}>
+              <text
+                x={box.x + L.pad * 2}
+                y={y}
+                fontSize={fs}
+                style={{ fill: c.textColor }}
+              >
+                {k}
+              </text>
+              <text
+                x={box.x + L.pad * 2 + labelW + fs * 0.5}
+                y={y}
+                fontSize={fs}
+                style={{ fill: c.textColor }}
+              >
+                -
+              </text>
+              <text
+                x={box.x + box.w - L.pad * 2}
+                y={y}
+                fontSize={fs}
+                textAnchor="end"
+                style={{ fill: c.textColor }}
+              >
+                {v}
+              </text>
+            </g>
           </g>
         );
       })}
       <rect
-        x={box.x + box.w - 1.6}
-        y={box.y + box.h - 1.6}
-        width={1.6}
-        height={1.6}
-        fill="transparent"
+        className="callout-size"
+        x={box.x + box.w - hs / 2}
+        y={box.y + box.h - hs / 2}
+        width={hs}
+        height={hs}
         {...grab("size")}
       />
     </g>

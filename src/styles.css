@@ -441,7 +441,9 @@ textarea {
   font-size: 15px;
 }
 .props h4 {
-  margin: 10px 0 0;
+  margin: 14px 0 0;
+  padding-top: 10px;
+  border-top: 2px solid var(--border);
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -1790,4 +1792,43 @@ table.preview thead th.mapped {
 .callout-fields .style-row {
   display: flex;
   justify-content: space-between;
+}
+
+.pf-files li.missing {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Text box resize handle: shown while the pointer is over the box. */
+.callout .callout-size {
+  fill: #ffffff;
+  stroke: #0a84ff;
+  stroke-width: 0.15;
+  opacity: 0;
+}
+.callout:hover .callout-size {
+  opacity: 1;
+}
+
+.callout-fields.focused {
+  outline: 2px solid rgba(10, 132, 255, 0.5);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.callout-rows {
+  display: grid;
+  gap: 3px;
+}
+.callout-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 44px auto auto;
+  gap: 4px;
+  align-items: center;
+}
+.callout-row input {
+  min-width: 0;
+}
+.callout-fields h5 {
+  margin: 4px 0 0;
+  font-size: 12px;
 }

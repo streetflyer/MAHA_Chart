@@ -1,6 +1,8 @@
-import { newCallout } from "../model/callout";
+import { create } from "zustand";
+import { newCallout, rowsOf } from "../model/callout";
+import { newId } from "../model/ids";
 import { planStyle } from "../model/planStyle";
-import type { Callout, ChartTemplate } from "../model/types";
+import type { Callout, CalloutRow, ChartTemplate } from "../model/types";
 import { useEditor } from "../state/store";
 import { askText } from "./Dialog";
 import type { MenuItem } from "./ContextMenu";
@@ -134,4 +136,73 @@ export function calloutMenu(id: string): MenuItem[] {
           ),
     },
   ];
+}
+
+/** The text box last clicked: its settings open and scroll into view in the Properties panel. */
+export const useCalloutFocus = create<{ id: string | null; n: number }>(() => ({
+  id: null,
+  n: 0,
+}));
+
+function findCallout(panelId: string, cid: string) {
+  const t = useEditor.getState().template;
+  return t ? calloutsOf(t, panelId).find((x) => x.id === cid) : undefined;
+}
+
+/** Change a box's lines (turning an older box's switches into its own list first). */
+export function patchRows(
+  panelId: string,
+  cid: string,
+  fn: (rows: CalloutRow[]) => CalloutRow[],
+) {
+  const c = findCallout(panelId, cid);
+  if (c) patchCallout(panelId, cid, { rows: fn(rowsOf(c)) });
+}
+
+export const newRow = (kind: CalloutRow["kind"] = "text"): CalloutRow => ({
+  id: newId(),
+  label: kind === "e" ? "Easting" : kind === "n" ? "Northing" : "Heading",
+  kind,
+  value: "",
+  suffix: kind === "text" ? "°G" : "m",
+});
+
+/** Double-click on a box: the title band edits the title, a line edits that line. */
+export async function editCalloutPart(id: string) {
+  const { panelId, cid, part } = splitCallout(id);
+  const c = findCallout(panelId, cid);
+  if (!c) return;
+  if (part?.startsWith("row:")) {
+    const rid = part.slice(4);
+    const r = rowsOf(c).find((x) => x.id === rid);
+    if (!r) return;
+    if (r.kind === "e" || r.kind === "n") {
+      const v = await askText(
+        `${r.label} the arrow points at (m)`,
+        (r.kind === "e" ? c.e : c.n).toFixed(1),
+        "OK",
+      );
+      const x = v === null ? NaN : Number(v.replace(/[\s,]/g, ""));
+      if (Number.isFinite(x))
+        patchCallout(panelId, cid, r.kind === "e" ? { e: x } : { n: x });
+      return;
+    }
+    const v = await askText(
+      `${r.label}${r.suffix ? ` (${r.suffix})` : ""}`,
+      r.value,
+      "OK",
+    );
+    if (v !== null)
+      patchRows(panelId, cid, (rows) =>
+        rows.map((x) => (x.id === rid ? { ...x, value: v } : x)),
+      );
+    return;
+  }
+  const v = await askText(
+    "Title (use \\n for a new line)",
+    c.title.replace(/\n/g, "\\n"),
+    "OK",
+  );
+  if (v !== null)
+    patchCallout(panelId, cid, { title: v.replace(/\\n/g, "\n") });
 }

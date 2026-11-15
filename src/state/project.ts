@@ -18,6 +18,8 @@ export interface FolderNode {
   children: FolderNode[];
   /** Files directly in this folder (not in sub-folders). */
   files: File[];
+  /** Names of the files a loaded project file says were here (the files themselves are read when the folder is opened). */
+  names?: string[];
 }
 
 /** How one file was imported: enough to import it again without the wizard. */
