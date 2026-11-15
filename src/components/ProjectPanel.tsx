@@ -83,6 +83,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
     if (prev.name !== name || !prev.tree)
       return {
         folders: disk,
+        charts: {},
         active: null,
         selected: "",
         expanded: { "": true },
@@ -199,7 +200,12 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
       saveFolderSettings(s.active);
   }
 
-  async function chartFolder(path: string) {
+  /**
+   * Open a folder's chart. A folder charted before in this session comes back as it
+   * was left (data, edits, chart shown); one never charted reads its files. `check`
+   * on the folder already on screen opens its files again (Check imported data).
+   */
+  async function chartFolder(path: string, check = false) {
     const s = useProject.getState();
     const node = findNode(s.tree, path);
     if (!node) return;
@@ -207,6 +213,12 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
       useProject.getState().folder(path).rootDrawing?.length
         ? [...files, ...rootDrawings().filter((f) => !files.includes(f))]
         : files;
+    if (s.active === path && !check) {
+      onNotice(
+        `${node.name} is the chart on screen. To read its files again, use Check imported data.`,
+      );
+      return;
+    }
     if (s.active === path) {
       const files = withRoot(node.files);
       if (files.length) useImport.getState().request(files);
@@ -227,6 +239,21 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
         return;
     }
     keepActiveTemplate();
+    // The chart on screen is kept as it is, to come back to.
+    if (s.active !== null && useSurvey.getState().datasets.length) {
+      const sv = useSurvey.getState();
+      useProject.setState({
+        charts: {
+          ...useProject.getState().charts,
+          [s.active]: {
+            datasets: sv.datasets,
+            reversed: sv.reversed,
+            sheetIndex: useEditor.getState().sheetIndex,
+          },
+        },
+      });
+    }
+    const kept = useProject.getState().charts[path];
     useSurvey.getState().clear();
     if (!s.folders[path] && s.carry) {
       useProject.setState({
@@ -257,6 +284,15 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
     syncChartNumbers();
     if (!saved && useEditor.getState().template)
       useProject.getState().setTemplate(path, useEditor.getState().template!);
+    if (kept) {
+      // Back to this folder's chart as it was left.
+      useSurvey.getState().load(kept.datasets, kept.reversed);
+      useEditor.setState({ sheetIndex: kept.sheetIndex });
+      const { [path]: _gone, ...rest } = useProject.getState().charts;
+      useProject.setState({ charts: rest });
+      onNotice(`${node.name}: the chart as you left it.`);
+      return;
+    }
     // The root folder's shared drawing comes along when this folder uses it.
     const files = withRoot(node.files);
     if (files.length) useImport.getState().request(files);
@@ -639,7 +675,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
             <button
               type="button"
               className="primary"
-              onClick={() => void chartFolder(sel.path)}
+              onClick={() => void chartFolder(sel.path, true)}
               title={
                 pr.active === sel.path
                   ? "See this folder's files and how they were read; tick Replace on a file to read it again, or just close"
@@ -648,7 +684,9 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
             >
               {pr.active === sel.path
                 ? "Check imported data"
-                : "Chart this folder"}
+                : pr.charts[sel.path]
+                  ? "Open this chart"
+                  : "Chart this folder"}
             </button>
             <button type="button" onClick={() => addInput.current?.click()}>
               Add files…
@@ -810,7 +848,7 @@ function TreeNode({
           setOver(null);
           onDropFiles(n.path, [...e.dataTransfer.files]);
         }}
-        title={`${n.path || n.name}: double-click to chart this folder; drop files to add them`}
+        title={`${n.path || n.name}: double-click to open its chart (or chart it the first time); drop files to add them`}
       >
         <button
           type="button"
@@ -827,6 +865,18 @@ function TreeNode({
         </button>
         <span className="tree-icon">📁</span>
         <span className="tree-name">{n.name}</span>
+        {(pr.active === n.path || pr.charts[n.path]) && (
+          <span
+            className="tree-chart"
+            title={
+              pr.active === n.path
+                ? "The chart on screen"
+                : "Has a chart: double-click to open it as you left it"
+            }
+          >
+            {pr.active === n.path ? "●" : "○"}
+          </span>
+        )}
         {fileCount > 0 && <span className="tree-count">{fileCount}</span>}
       </div>
       {open &&

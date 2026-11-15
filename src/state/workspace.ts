@@ -1,7 +1,12 @@
 import type { Dataset } from "../model/datasets";
 import type { ChartTemplate } from "../model/types";
 import { useEditor } from "./store";
-import { useProject, type FolderNode, type FolderState } from "./project";
+import {
+  useProject,
+  type FolderChart,
+  type FolderNode,
+  type FolderState,
+} from "./project";
 import { settingsOf } from "../model/datasetSettings";
 import { useSurvey } from "./surveyData";
 import { useVideo } from "./video";
@@ -53,6 +58,8 @@ interface Header {
   sheetIndex: number;
   datasets: Dataset[];
   reversed: boolean;
+  /** The other folders' charts as they were left (full saves). */
+  charts?: Record<string, FolderChart>;
   project: null | {
     name: string | null;
     tree: FolderNode | null;
@@ -145,6 +152,7 @@ export async function workspaceBlob(
     template: ed.template!,
     sheetIndex: ed.sheetIndex,
     datasets: mode === "full" ? sv.datasets : [],
+    charts: mode === "full" ? pr.charts : {},
     reversed: sv.reversed,
     carry:
       mode === "settings"
@@ -306,6 +314,7 @@ export async function loadWorkspace(file: File): Promise<string> {
             ),
           }
         : h.project.expanded,
+      charts: h.charts ?? {},
       handle: null,
       reconnect: h.project.name,
       dirty: false,

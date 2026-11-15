@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { DataStyle, ImportTarget } from "../model/datasets";
+import type { DataStyle, Dataset, ImportTarget } from "../model/datasets";
 import type { Mapping } from "../model/importers";
 import type { ChartTemplate } from "../model/types";
 import type { DatasetSettings } from "../model/datasetSettings";
@@ -55,7 +55,16 @@ export interface ProjectFile {
 
 export const PROJECT_FILE = "MAHA_project.json";
 
+/** A folder's chart as it was left: its data (with any edits) and the chart shown. */
+export interface FolderChart {
+  datasets: Dataset[];
+  reversed: boolean;
+  sheetIndex: number;
+}
+
 interface ProjectState {
+  /** Charts of the folders not on screen now, kept as they were left (by folder path). */
+  charts: Record<string, FolderChart>;
   name: string | null;
   tree: FolderNode | null;
   /** Writable folder handle (Chrome / Edge); null when the folder was read with a plain folder picker. */
@@ -84,6 +93,7 @@ interface ProjectState {
 }
 
 export const useProject = create<ProjectState>((set, get) => ({
+  charts: {},
   name: null,
   tree: null,
   handle: null,

@@ -2000,3 +2000,8 @@ fieldset.plain {
   gap: 8px;
   align-items: center;
 }
+.tree-chart {
+  color: var(--accent);
+  font-size: 10px;
+  margin-left: 2px;
+}
