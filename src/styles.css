@@ -1925,3 +1925,24 @@ fieldset.plain {
   height: 9px;
   border-width: 0;
 }
+.code-defs {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.code-defs li {
+  display: grid;
+  grid-template-columns: auto 44px 1fr auto;
+  gap: 4px;
+  align-items: center;
+}
+.code-defs .code {
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+.code-defs input:not([type]) {
+  min-width: 0;
+}

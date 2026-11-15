@@ -411,6 +411,10 @@ export interface LegendStyle {
   sameCodeSize?: boolean;
   /** Definitions of every event code, or only of the codes on the chart being shown. */
   codeScope?: "all" | "chart";
+  /** The user's own wording of a code's definition, by code. */
+  codeEdits?: Record<string, string>;
+  /** Codes left out of the definitions. */
+  codeHidden?: string[];
   /** Heading wording, by group; unset keeps the standard heading. */
   headings?: Partial<Record<LegendGroup | "codes", string>>;
 }

@@ -73,6 +73,7 @@ import {
   DEFAULT_LEGEND_STYLE,
   dataLegend,
   type DataLegendItem,
+  dataEventCodes,
 } from "../model/legendData";
 import { useLegendItems } from "./PanelContent";
 import { keyplanStyle } from "./Keyplan";
@@ -1606,6 +1607,89 @@ function setDataColour(it: DataLegendItem, color: string) {
   }
 }
 
+/** Every event code definition read from the events, each one editable and able to be hidden. */
+function CodeDefsEditor({
+  all,
+  edits,
+  hidden,
+  onChange,
+}: {
+  all: string;
+  edits: Record<string, string>;
+  hidden: string[];
+  onChange(edits: Record<string, string>, hidden: string[]): void;
+}) {
+  const rows = all
+    .split("\n")
+    .filter((l) => l.trim())
+    .map((l) => {
+      const [c, ...rest] = l.split("\t");
+      return { code: c.trim().toUpperCase(), read: rest.join(" ") };
+    });
+  if (!rows.length) return null;
+  return (
+    <>
+      <p className="hint">
+        {rows.length} codes in the imported events. Change the wording here or
+        double-click a definition on the sheet; untick to leave one out.
+      </p>
+      <ul className="code-defs">
+        {rows.map(({ code, read }) => {
+          const own = edits[code];
+          return (
+            <li key={code}>
+              <input
+                type="checkbox"
+                title="Show in the legend"
+                checked={!hidden.includes(code)}
+                onChange={(e) =>
+                  onChange(
+                    edits,
+                    e.target.checked
+                      ? hidden.filter((h) => h !== code)
+                      : [...hidden, code],
+                  )
+                }
+              />
+              <span className="code">{code}</span>
+              <input
+                key={`${code}:${own ?? read}`}
+                defaultValue={own ?? read}
+                title={own !== undefined ? `From the file: ${read}` : undefined}
+                onBlur={(e) => {
+                  const v = e.target.value;
+                  if (v === (own ?? read)) return;
+                  const next = { ...edits };
+                  if (v === read) delete next[code];
+                  else next[code] = v;
+                  onChange(next, hidden);
+                }}
+                onKeyDown={(e) =>
+                  e.key === "Enter" && (e.target as HTMLInputElement).blur()
+                }
+              />
+              {own !== undefined && (
+                <button
+                  type="button"
+                  className="link"
+                  title={`Back to the file's wording: ${read}`}
+                  onClick={() => {
+                    const next = { ...edits };
+                    delete next[code];
+                    onChange(next, hidden);
+                  }}
+                >
+                  ↺
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
 function LegendEditor({ p }: { p: Panel }) {
   const s = useEditor.getState();
   const items = p.legend ?? [];
@@ -1616,6 +1700,8 @@ function LegendEditor({ p }: { p: Panel }) {
   const { data } = useLegendItems(p);
   const datasets = useSurvey((x) => x.datasets);
   const ld = p.legendData ?? { on: true, overrides: {} };
+  const fromEvents =
+    ld.on && datasets.some((d) => d.kind === "events" && d.visible);
   const setLd = (patch: Partial<typeof ld>) =>
     s.updatePanel(p.id, { legendData: { ...ld, ...patch } });
   const ls = { ...DEFAULT_LEGEND_STYLE, ...p.legendStyle };
@@ -1700,9 +1786,26 @@ function LegendEditor({ p }: { p: Panel }) {
           }
         >
           <option value="all">Codes of the events on all charts</option>
-          <option value="chart">Only codes of the events on this chart</option>
+          <option value="chart">
+            Only codes on this chart (shown in the engineering events)
+          </option>
         </select>
       </label>
+      {fromEvents ? (
+        <CodeDefsEditor
+          all={dataEventCodes(datasets)}
+          edits={ls.codeEdits ?? {}}
+          hidden={ls.codeHidden ?? []}
+          onChange={(codeEdits, codeHidden) => setLs({ codeEdits, codeHidden })}
+        />
+      ) : (
+        <Field
+          label="Event code definitions (code, Tab, description)"
+          multiline
+          value={p.eventCodes ?? ""}
+          onCommit={(v) => s.updatePanel(p.id, { eventCodes: v })}
+        />
+      )}
       <label className="check">
         <input
           type="checkbox"
@@ -1899,18 +2002,6 @@ function LegendEditor({ p }: { p: Panel }) {
       >
         Add your own item
       </button>
-      {ld.on && datasets.some((d) => d.kind === "events") && (
-        <p className="hint">
-          Event code definitions come from the imported events; untick “Build
-          the legend from the imported data” to type your own.
-        </p>
-      )}
-      <Field
-        label="Event code definitions (code, Tab, description)"
-        multiline
-        value={p.eventCodes ?? ""}
-        onCommit={(v) => s.updatePanel(p.id, { eventCodes: v })}
-      />
     </>
   );
 }

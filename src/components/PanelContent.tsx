@@ -1,3 +1,4 @@
+import { codeMatcher, isKpRow, isVideoRow, rowCodes } from "../model/events";
 import { useMemo } from "react";
 import { LEGEND_GROUPS } from "../model/presets";
 import { formatScale, niceScaleBar, resolveTokens } from "../model/scale";
@@ -17,6 +18,7 @@ import { CpMark, KpPanelData } from "./KpPanels";
 import {
   DEFAULT_LEGEND_STYLE,
   dataEventCodes,
+  editCodeLines,
   dataLegend,
   groupsWithData,
   type DataLegendItem,
@@ -410,7 +412,7 @@ function TextColumn({
       style={textStyle}
     >
       {shown.map((l, i) => (
-        <tspan key={i}>
+        <tspan key={i} data-line={l.b !== undefined ? l.a : undefined}>
           <tspan
             x={l.b !== undefined ? x : ax}
             y={y0 + i * lh}
@@ -581,6 +583,11 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
   const plan = useEditor((s) =>
     s.template?.panels.find((x) => x.type === "plan"),
   );
+  const panels = useEditor((s) => s.template?.panels);
+  const eventPanels = useMemo(
+    () => panels?.filter((x) => x.type === "events"),
+    [panels],
+  );
   return useMemo(() => {
     const manual = p.legend ?? [];
     const ld = p.legendData ?? { on: true, overrides: {} };
@@ -606,21 +613,37 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
       ...manual.filter((i) => !groups.has(i.group) || i.custom),
     ];
     const fromEvents = datasets.some((d) => d.kind === "events" && d.visible);
+    const ls = p.legendStyle;
+    // "This chart": codes of the events on this chart that an engineering events row shows.
+    const rowMatchers = (eventPanels ?? []).flatMap((q) =>
+      (q.rows ?? [])
+        .filter((r) => !r.textOnly && !isKpRow(r) && !isVideoRow(r))
+        .map((r) => codeMatcher(rowCodes(r))),
+    );
+    const chart = ls?.codeScope === "chart";
     return {
       items,
       data,
-      codes: fromEvents
-        ? dataEventCodes(
-            datasets,
-            p.legendStyle?.codeScope === "chart" ? kpRange : undefined,
-          )
-        : (p.eventCodes ?? ""),
+      codes: editCodeLines(
+        fromEvents
+          ? dataEventCodes(
+              datasets,
+              chart ? kpRange : undefined,
+              chart && rowMatchers.length
+                ? (c) => rowMatchers.some((m) => m(c))
+                : undefined,
+            )
+          : (p.eventCodes ?? ""),
+        fromEvents ? ls?.codeEdits : undefined,
+        fromEvents ? ls?.codeHidden : undefined,
+      ),
     };
   }, [
     p.legend,
     p.legendData,
     p.eventCodes,
-    p.legendStyle?.codeScope,
+    p.legendStyle,
+    eventPanels,
     datasets,
     plan,
     kpRange?.[0],
@@ -670,6 +693,7 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
             x={x}
             y={y}
             fontSize={fontSize(headCap)}
+            data-lhead={g}
             {...headFont}
           >
             {headText(g)}
@@ -737,6 +761,7 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
             x={p.x + pad}
             y={codesTop + fontSize(headCap)}
             fontSize={fontSize(headCap)}
+            data-lhead="codes"
             {...headFont}
           >
             {headText("codes")}

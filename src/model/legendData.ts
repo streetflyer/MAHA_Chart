@@ -168,12 +168,14 @@ export function dataLegend(
 export function dataEventCodes(
   datasets: Dataset[],
   range?: [number, number],
+  shown?: (code: string) => boolean,
 ): string {
   const desc = new Map<string, Map<string, number>>();
   for (const d of datasets)
     if (d.kind === "events" && d.visible)
       for (const r of d.records) {
         if (range && (r.kp < range[0] || r.kp > range[1])) continue;
+        if (shown && !shown(r.code)) continue;
         const c = r.code.toUpperCase();
         if (!desc.has(c)) desc.set(c, new Map());
         const v = r.value.trim();
@@ -187,6 +189,28 @@ export function dataEventCodes(
       const best = [...m.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
       return `${c}\t${best}`;
     })
+    .join("\n");
+}
+
+/** Definition lines with the user's wording and hidden codes applied. */
+export function editCodeLines(
+  text: string,
+  edits: Record<string, string> = {},
+  hidden: string[] = [],
+): string {
+  return text
+    .split("\n")
+    .filter((l) => l.trim())
+    .map((l) => {
+      const [c] = l.split("\t");
+      const code = c.trim().toUpperCase();
+      return {
+        code,
+        line: edits[code] !== undefined ? `${c}\t${edits[code]}` : l,
+      };
+    })
+    .filter((x) => !hidden.includes(x.code))
+    .map((x) => x.line)
     .join("\n");
 }
 
