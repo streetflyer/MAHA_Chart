@@ -609,8 +609,15 @@ export function upgrade(t: ChartTemplate): ChartTemplate {
   if (!(scale.routeLength > 0))
     scale.routeLength =
       scale.kpPerSheet * (parseInt(t.fields.NUM_CHARTS ?? "1", 10) || 1);
+  // Event code definitions used to default to light red; they are black now.
+  const panels = t.panels.map((p) =>
+    p.legendStyle?.codeColor?.toLowerCase() === "#f08080"
+      ? { ...p, legendStyle: { ...p.legendStyle, codeColor: "#000000" } }
+      : p,
+  );
   return {
     ...t,
+    panels,
     scale,
     images: t.images ?? [],
     texts: t.texts ?? [],

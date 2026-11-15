@@ -9,8 +9,9 @@ import type {
   RevisionColumn,
   RevisionRow,
   TextStyle,
-  ScaleBarStyle,
 } from "../model/types";
+import { scaleBarStyleOf } from "../model/types";
+import { BarShape } from "./scaleBars";
 import { Keyplan } from "./Keyplan";
 import { CpMark, KpPanelData } from "./KpPanels";
 import {
@@ -525,7 +526,7 @@ function ScaleBars({
               {r.label}
             </text>
             <BarShape
-              style={p.scaleBarStyle ?? "blocks"}
+              style={scaleBarStyleOf(p.scaleBarStyle)}
               x0={x0}
               yb={yb}
               seg={seg}
@@ -554,109 +555,6 @@ function ScaleBars({
       })}
     </g>
   );
-}
-
-/** The bar itself in the chosen style; (x0, yb) is the left end of its centre line. */
-function BarShape({
-  style,
-  x0,
-  yb,
-  seg,
-  n,
-}: {
-  style: ScaleBarStyle;
-  x0: number;
-  yb: number;
-  seg: number;
-  n: number;
-}) {
-  const idx = Array.from({ length: n }, (_, k) => k);
-  const W = seg * n;
-  const ink = { stroke: "var(--ink)", strokeWidth: 0.15 };
-  switch (style) {
-    case "checker":
-      return (
-        <g>
-          {idx.map((k) => (
-            <g key={k}>
-              <rect
-                className={k % 2 ? "bar-light" : "bar-dark"}
-                x={x0 + k * seg}
-                y={yb - 1.2}
-                width={seg}
-                height={1.2}
-                {...ink}
-              />
-              <rect
-                className={k % 2 ? "bar-dark" : "bar-light"}
-                x={x0 + k * seg}
-                y={yb}
-                width={seg}
-                height={1.2}
-                {...ink}
-              />
-            </g>
-          ))}
-        </g>
-      );
-    case "outline":
-      return (
-        <g>
-          {idx.map((k) => (
-            <rect
-              key={k}
-              className={k % 2 ? "bar-light" : "bar-dark"}
-              x={x0 + k * seg}
-              y={yb - 0.9}
-              width={seg}
-              height={1.8}
-              {...ink}
-            />
-          ))}
-        </g>
-      );
-    case "stepped":
-      return (
-        <g>
-          {idx.map((k) => (
-            <rect
-              key={k}
-              className={k % 2 ? "bar-light" : "bar-dark"}
-              x={x0 + k * seg}
-              y={k % 2 ? yb - 0.3 : yb - 1.2}
-              width={seg}
-              height={k % 2 ? 0.9 : 1.5}
-              {...ink}
-            />
-          ))}
-        </g>
-      );
-    case "line":
-    case "ruler": {
-      const minor = style === "ruler" ? 5 : 1;
-      let d = `M${x0} ${yb}h${W}`;
-      for (let k = 0; k <= n; k++) d += `M${x0 + k * seg} ${yb - 1.6}v1.6`;
-      if (minor > 1)
-        for (let k = 0; k < n * minor; k++)
-          if (k % minor) d += `M${x0 + (k * seg) / minor} ${yb - 0.8}v0.8`;
-      return <path d={d} fill="none" {...ink} strokeWidth={0.2} />;
-    }
-    default:
-      return (
-        <g>
-          {idx.map((k) => (
-            <rect
-              key={k}
-              className={k % 2 ? "bar-light" : "bar-dark"}
-              x={x0 + k * seg}
-              y={yb - 0.6}
-              width={seg}
-              height={1.2}
-            />
-          ))}
-        </g>
-      );
-  }
 }
 
 function trim(v: number): string {

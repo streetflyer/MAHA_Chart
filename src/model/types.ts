@@ -19,20 +19,90 @@ export type PanelType =
 
 export type ScaleBarStyle =
   | "blocks"
+  | "stepLine"
+  | "stepBold"
+  | "fillLine"
+  | "doubleOutline"
   | "checker"
-  | "outline"
-  | "line"
-  | "ruler"
-  | "stepped";
+  | "ticks"
+  | "blocksTicks"
+  | "subBar"
+  | "subChecker"
+  | "stepBlocks";
 
-export const SCALE_BAR_STYLES: { id: ScaleBarStyle; label: string }[] = [
-  { id: "blocks", label: "Alternating blocks" },
-  { id: "checker", label: "Two-row chequer" },
-  { id: "outline", label: "Outlined bar" },
-  { id: "stepped", label: "Stepped blocks" },
-  { id: "line", label: "Line with ticks" },
-  { id: "ruler", label: "Ruler with minor ticks" },
+export const SCALE_BAR_STYLES: {
+  id: ScaleBarStyle;
+  label: string;
+  note: string;
+}[] = [
+  {
+    id: "blocks",
+    label: "Alternating blocks",
+    note: "Black and white blocks (the original look)",
+  },
+  {
+    id: "stepLine",
+    label: "Stepped line",
+    note: "One thin line stepping up and down at every division",
+  },
+  {
+    id: "stepBold",
+    label: "Alternating bold line",
+    note: "Bold strokes, alternately high and low",
+  },
+  {
+    id: "fillLine",
+    label: "Thin bar, alternate fill",
+    note: "A slim bar, every other division filled",
+  },
+  {
+    id: "doubleOutline",
+    label: "Double outline bar",
+    note: "Outlined two-row bar, alternate divisions split",
+  },
+  {
+    id: "checker",
+    label: "Two-row chequer",
+    note: "Two rows of blocks, black and white swapped",
+  },
+  {
+    id: "ticks",
+    label: "Line with ticks",
+    note: "Single line with ticks, the first division subdivided",
+  },
+  {
+    id: "blocksTicks",
+    label: "Blocks with ticks",
+    note: "Alternating blocks with ticks below",
+  },
+  {
+    id: "subBar",
+    label: "Subdivided bar",
+    note: "Alternating bar, the first division split in four",
+  },
+  {
+    id: "subChecker",
+    label: "Subdivided two-row chequer",
+    note: "Two-row chequer, the first division split in four",
+  },
+  {
+    id: "stepBlocks",
+    label: "Stepped blocks",
+    note: "Bold blocks stepping up and down, the first division split",
+  },
 ];
+
+/** Older files used other names for some styles. */
+export const scaleBarStyleOf = (s?: string): ScaleBarStyle =>
+  (
+    ({
+      outline: "blocksTicks",
+      stepped: "stepBlocks",
+      line: "ticks",
+      ruler: "ticks",
+    }) as Record<string, ScaleBarStyle>
+  )[s ?? ""] ??
+  (SCALE_BAR_STYLES.some((x) => x.id === s) ? (s as ScaleBarStyle) : "blocks");
 
 export type TitlePosition = "above" | "inside" | "none";
 

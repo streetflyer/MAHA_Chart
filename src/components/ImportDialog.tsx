@@ -8,6 +8,7 @@ import {
   type CrossProfile,
 } from "../model/crossProfile";
 import {
+  DEFAULT_LONG_OPTS,
   TARGETS,
   extOf,
   targetInfo,
@@ -54,7 +55,7 @@ import {
   type Table,
 } from "../model/tables";
 import { useEditor } from "../state/store";
-import { useProject, type ImportRecipe } from "../state/project";
+import { rootDrawings, useProject, type ImportRecipe } from "../state/project";
 import {
   applyFolderSettings,
   copyFolderSettings,
@@ -89,6 +90,8 @@ interface Item {
   id: string;
   file: File;
   target: ImportTarget;
+  /** The file is already on the chart: import it only when the user asks to replace it. */
+  replace?: boolean;
   /** Sheets of a workbook, or the one table of a text file (only its start when `big`). */
   tables?: Table[];
   /** Text file too big to hold as a table: read again line by line on import. */
@@ -240,6 +243,18 @@ export function ImportDialog({
       ),
   );
   const logoPanels = template.panels.filter((p) => p.type === "logo");
+  const rootFiles = rootDrawings();
+  const rootOff = useRef(new Set<string>());
+  /** The dataset already on the chart that this item would duplicate, if any. */
+  const onChart = (x: Item) =>
+    datasets.find(
+      (d) =>
+        d.target === x.target &&
+        (d.name === x.file.name || d.name.startsWith(`${x.file.name} `)),
+    );
+  const wanted = (x: Item) => !onChart(x) || !!x.replace;
+  const usesRoot = (target: ImportTarget) =>
+    items.some((x) => x.target === target && rootFiles.includes(x.file));
   const rows = rowTargets(new Set(template.panels.map((p) => p.type)));
 
   /** Saved import settings for a file of the project folder on the chart, if any. */
@@ -504,7 +519,17 @@ export function ImportDialog({
     const done: string[] = [];
     const failed: { id: string; msg: string }[] = [];
     for (const x of items) {
-      if (x.error || x.loading) continue;
+      if (x.error || x.loading || !wanted(x)) continue;
+      if (x.replace) {
+        // Replace: the copy on the chart goes, the file is read again.
+        const sv = useSurvey.getState();
+        for (const d of sv.datasets)
+          if (
+            d.target === x.target &&
+            (d.name === x.file.name || d.name.startsWith(`${x.file.name} `))
+          )
+            sv.removeDataset(d.id);
+      }
       try {
         const err = await importOne(x);
         if (err) failed.push({ id: x.id, msg: `${x.file.name}: ${err}` });
@@ -585,6 +610,23 @@ export function ImportDialog({
           style: x.style,
         })),
       );
+      // Charting this folder again brings the root folder's drawing along.
+      const before = useProject.getState().folder(pr.active).rootDrawing ?? [];
+      const roots = [
+        ...new Set<string>([
+          ...before,
+          ...ok.filter((x) => rootFiles.includes(x.file)).map((x) => x.target),
+        ]),
+      ].filter((t) => !rootOff.current.has(t));
+      useProject.setState({
+        folders: {
+          ...useProject.getState().folders,
+          [pr.active]: {
+            ...useProject.getState().folder(pr.active),
+            rootDrawing: roots,
+          },
+        },
+      });
     }
     onClose();
   }
@@ -675,7 +717,7 @@ export function ImportDialog({
     onNotice(`Using the settings of ${from || pr.name}.`);
   }
 
-  const ready = items.filter((x) => !x.error && !x.loading);
+  const ready = items.filter((x) => !x.error && !x.loading && wanted(x));
   const canImport =
     ready.length > 0 ||
     keyPlanUsesPlan !==
@@ -798,13 +840,38 @@ export function ImportDialog({
                               ? ` › ${x.tables[x.mapping.sheet]?.name}`
                               : ""}
                           </span>
-                          <span className={x.error ? "status error" : "status"}>
-                            {x.loading
-                              ? "Reading…"
-                              : x.error
-                                ? "Can’t read"
-                                : "Ready"}
-                          </span>
+                          {onChart(x) && !x.loading && !x.error ? (
+                            <label
+                              className="status on-chart"
+                              title="This file is already on the chart. Tick Replace to read it again with the settings shown; leave it to just check it."
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={!!x.replace}
+                                onChange={(e) =>
+                                  setItems((xs) =>
+                                    xs.map((y) =>
+                                      y.id === x.id
+                                        ? { ...y, replace: e.target.checked }
+                                        : y,
+                                    ),
+                                  )
+                                }
+                              />
+                              Replace
+                            </label>
+                          ) : (
+                            <span
+                              className={x.error ? "status error" : "status"}
+                            >
+                              {x.loading
+                                ? "Reading…"
+                                : x.error
+                                  ? "Can’t read"
+                                  : "Ready"}
+                            </span>
+                          )}
                           <button
                             type="button"
                             className="link"
@@ -830,9 +897,45 @@ export function ImportDialog({
                           checked={keyPlanUsesPlan}
                           onChange={(e) => setKeyPlanUsesPlan(e.target.checked)}
                         />
-                        Use the same DXF as the plan view
+                        Use the same drawing as the plan view
                       </label>
                     )}
+                    {(target === "plan" || target === "siteplan") &&
+                      useProject.getState().tree && (
+                        <label
+                          className="check same-line"
+                          title={
+                            rootFiles.length
+                              ? `Use ${rootFiles.map((f) => f.name).join(", ")} from the project's root folder; every product can share it`
+                              : "Put a DWG or DXF directly in the project's root folder to share it between products"
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            disabled={!rootFiles.length}
+                            checked={usesRoot(target)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                rootOff.current.delete(target);
+                                void add(rootFiles, target);
+                              } else {
+                                rootOff.current.add(target);
+                                setItems((xs) =>
+                                  xs.filter(
+                                    (x) =>
+                                      !(
+                                        x.target === target &&
+                                        rootFiles.includes(x.file)
+                                      ),
+                                  ),
+                                );
+                              }
+                            }}
+                          />
+                          Use the same drawing from the root folder
+                          {!rootFiles.length && " (none there yet)"}
+                        </label>
+                      )}
                     {target === "route" && (
                       <label
                         className="check same-line"
@@ -946,7 +1049,9 @@ export function ImportDialog({
             Settings…
           </button>
           <button type="button" onClick={onClose}>
-            Cancel
+            {items.length && !ready.length && items.every((x) => onChart(x))
+              ? "Close"
+              : "Cancel"}
           </button>
           <button
             type="button"
@@ -1358,6 +1463,50 @@ function Wizard({
                   </label>
                 ))}
             </div>
+          )}
+          {it.target === "long" && (
+            <label
+              className="check"
+              title="Divide the profile wherever it would leave the panel; each part gets its own depth window (the depth step is in Look below)"
+            >
+              <input
+                type="checkbox"
+                checked={!!it.style.long?.cut}
+                onChange={(e) =>
+                  update({
+                    style: {
+                      ...it.style,
+                      long: {
+                        ...DEFAULT_LONG_OPTS,
+                        ...it.style.long,
+                        cut: e.target.checked,
+                      },
+                    },
+                  })
+                }
+              />
+              Cut and divide the profile when it leaves the panel
+            </label>
+          )}
+          {it.target === "trans" && (
+            <label
+              className="field"
+              title="Draw one cross profile every this many metres of KP; 0 chooses from the scale"
+            >
+              <span>KP interval of the profile (m, 0 = automatic)</span>
+              <input
+                type="number"
+                min={0}
+                step={10}
+                value={it.style.every ?? 0}
+                onChange={(e) =>
+                  Number(e.target.value) >= 0 &&
+                  update({
+                    style: { ...it.style, every: Number(e.target.value) },
+                  })
+                }
+              />
+            </label>
           )}
           {it.target === "trans" && (
             <p className="hint">

@@ -12,12 +12,14 @@ import {
   treeFromFiles,
   useProject,
   type FolderNode,
+  rootDrawings,
 } from "../state/project";
 import { askCodes, askConfirm } from "./Dialog";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import {
   copyFolderSettings,
   saveFolderSettings,
+  syncChartNumbers,
 } from "../state/folderSettings";
 import { useImport } from "./ImportDialog";
 import { VideoTiming } from "./VideoTiming";
@@ -138,8 +140,13 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
     const s = useProject.getState();
     const node = findNode(s.tree, path);
     if (!node) return;
+    const withRoot = (files: File[]) =>
+      useProject.getState().folder(path).rootDrawing?.length
+        ? [...files, ...rootDrawings().filter((f) => !files.includes(f))]
+        : files;
     if (s.active === path) {
-      if (node.files.length) useImport.getState().request(node.files);
+      const files = withRoot(node.files);
+      if (files.length) useImport.getState().request(files);
       return;
     }
     if (useSurvey.getState().datasets.length && s.active === null) {
@@ -161,23 +168,22 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
           [path]: {
             ...structuredClone(s.carry),
             recipes: s.carry.recipes.map((r) => ({ ...r, borrowed: true })),
+            chartNo: undefined,
+            jobNo: undefined,
           },
         },
       });
     }
     const saved = useProject.getState().folder(path).template;
-    const prevFields = useEditor.getState().template?.fields;
     if (saved) useEditor.getState().open(saved);
     useProject.setState({ active: path, selected: path });
-    // The job number carries over to the next product; the product name is the folder's.
-    const ed = useEditor.getState();
-    const cur = ed.template?.fields ?? {};
-    if (!cur.JOB_NO && prevFields?.JOB_NO)
-      ed.setField("JOB_NO", prevFields.JOB_NO);
-    ed.setField("PRODUCT", node.name || s.name || "");
+    // Job number from the root folder, product name and chart number from this folder.
+    syncChartNumbers();
     if (!saved && useEditor.getState().template)
       useProject.getState().setTemplate(path, useEditor.getState().template!);
-    if (node.files.length) useImport.getState().request(node.files);
+    // The root folder's shared drawing comes along when this folder uses it.
+    const files = withRoot(node.files);
+    if (files.length) useImport.getState().request(files);
     else onNotice(`${node.name} has no files yet: drop survey files on it.`);
   }
 
@@ -526,10 +532,14 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
               type="button"
               className="primary"
               onClick={() => void chartFolder(sel.path)}
-              title="Load this folder's files into the chart (its own template and import settings)"
+              title={
+                pr.active === sel.path
+                  ? "See this folder's files and how they were read; tick Replace on a file to read it again, or just close"
+                  : "Load this folder's files into the chart (its own template and import settings)"
+              }
             >
               {pr.active === sel.path
-                ? "Import its files again"
+                ? "Check imported data"
                 : "Chart this folder"}
             </button>
             <button type="button" onClick={() => addInput.current?.click()}>
@@ -598,54 +608,51 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
   );
 }
 
-/** Job number and chart number: the Drawing No. of every sheet is JOB-PRODUCT-CCC.SSS. */
+/**
+ * The root folder holds the job number for every product; each product folder holds its
+ * chart number. Drawing No. of every sheet: JOB-PRODUCT-CCC.SSS. Editable any time; every
+ * chart of the project follows at once.
+ */
 function ChartNumbers({ path, name }: { path: string; name: string }) {
-  const active = useProject((s) => s.active);
-  const t = useEditor((s) => s.template);
-  const setField = useEditor((s) => s.setField);
-  const on = active === path && !!t;
-  const f = t?.fields ?? {};
-  const job = f.JOB_NO ?? "";
-  const seq = f.CHART_SEQ ?? "";
-  const sample =
-    job.trim() && name
-      ? `${job.trim()}-${name}-${String(parseInt(seq, 10) || 1).padStart(3, "0")}.001`
-      : "";
+  const job = useProject((s) => s.folders[""]?.jobNo ?? "");
+  const seq = useProject((s) => s.folders[path]?.chartNo ?? "");
+  const set = (patch: { jobNo?: string; chartNo?: string }) => {
+    useProject.getState().setNumbers(path, patch);
+    syncChartNumbers();
+  };
+  if (path === "")
+    return (
+      <div className="chart-numbers">
+        <label>
+          <span>Job number</span>
+          <input
+            type="text"
+            value={job}
+            placeholder="e.g. 33DJ100160-T1201"
+            onChange={(e) => set({ jobNo: e.target.value })}
+          />
+        </label>
+        <span className="sample">
+          Used by every product folder: {job.trim() || "JOB"}-PRODUCT-002.001
+        </span>
+      </div>
+    );
+  const sample = `${job.trim() || "JOB"}-${name}-${String(parseInt(seq, 10) || 1).padStart(3, "0")}.001`;
   return (
     <div className="chart-numbers">
-      <label>
-        <span>Job number</span>
-        <input
-          type="text"
-          disabled={!on}
-          value={job}
-          placeholder="e.g. 33DJ100160-T1201"
-          onChange={(e) => {
-            setField("JOB_NO", e.target.value);
-            setField("PRODUCT", name);
-          }}
-        />
-      </label>
       <label>
         <span>Chart number</span>
         <input
           type="text"
           inputMode="numeric"
-          disabled={!on}
           value={seq}
           placeholder="e.g. 2"
-          onChange={(e) => {
-            setField("CHART_SEQ", e.target.value.replace(/\D/g, ""));
-            setField("PRODUCT", name);
-          }}
+          onChange={(e) => set({ chartNo: e.target.value.replace(/\D/g, "") })}
         />
       </label>
       <span className="sample">
-        {on
-          ? sample
-            ? `Drawing No.: ${sample} (sheets count .001, .002 …)`
-            : "Type a job number to write the Drawing No. as JOB-PRODUCT-NUMBER.SHEET"
-          : "Chart this folder to set its numbers"}
+        Drawing No.: {sample} (sheets count .001, .002 …)
+        {!job.trim() && " · set the job number on the root folder"}
       </span>
     </div>
   );

@@ -79,6 +79,7 @@ export function applyStyle(d: Dataset, s: DataStyle): Dataset {
         color: s.color ?? d.color,
         pipeColor: s.pipeColor ?? d.pipeColor,
         pipeFill: s.pipeFill ?? d.pipeFill,
+        every: s.every ?? d.every,
       };
     case "events":
       return {
@@ -109,7 +110,12 @@ export function styleOf(d: Dataset): DataStyle {
       return { color: pipe?.color ?? "#e00000", fill: d.fill, long: d.opts };
     }
     case "trans":
-      return { color: d.color, pipeColor: d.pipeColor, pipeFill: d.pipeFill };
+      return {
+        color: d.color,
+        pipeColor: d.pipeColor,
+        pipeFill: d.pipeFill,
+        every: d.every,
+      };
     case "events":
       return {
         font: d.font,
@@ -420,6 +426,47 @@ function ProfileScales({ target }: { target: "long" | "trans" }) {
         exaggerates the heights.
       </p>
     </>
+  );
+}
+
+/** KP spacing of the cross profiles drawn (0 picks one from the scale). */
+function TransInterval({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange(v: number): void;
+}) {
+  const auto = Math.max(
+    1,
+    (useEditor((s) => s.template?.scale.horizontal) ?? 5000) / 50,
+  );
+  return (
+    <div className="style-row">
+      <label
+        className="field"
+        title="Draw one cross profile every this many metres of KP; 0 chooses from the horizontal scale"
+      >
+        <span>KP interval of the profile</span>
+        <span className="with-suffix">
+          <input
+            type="number"
+            min={0}
+            step={10}
+            value={value}
+            onChange={(e) =>
+              Number(e.target.value) >= 0 && onChange(Number(e.target.value))
+            }
+          />
+          <span className="suffix">m</span>
+        </span>
+      </label>
+      <p className="hint">
+        {value > 0
+          ? `One profile every ${value} m.`
+          : `0 = automatic (every ${auto} m at this scale).`}
+      </p>
+    </div>
   );
 }
 
@@ -759,6 +806,12 @@ export function StyleControls({
       )}
       {(target === "long" || target === "trans") && (
         <ProfileScales target={target} />
+      )}
+      {target === "trans" && (
+        <TransInterval
+          value={s.every ?? 0}
+          onChange={(every) => onChange({ every })}
+        />
       )}
       {target === "trans" && (
         <div className="style-row">

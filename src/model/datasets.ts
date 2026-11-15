@@ -527,6 +527,8 @@ export type DataStyle = Partial<{
   long: LongOpts;
   layout: EventLayout;
   cp: CpLook;
+  /** Cross profiles: KP interval between drawn profiles, metres (0: from the scale). */
+  every: number;
 }>;
 
 export const SERIES_COLOURS = [

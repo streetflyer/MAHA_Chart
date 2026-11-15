@@ -35,6 +35,12 @@ export interface FolderState {
   recipes: ImportRecipe[];
   /** Look and other settings of each imported dataset, kept with the folder. */
   settings?: DatasetSettings[];
+  /** Root folder only: the job number every product's drawing number starts with. */
+  jobNo?: string;
+  /** The chart number (sequence) of this product, e.g. 2 gives …-002.001. */
+  chartNo?: string;
+  /** Import targets (plan, siteplan) that take the drawing kept in the root folder. */
+  rootDrawing?: string[];
 }
 
 export interface ProjectFile {
@@ -66,6 +72,7 @@ interface ProjectState {
   recordImports(path: string, recipes: ImportRecipe[]): void;
   setTemplate(path: string, t: ChartTemplate): void;
   setSettings(path: string, s: DatasetSettings[]): void;
+  setNumbers(path: string, patch: { jobNo?: string; chartNo?: string }): void;
   /** Remove a file from a folder's list and forget how it was imported. */
   forgetFile(path: string, name: string): void;
   /** Copy the template, import recipes and dataset settings of one folder to another. */
@@ -106,6 +113,14 @@ export const useProject = create<ProjectState>((set, get) => ({
       dirty: true,
     });
   },
+  setNumbers: (path, patch) =>
+    set({
+      folders: {
+        ...get().folders,
+        [path]: { ...get().folder(path), ...patch },
+      },
+      dirty: true,
+    }),
   setSettings: (path, settings) =>
     set({
       folders: {
@@ -280,4 +295,10 @@ export function parseProject(text: string): ProjectFile {
   if (p?.format !== "mahachart-project" || typeof p.folders !== "object")
     throw new Error("Not a MAHA Chart project file.");
   return p;
+}
+
+/** Drawings (DWG / DXF) kept directly in the project's root folder, shared by every product. */
+export function rootDrawings(): File[] {
+  const t = useProject.getState().tree;
+  return (t?.files ?? []).filter((f) => /\.(dwg|dxf)$/i.test(f.name));
 }

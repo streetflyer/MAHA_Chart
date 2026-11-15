@@ -4,6 +4,7 @@ import type { CpPoint } from "../model/datasets";
 import { DEFAULT_MATCHLINES } from "../model/matchlines";
 import {
   SCALE_BAR_STYLES,
+  scaleBarStyleOf,
   type MatchlineStyle,
   type ScaleBarStyle,
 } from "../model/types";
@@ -69,6 +70,7 @@ import { useLegendItems } from "./PanelContent";
 import { keyplanStyle } from "./Keyplan";
 import { planStyle } from "./PlanView";
 import { DrawingEditPanel, DrawingLook } from "./DrawingProps";
+import { BarShape } from "./scaleBars";
 
 /** Text/number box that commits on Enter or blur, so typing doesn't create one undo step per key. */
 function Field({
@@ -594,21 +596,10 @@ function PanelProps({ p }: { p: Panel }) {
         />
       )}
       {p.type === "scale" && (
-        <label className="field">
-          <span>Scale bar style</span>
-          <select
-            value={p.scaleBarStyle ?? "blocks"}
-            onChange={(e) =>
-              set({ scaleBarStyle: e.target.value as ScaleBarStyle })
-            }
-          >
-            {SCALE_BAR_STYLES.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <ScaleBarPicker
+          value={scaleBarStyleOf(p.scaleBarStyle)}
+          onChange={(v) => set({ scaleBarStyle: v })}
+        />
       )}
       {p.type === "legend" && <LegendEditor p={p} />}
       {p.type === "plan" && <DrawingEditPanel panelId={p.id} when="idle" />}
@@ -1213,6 +1204,57 @@ function TextProps({ t }: { t: TextItem }) {
         Bold
       </label>
     </aside>
+  );
+}
+
+function BarPreview({ id }: { id: ScaleBarStyle }) {
+  return (
+    <svg className="bar-preview" viewBox="-1 -1.6 52 3.2">
+      <BarShape style={id} x0={0} yb={0} seg={10} n={5} h={2} />
+    </svg>
+  );
+}
+
+/** A drop-down of the scale bar styles, each with its name, a note and a picture of the bar. */
+function ScaleBarPicker({
+  value,
+  onChange,
+}: {
+  value: ScaleBarStyle;
+  onChange(v: ScaleBarStyle): void;
+}) {
+  const [open, setOpen] = useState(false);
+  const cur = SCALE_BAR_STYLES.find((x) => x.id === value)!;
+  return (
+    <div className="field bar-picker">
+      <span>Scale bar style</span>
+      <button
+        type="button"
+        className="bar-picker-btn"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span>{cur.label} ▾</span>
+        <BarPreview id={value} />
+      </button>
+      {open && (
+        <ul className="bar-picker-list" onMouseLeave={() => setOpen(false)}>
+          {SCALE_BAR_STYLES.map((o) => (
+            <li
+              key={o.id}
+              className={o.id === value ? "on" : undefined}
+              onClick={() => {
+                onChange(o.id);
+                setOpen(false);
+              }}
+            >
+              <b>{o.label}</b>
+              <small>{o.note}</small>
+              <BarPreview id={o.id} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -2219,8 +2261,6 @@ function EventList({ d }: { d: Extract<Dataset, { kind: "events" }> }) {
 
 /** One imported dataset in the properties list: a caret folds its settings away. */
 function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
-  const hScale = useEditor((x) => x.template?.scale.horizontal ?? 5000);
-  const autoEvery = Math.max(1, hScale / 50);
   const sv = useSurvey.getState();
   const [open, setOpen] = useState(true);
   return (
@@ -2349,16 +2389,6 @@ function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
           )}
           {d.kind === "trans" && (
             <>
-              <Field
-                label="KP interval of the profiles"
-                type="number"
-                step={10}
-                suffix={`m (0 = auto: ${autoEvery} m)`}
-                value={d.every}
-                onCommit={(v) =>
-                  num(v) >= 0 && sv.updateDataset(d.id, { every: num(v) })
-                }
-              />
               <label
                 className="check"
                 title="Draw the pipe as a true circle at the lateral scale, so the vertical scale does not make it oval"
