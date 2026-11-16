@@ -510,8 +510,14 @@ export interface SheetFrame {
   /** Map nudged inside the plan view by the user, in metres along and across the frame. */
   panU?: number;
   panV?: number;
-  /** One straight part of a curved stretch ("Fit to curved line"): the KP panels and title cover only start to end. */
+  /** One straight part of a curved stretch (older "Fit to curved line"): the KP panels and title cover only start to end. */
   part?: boolean;
+  /**
+   * "Fit to curved line": KPs (m) where the chart turns to a new straight segment. The
+   * plan view and the panels below are cut into side-by-side segments, each turned to
+   * follow its stretch of line, at the chart's scale.
+   */
+  segments?: number[];
 }
 
 export interface PaperSettings {
@@ -541,7 +547,17 @@ export interface ChartTemplate {
   fontFamily?: string;
   /** Title block and other fill-in values, referenced from text as {KEY}. */
   fields: Record<string, string>;
+  /**
+   * Text that applies to one chart only ("Only this chart" when editing), by chart index
+   * from 0: field values, and panel texts by panel id (the right column as "<id>#2").
+   */
+  chartText?: Record<string, ChartText>;
   updatedAt?: string;
+}
+
+export interface ChartText {
+  fields?: Record<string, string>;
+  bodies?: Record<string, string>;
 }
 
 export type Selection = { kind: "panel" | "text" | "image"; id: string };

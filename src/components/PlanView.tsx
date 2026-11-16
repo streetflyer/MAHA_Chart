@@ -8,7 +8,9 @@ import {
 import { sheetCount, sheetRange } from "../model/scale";
 import {
   chartGeometry,
+  chartSegments,
   gridToPlan,
+  segmentsProjection,
   pointAt,
   type Bounds,
   type ChartGeometry,
@@ -138,8 +140,42 @@ export function PlanView({
   );
 
   if (!geo || !view) return null;
-  const project = view.project;
-  const unproject = inverseOf(project);
+  // A chart fitted to a curved line draws its map once per segment, each turned to its stretch.
+  const segs = route ? chartSegments(template, route, sheetIndex) : null;
+  const k0s = (parseFloat(template.fields.START_KP ?? "0") || 0) * 1000;
+  const composite = segs && route ? segmentsProjection(segs, route, k0s) : null;
+  const project = composite?.project ?? view.project;
+  const unproject = composite?.unproject ?? inverseOf(view.project);
+  const parts = segs
+    ? segs.map((sg, j) => {
+        const pj = gridToPlan(sg.geo, sg.rect);
+        return {
+          geo: sg.geo,
+          rect: sg.rect,
+          project: pj,
+          area: frameBounds(sg.geo),
+          kpIn: [
+            j === 0 ? -Infinity : sg.kp0,
+            j === segs.length - 1 ? Infinity : sg.kp1,
+          ] as [number, number],
+          routeD: route ? routePath(route, pj, 0.05) : "",
+          beforeD:
+            before?.kind === "route" && before.before
+              ? linesPath([before.before], frameBounds(sg.geo), pj, 0.05)
+              : "",
+        };
+      })
+    : [
+        {
+          geo,
+          rect,
+          project: view.project,
+          area: view.area,
+          kpIn: [-Infinity, Infinity] as [number, number],
+          routeD,
+          beforeD,
+        },
+      ];
   planProjection.set(p.id, { project, unproject });
   const k0h = (parseFloat(template.fields.START_KP ?? "0") || 0) * 1000;
   hoverSources.set(p.id, {
@@ -157,48 +193,83 @@ export function PlanView({
           <rect x={p.x} y={p.y} width={p.w} height={p.h} />
         </clipPath>
       </defs>
-      <g clipPath={`url(#${clipId})`}>
-        <LineworkLayer
-          sets={sets}
-          area={view.area}
-          project={project}
-          mmPerM={mmPerM}
-          uAngle={uAngle}
-          skip={skip}
+      {parts.map((v, j) => (
+        <g
+          key={j}
+          clipPath={`url(#${clipId}${parts.length > 1 ? `-${j}` : ""})`}
+        >
+          {parts.length > 1 && (
+            <defs>
+              <clipPath id={`${clipId}-${j}`}>
+                <rect
+                  x={v.rect.x}
+                  y={v.rect.y}
+                  width={v.rect.w}
+                  height={v.rect.h}
+                />
+              </clipPath>
+            </defs>
+          )}
+          <LineworkLayer
+            sets={sets}
+            area={v.area}
+            project={v.project}
+            mmPerM={mmPerM}
+            uAngle={(Math.atan2(v.geo.u[1], v.geo.u[0]) * 180) / Math.PI}
+            skip={skip}
+          />
+          {st.showGrid && <PlanGrid geo={v.geo} rect={v.rect} st={st} />}
+          {routeShown && v.beforeD && (
+            <path
+              d={v.beforeD}
+              fill="none"
+              stroke={routeColor}
+              strokeWidth={routeWidth}
+              strokeDasharray="2 1"
+            />
+          )}
+          {routeShown && v.routeD && (
+            <path
+              d={v.routeD}
+              fill="none"
+              stroke={routeColor}
+              strokeWidth={routeWidth}
+              strokeLinejoin="round"
+            />
+          )}
+          {route && st.showKp && (
+            <KpBlocks
+              template={template}
+              project={v.project}
+              rect={v.rect}
+              st={st}
+            />
+          )}
+          {route && st.match?.on && (
+            <Matchlines
+              panelId={p.id}
+              template={template}
+              sheetIndex={sheetIndex}
+              project={v.project}
+              rect={v.rect}
+              kpIn={v.kpIn}
+              st={{ ...DEFAULT_MATCHLINES, ...st.match }}
+            />
+          )}
+        </g>
+      ))}
+      {parts.slice(1).map((v, j) => (
+        <line
+          key={`sep${j}`}
+          className="segment-join"
+          x1={v.rect.x}
+          y1={v.rect.y}
+          x2={v.rect.x}
+          y2={v.rect.y + v.rect.h}
+          stroke="#000"
+          strokeWidth={0.35}
         />
-        {st.showGrid && <PlanGrid geo={geo} rect={rect} st={st} />}
-        {routeShown && beforeD && (
-          <path
-            d={beforeD}
-            fill="none"
-            stroke={routeColor}
-            strokeWidth={routeWidth}
-            strokeDasharray="2 1"
-          />
-        )}
-        {routeShown && routeD && (
-          <path
-            d={routeD}
-            fill="none"
-            stroke={routeColor}
-            strokeWidth={routeWidth}
-            strokeLinejoin="round"
-          />
-        )}
-        {route && st.showKp && (
-          <KpBlocks template={template} project={project} rect={rect} st={st} />
-        )}
-        {route && st.match?.on && (
-          <Matchlines
-            panelId={p.id}
-            template={template}
-            sheetIndex={sheetIndex}
-            project={project}
-            rect={rect}
-            st={{ ...DEFAULT_MATCHLINES, ...st.match }}
-          />
-        )}
-      </g>
+      ))}
       {ctx && (
         <DrawingEditOverlay
           p={p}
@@ -246,6 +317,7 @@ function Matchlines({
   project,
   rect,
   st,
+  kpIn = [-Infinity, Infinity],
 }: {
   panelId: string;
   template: ChartTemplate;
@@ -253,6 +325,8 @@ function Matchlines({
   project: (e: number, n: number) => Pt;
   rect: Rect;
   st: MatchlineStyle;
+  /** KPs (m) this part of the plan view draws (a segment of a fitted chart). */
+  kpIn?: [number, number];
 }) {
   const route = useSurvey((s) => s.route)!;
   const k0 = (parseFloat(template.fields.START_KP ?? "0") || 0) * 1000;
@@ -269,6 +343,7 @@ function Matchlines({
     return { start: r.start * 1000, end: r.end * 1000 };
   });
   matchSpecs(ranges, sheetIndex, st.mode, shown, st.pairs).forEach((m, k) => {
+    if (m.kp < kpIn[0] || m.kp > kpIn[1]) return;
     const c = project(...pointAt(route, m.kp - k0));
     const a = project(...pointAt(route, m.kp - k0 + 1));
     const b = project(...pointAt(route, m.kp - k0 - 1));

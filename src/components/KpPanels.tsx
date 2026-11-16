@@ -46,7 +46,15 @@ import {
   planStyle,
   withLineEnd,
 } from "../model/planStyle";
-import { chartGeometry, gridToPlan, pointAt, type Route } from "../model/route";
+import {
+  chartGeometry,
+  chartSegments,
+  gridToPlan,
+  pointAt,
+  segmentOf,
+  type ChartGeometry,
+  type Route,
+} from "../model/route";
 import { planPanel, sheetFrame, sheetRange } from "../model/scale";
 import type { ChartTemplate, Panel } from "../model/types";
 import { useSurvey } from "../state/surveyData";
@@ -69,7 +77,7 @@ export function kpToX(
   if (route) {
     const g = chartGeometry(t, route, sheetIndex);
     if (!g) return null;
-    const project = gridToPlan(g, plan);
+    const project = kpProjector(t, route, sheetIndex, g, plan);
     const { start, end } = sheetRange(t, sheetIndex);
     return monotonicKp(
       start * 1000,
@@ -77,7 +85,7 @@ export function kpToX(
       k0,
       k0 + route.length,
       (plan.w * t.scale.horizontal) / 1000,
-      (kp) => project(...pointAt(route, kp - k0))[0],
+      (kp) => project(kp)[0],
       1000 / t.scale.horizontal,
     );
   }
@@ -173,29 +181,62 @@ export function planKpRange(
   if (!plan || !route) return null;
   const g = chartGeometry(t, route, sheetIndex);
   if (!g) return null;
-  const project = gridToPlan(g, plan);
   const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+  const project = kpProjector(t, route, sheetIndex, g, plan);
+  const segs = chartSegments(t, route, sheetIndex);
   const step = Math.max(0.25, route.length / 8000);
   const tol = 0.01;
+  const inFrame = (dd: number) => {
+    const [px, py] = project(k0 + dd);
+    // A fitted chart: each KP must lie in its own segment's part of the plan view.
+    const r = segs ? segmentOf(segs, k0 + dd).rect : plan;
+    return (
+      px >= r.x - tol &&
+      px <= r.x + r.w + tol &&
+      py >= r.y - tol &&
+      py <= r.y + r.h + tol
+    );
+  };
+  // Every stretch of the line inside the frame, edge to edge. The ones this chart's own
+  // KPs run through count (another stretch curling back into the frame does not), and
+  // each counts in full, so the range ends where the line crosses the frame's edge.
   let lo = Infinity;
   let hi = -Infinity;
+  let run: [number, number] | null = null;
+  let mine = false;
+  const close = () => {
+    if (run && mine) {
+      lo = Math.min(lo, run[0]);
+      hi = Math.max(hi, run[1]);
+    }
+    run = null;
+    mine = false;
+  };
   for (let d = 0; d <= route.length + step / 2; d += step) {
     const dd = Math.min(d, route.length);
     const kp = k0 + dd;
-    const x = toX(kp);
-    if (!(x >= plan.x - tol && x <= plan.x + plan.w + tol)) continue;
-    const [px, py] = project(...pointAt(route, dd));
-    if (
-      px >= plan.x - tol &&
-      px <= plan.x + plan.w + tol &&
-      py >= plan.y - tol &&
-      py <= plan.y + plan.h + tol
-    ) {
-      lo = Math.min(lo, kp);
-      hi = Math.max(hi, kp);
+    if (!inFrame(dd)) {
+      close();
+      continue;
     }
+    if (run) run[1] = kp;
+    else run = [kp, kp];
+    const x = toX(kp);
+    if (x >= plan.x - tol && x <= plan.x + plan.w + tol) mine = true;
   }
+  close();
   if (!(lo <= hi)) return null;
+  // Refine the ends to where the line meets the frame's edge.
+  const edge = (inside: number, outside: number) => {
+    for (let k = 0; k < 20; k++) {
+      const m = (inside + outside) / 2;
+      if (inFrame(m - k0)) inside = m;
+      else outside = m;
+    }
+    return inside;
+  };
+  if (lo - k0 > 1e-6) lo = edge(lo, lo - step);
+  if (k0 + route.length - hi > 1e-6) hi = edge(hi, hi + step);
   // A straight part of a fitted curve covers only its own KPs, though the frame shows more of the line.
   const f = sheetFrame(t, sheetIndex);
   if (f?.part && f.end !== undefined) {
@@ -203,6 +244,25 @@ export function planKpRange(
     hi = Math.min(hi, f.end);
   }
   return lo <= hi ? [lo, hi] : null;
+}
+
+/** Paper position of a KP (m) on the line, as the chart's plan view draws it (by segment when fitted to a curve). */
+function kpProjector(
+  t: ChartTemplate,
+  route: Route,
+  sheetIndex: number,
+  g: ChartGeometry,
+  plan: { x: number; y: number; w: number; h: number },
+): (kp: number) => [number, number] {
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+  const segs = chartSegments(t, route, sheetIndex);
+  if (!segs) {
+    const project = gridToPlan(g, plan);
+    return (kp) => project(...pointAt(route, kp - k0));
+  }
+  const proj = segs.map((sg) => gridToPlan(sg.geo, sg.rect));
+  return (kp) =>
+    proj[segs.indexOf(segmentOf(segs, kp))](...pointAt(route, kp - k0));
 }
 
 export function useKpToX(t: ChartTemplate, sheetIndex: number) {
@@ -302,8 +362,27 @@ export function KpPanelData({
     ([kp]) => !shown || (kp >= shown[0] - 0.5 && kp <= shown[1] + 0.5),
   );
   const lines = route || mine.length > 0;
+  // A chart fitted to a curve: a line where each segment of the plan view ends, as in the plan view.
+  const joins = route
+    ? (chartSegments(t, route, sheetIndex) ?? [])
+        .slice(1)
+        .map((sg) => sg.rect.x)
+        .filter((x) => x > x0 && x < p.x + p.w)
+    : [];
   return (
     <g pointerEvents="none">
+      {joins.map((x) => (
+        <line
+          key={`join${x}`}
+          className="segment-join"
+          x1={x}
+          y1={p.y}
+          x2={x}
+          y2={p.y + p.h}
+          stroke="#000"
+          strokeWidth={0.35}
+        />
+      ))}
       <defs>
         <clipPath id={clipId}>
           <rect x={x0} y={p.y} width={p.x + p.w - x0} height={p.h} />

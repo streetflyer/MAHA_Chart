@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { newId } from "../model/ids";
 import { PAPER_SIZES } from "../model/paper";
 import { BUILTIN_TEMPLATES } from "../model/builtinTemplates";
-import { autoSheets, fitCurvedParts, fitCurvedPartsN } from "../model/route";
+import { autoSheets, fitSegments, fitSegmentsN } from "../model/route";
 import {
   deleteSheet,
   editSheet,
@@ -13,7 +13,7 @@ import {
   sheetRange,
   sheetFrame,
   sheetRotation,
-  splitSheet,
+  fitSheet,
 } from "../model/scale";
 import {
   exportTemplateFile,
@@ -33,6 +33,7 @@ import { askChoice, askConfirm, askText } from "./Dialog";
 import { normaliseShortcut, shortcutOf, usePrefs } from "../state/prefs";
 import { useHoverTip } from "../state/hoverInfo";
 import { useMatchPick } from "../state/matchPick";
+import { ParametersDialog } from "./ParametersDialog";
 import { chartsToDxf } from "../model/dxfExport";
 import { chartsToPdf } from "../model/pdfExport";
 import { ThemeButton } from "./ThemeButton";
@@ -83,6 +84,7 @@ export function Editor({ onExit }: { onExit(): void }) {
   const canRedo = useEditor((s) => s.future.length > 0);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
+  const [showParams, setShowParams] = useState(false);
   const [fitSignal, setFitSignal] = useState(0);
   const importOpen = useImport((s) => s.open);
   const importFiles = useImport((s) => s.files);
@@ -869,6 +871,12 @@ export function Editor({ onExit }: { onExit(): void }) {
           </button>
         </div>
         <div className="group">
+          <button
+            onClick={() => setShowParams(true)}
+            title="Show and edit every {PARAMETER} the chart text uses ({TITLE}, {PROJECT}…), for all charts or one chart"
+          >
+            Parameters…
+          </button>
           <HoverInfoButtons />
         </div>
         <div className="group">
@@ -985,6 +993,9 @@ export function Editor({ onExit }: { onExit(): void }) {
           <EventEditBar />
           <ModeBar />
           <HoverTip />
+          {showParams && (
+            <ParametersDialog onClose={() => setShowParams(false)} />
+          )}
           {progress && (
             <div
               className="save-progress"
@@ -1086,38 +1097,36 @@ function ChartTabs({ onNotice }: { onNotice(m: string): void }) {
   } | null>(null);
   const fitCurve = async (i: number, ask = false) => {
     if (!route) return;
-    const range = chartKpRange(template, i);
-    let parts = fitCurvedParts(template, route, i, 0.97, range);
+    // Start where the chart's plan view shows the line now (it may have been panned).
+    const from = chartKpRange(template, i).start * 1000;
+    let fit = fitSegments(template, route, i, 0.97, 12, from);
     if (ask) {
       const v = await askText(
-        `Fit Chart ${i + 1} to the curved line: number of charts (the automatic fit makes ${parts?.length ?? 1}; fewer charts allow more curve in each)`,
-        String(parts?.length ?? 2),
+        `Fit Chart ${i + 1} to the curved line: number of segments in the chart (the automatic fit makes ${(fit?.segments.length ?? 0) + 1}; fewer segments allow more curve in each)`,
+        String((fit?.segments.length ?? 1) + 1),
       );
       const n = parseInt(v ?? "", 10);
       if (!(n >= 1)) return;
-      parts = fitCurvedPartsN(template, route, i, n, range);
-      if (n === 1)
-        parts = [
-          {
-            start: range.start * 1000,
-            end: range.end * 1000,
-            rotation: 0,
-            part: true,
-          },
-        ];
+      fit = n === 1 ? null : fitSegmentsN(template, route, i, n, from);
+      if (n === 1) {
+        st().commit((t) => fitSheet(t, i, undefined, undefined));
+        onNotice(`Chart ${i + 1} is one straight frame again.`);
+        return;
+      }
     }
-    if (!parts || (parts.length < 2 && !ask)) {
-      onNotice(
-        parts
-          ? `Chart ${i + 1}: the line is already straight enough.`
-          : "No line on this chart.",
-      );
+    if (!fit) {
+      onNotice("No line on this chart.");
       return;
     }
-    st().commit((t) => splitSheet(t, i, parts));
+    if (!fit.segments.length && !ask) {
+      onNotice(`Chart ${i + 1}: the line is already straight enough.`);
+      return;
+    }
+    const f = fit;
+    st().commit((t) => fitSheet(t, i, f.segments, f.end, f.start));
     st().setSheet(i);
     onNotice(
-      `Chart ${i + 1} split into ${parts.length} charts along the straight parts of the line.`,
+      `Chart ${i + 1} fitted to the curve in ${f.segments.length + 1} segments, KP ${(f.start / 1000).toFixed(3)} to ${(f.end / 1000).toFixed(3)}. The charts after it moved along.`,
     );
   };
   return (
@@ -1134,9 +1143,15 @@ function ChartTabs({ onNotice }: { onNotice(m: string): void }) {
               action: () => void fitCurve(menu.i),
             },
             {
-              label: "Fit to curved line in a number of charts…",
+              label: "Fit to curved line in a number of segments…",
               disabled: !route,
               action: () => void fitCurve(menu.i, true),
+            },
+            {
+              label: "Straighten (undo the fit)",
+              disabled: !sheetFrame(template, menu.i)?.segments?.length,
+              action: () =>
+                st().commit((t) => fitSheet(t, menu.i, undefined, undefined)),
             },
             "separator",
             {

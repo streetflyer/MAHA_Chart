@@ -16,6 +16,14 @@ import type {
 } from "../model/types";
 import { useEditor, type InlineEdit } from "../state/store";
 import {
+  chartBody,
+  chartField,
+  clearChartField,
+  hasChartBody,
+  setChartBody,
+  setChartField,
+} from "../model/chartText";
+import {
   REV_COLUMNS,
   isBlank,
   titleInsideHeight,
@@ -38,6 +46,8 @@ interface Target {
   cap: number;
   /** Offer these choices plus "User defined…". */
   options?: string[];
+  /** Can be set for this chart only; `own`: this chart already has its own value. */
+  perChart?: { own: boolean };
 }
 
 function targetFor(e: InlineEdit, t: ChartTemplate): Target | null {
@@ -124,7 +134,9 @@ function targetFor(e: InlineEdit, t: ChartTemplate): Target | null {
             h: Math.max(tb!.u * 2.4, 6),
           }
         : { x: p.x, y: p.y, w: p.w, h: 6 };
-    const sheetTokens = templateTokens(t, useEditor.getState().sheetIndex);
+    const si = useEditor.getState().sheetIndex;
+    const sheetTokens = templateTokens(t, si);
+    const own = chartField(t, si, key);
     const auto = autoSurveyDate(useVideo.getState().rows, {
       drawingNo: sheetTokens.CHART_NO ?? "",
       folder: useProject.getState().active ?? "",
@@ -132,30 +144,38 @@ function targetFor(e: InlineEdit, t: ChartTemplate): Target | null {
     return {
       rect,
       value:
-        key === "REV"
-          ? currentRevision(t)
-          : key === "SURVEY_DATE"
-            ? surveyDateOf(t, auto)
-            : (t.fields[key] ??
-              (key === "PLOT_SIZE" ? `ISO ${t.paper.size}` : "")),
+        own !== undefined
+          ? own
+          : key === "REV"
+            ? currentRevision(t)
+            : key === "SURVEY_DATE"
+              ? surveyDateOf(t, auto)
+              : (t.fields[key] ??
+                (key === "PLOT_SIZE" ? `ISO ${t.paper.size}` : "")),
       multiline: false,
       cap: 1.8,
+      perChart: { own: own !== undefined },
     };
   }
   const top = p.y + titleInsideHeight(p);
   const h = Math.max(p.y + p.h - top, 20);
-  if (e.kind === "panelBody2")
+  const si = useEditor.getState().sheetIndex;
+  const second = e.kind === "panelBody2";
+  const perChart = { own: hasChartBody(t, si, p.id, second) };
+  if (second)
     return {
       rect: { x: p.x + p.w / 2, y: top, w: Math.max(p.w / 2, 80), h },
-      value: p.body2 ?? "",
+      value: chartBody(t, si, p, true) ?? "",
       multiline: true,
       cap: 1.8,
+      perChart,
     };
   return {
     rect: { x: p.x, y: top, w: p.w, h },
-    value: p.body ?? "",
+    value: chartBody(t, si, p) ?? "",
     multiline: true,
     cap: 1.8,
+    perChart,
   };
 }
 
@@ -203,6 +223,7 @@ export function InlineEditor({
   >(null);
   const done = useRef(false);
   const switching = useRef(false);
+  const [onlyThis, setOnlyThis] = useState(!!target?.perChart?.own);
 
   useEffect(() => {
     switching.current = false;
@@ -235,8 +256,39 @@ export function InlineEditor({
     if (done.current) return;
     done.current = true;
     const s = useEditor.getState();
-    if (commit && v !== target!.value) {
-      const e = editing;
+    const e = editing;
+    const si = s.sheetIndex;
+    const changed = v !== target!.value || onlyThis !== !!target!.perChart?.own;
+    if (commit && changed && target!.perChart && e.kind === "field") {
+      // Typed for this chart only, or for every chart (dropping this chart's own value).
+      if (onlyThis) s.commit((t) => setChartField(t, si, e.col!, v, true));
+      else if (e.col === "REV")
+        s.commit((t) =>
+          setCurrentRevision(clearChartField(t, si, "REV"), v.trim()),
+        );
+      else if (e.col === "SURVEY_DATE")
+        s.commit((t) => {
+          const tt = clearChartField(t, si, "SURVEY_DATE");
+          return {
+            ...tt,
+            fields: {
+              ...tt.fields,
+              SURVEY_DATE: v,
+              SURVEY_DATE_MANUAL: v.trim() ? "1" : "",
+            },
+          };
+        });
+      else s.commit((t) => setChartField(t, si, e.col!, v, false));
+    } else if (
+      commit &&
+      changed &&
+      target!.perChart &&
+      (e.kind === "panelBody" || e.kind === "panelBody2")
+    )
+      s.commit((t) =>
+        setChartBody(t, si, e.id, v, onlyThis, e.kind === "panelBody2"),
+      );
+    else if (commit && v !== target!.value) {
       if (e.kind === "text") s.updateText(e.id, { text: v });
       else if (e.kind === "panelTitle") s.updatePanel(e.id, { title: v });
       else if (e.kind === "panelBody") s.updatePanel(e.id, { body: v });
@@ -329,12 +381,43 @@ export function InlineEditor({
     onPointerDown: stop,
     onKeyDown: keys,
   };
-  return target.multiline ? (
+  const field = target.multiline ? (
     <textarea {...common} title="Ctrl+Enter to finish, Esc to cancel" />
   ) : (
     <input
       {...common}
       placeholder={custom ? "Type a description" : undefined}
     />
+  );
+  if (!target.perChart) return field;
+  const chartNo = useEditor.getState().sheetIndex + 1;
+  return (
+    <>
+      {field}
+      <label
+        className="inline-only-chart"
+        data-only-chart={onlyThis ? "on" : "off"}
+        style={{
+          left: style.left,
+          top:
+            (style.top as number) +
+            (typeof style.height === "number" ? style.height : 24) +
+            2,
+        }}
+        // Keep the text box focused: a click here must not finish the edit.
+        onPointerDown={(ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          setOnlyThis((x) => !x);
+          ref.current?.focus();
+        }}
+        // The label's own click would focus its checkbox and end the edit.
+        onClick={(ev) => ev.preventDefault()}
+        title="Tick to use this text on this chart only; untick to use it on every chart"
+      >
+        <input type="checkbox" checked={onlyThis} readOnly tabIndex={-1} /> Only
+        apply for this chart (Chart {chartNo})
+      </label>
+    </>
   );
 }

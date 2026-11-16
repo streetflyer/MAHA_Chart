@@ -52,6 +52,7 @@ import {
 } from "./calloutEdit";
 import { planProjection } from "./Callouts";
 import { useMatchPick } from "../state/matchPick";
+import { chartField } from "../model/chartText";
 import { usePrefs } from "../state/prefs";
 import { infoAt, useHoverTip } from "../state/hoverInfo";
 import { keyplanToGrid, matchClick } from "./matchPicking";
@@ -262,6 +263,8 @@ export function SheetView({
         folder: activeFolder,
       }),
     );
+    const own = chartField(template, sheetIndex, "SURVEY_DATE");
+    if (own !== undefined) tk.SURVEY_DATE = own;
     return tk;
   }, [template, sheetIndex, videoRows, activeFolder]);
   const images = template.images ?? [];

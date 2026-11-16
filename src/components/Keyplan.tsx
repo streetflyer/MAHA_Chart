@@ -245,7 +245,7 @@ export function Keyplan({
                 >
                   <title>{`Chart ${i + 1}: drag along the line to fine-tune`}</title>
                 </polygon>
-                {i === sheetIndex && (
+                {i === sheetIndex && f.length === 4 && (
                   <RotateHandle
                     f={f}
                     sx={sx}

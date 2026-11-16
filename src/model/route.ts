@@ -336,6 +336,29 @@ export function gridToPlan(
 export function chartFrames(t: ChartTemplate, r: Route): [number, number][][] {
   const frames: [number, number][][] = [];
   for (let i = 0; i < sheetCount(t); i++) {
+    const segs = chartSegments(t, r, i);
+    if (segs) {
+      // A chart fitted to a curve: the boxes of its segments as one bent outline.
+      const top: [number, number][] = [];
+      const bottom: [number, number][] = [];
+      for (const sg of segs) {
+        const [ux, uy] = sg.geo.u;
+        const [vx, vy] = [-uy, ux];
+        const [ox, oy] = sg.geo.origin;
+        const h = sg.geo.across / 2;
+        const L = sg.geo.along;
+        top.push(
+          [ox + vx * h, oy + vy * h],
+          [ox + ux * L + vx * h, oy + uy * L + vy * h],
+        );
+        bottom.push(
+          [ox - vx * h, oy - vy * h],
+          [ox + ux * L - vx * h, oy + uy * L - vy * h],
+        );
+      }
+      frames.push([...bottom, ...top.reverse()]);
+      continue;
+    }
     const g = chartGeometry(t, r, i);
     if (!g) break;
     const [ux, uy] = g.u;
@@ -477,4 +500,221 @@ export function fitCurvedPartsN(
     parts.splice(j, 1, { ...p, end: mid }, { ...p, start: mid });
   }
   return parts;
+}
+
+/** One straight segment of a chart fitted to a curved line. */
+export interface ChartSegment {
+  /** KPs (m) the segment covers. */
+  kp0: number;
+  kp1: number;
+  /** Map geometry of the segment; with `rect` it projects like a plan view of its own. */
+  geo: ChartGeometry;
+  /** The segment's part of the plan view (paper mm). */
+  rect: { x: number; y: number; w: number; h: number };
+}
+
+/**
+ * The segments of a chart fitted to a curved line, or null for an ordinary chart.
+ * Each segment runs along the chord of its stretch of line; they sit side by side
+ * across the plan view, the line passing from one to the next at the joins.
+ */
+export function chartSegments(
+  t: ChartTemplate,
+  r: Route,
+  i: number,
+): ChartSegment[] | null {
+  const f = sheetFrame(t, i);
+  if (!f?.segments?.length || t.kind === "northUp") return null;
+  const plan = planPanel(t);
+  if (!plan) return null;
+  const k = 1000 / t.scale.horizontal; // paper mm per metre
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+  const { start, end } = sheetRange(t, i);
+  const s = start * 1000;
+  const e = end * 1000;
+  const kps = [s, ...f.segments.filter((x) => x > s + 1e-6 && x < e - 1e-6), e];
+  const parts: {
+    a: [number, number];
+    u: [number, number];
+    len: number;
+    vMin: number;
+    vMax: number;
+  }[] = [];
+  let u: [number, number] = [1, 0];
+  for (let j = 0; j + 1 < kps.length; j++) {
+    const a = pointAt(r, kps[j] - k0);
+    const b = pointAt(r, kps[j + 1] - k0);
+    const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    if (d > 1e-6) u = [(b[0] - a[0]) / d, (b[1] - a[1]) / d];
+    const x = extents(r, kps[j] - k0, kps[j + 1] - k0, a, u);
+    parts.push({ a, u, len: d, vMin: x.vMin, vMax: x.vMax });
+  }
+  const out: ChartSegment[] = [];
+  let x = plan.x;
+  parts.forEach((p, j) => {
+    const last = j === parts.length - 1;
+    const w = last ? Math.max(plan.x + plan.w - x, p.len * k) : p.len * k;
+    const v: [number, number] = [-p.u[1], p.u[0]];
+    // Each segment centres its own stretch of line across the plan view.
+    const vc = (p.vMin + p.vMax) / 2 + (f.panV ?? 0);
+    out.push({
+      kp0: kps[j],
+      kp1: kps[j + 1],
+      geo: {
+        origin: [p.a[0] + v[0] * vc, p.a[1] + v[1] * vc],
+        u: p.u,
+        along: w / k,
+        across: plan.h / k,
+        northUp: false,
+      },
+      rect: { x, y: plan.y, w, h: plan.h },
+    });
+    x += w;
+  });
+  return out;
+}
+
+/** The segment that draws a KP (m): the one holding it, else the first or last. */
+export function segmentOf(segs: ChartSegment[], kp: number): ChartSegment {
+  for (const s of segs) if (kp <= s.kp1) return s;
+  return segs[segs.length - 1];
+}
+
+/** Paper position of a grid point drawn by a chart's segments (the segment of its nearest KP). */
+export function segmentsProjection(segs: ChartSegment[], r: Route, k0: number) {
+  const proj = segs.map((s) => gridToPlan(s.geo, s.rect));
+  const inv = segs.map((s) => planToGrid(s.geo, s.rect));
+  return {
+    project: (e: number, n: number): [number, number] => {
+      const kp = k0 + nearestChainage(r, e, n);
+      return proj[segs.indexOf(segmentOf(segs, kp))](e, n);
+    },
+    unproject: (x: number, y: number): [number, number] => {
+      let j = segs.findIndex((s) => x <= s.rect.x + s.rect.w);
+      if (j < 0) j = segs.length - 1;
+      return inv[j](x, y);
+    },
+  };
+}
+
+/** Paper to grid for a plan view (the inverse of gridToPlan). */
+export function planToGrid(
+  g: ChartGeometry,
+  plan: { x: number; y: number; w: number; h: number },
+) {
+  const s = plan.w / g.along;
+  const [ux, uy] = g.u;
+  const [ox, oy] = g.origin;
+  const cy = plan.y + plan.h / 2;
+  return (x: number, y: number): [number, number] => {
+    const pu = (x - plan.x) / s;
+    const pv = (cy - y) / s;
+    return [ox + ux * pu - uy * pv, oy + uy * pu + ux * pv];
+  };
+}
+
+/**
+ * Fit a chart to a curved line: from its start, straight segments as long as the line
+ * stays nearly straight (chord at least `ratio` of the length along the line) and fits
+ * across, until the plan view's width is used up. Returns the segment breaks and the
+ * chart's new end KP (m), or null.
+ */
+export function fitSegments(
+  t: ChartTemplate,
+  r: Route,
+  index: number,
+  ratio = 0.97,
+  maxSegments = 12,
+  /** KP (m) to start from: what the chart's plan view shows (a panned chart differs from its own range). */
+  from?: number,
+): { segments: number[]; end: number; start: number } | null {
+  const plan = planPanel(t);
+  if (!plan) return null;
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+  const L = (plan.w * t.scale.horizontal) / 1000;
+  const W = (plan.h * t.scale.horizontal) / 1000;
+  const s0 = Math.max(0, (from ?? sheetRange(t, index).start * 1000) - k0);
+  if (s0 >= r.length) return null;
+  const minW = L * 0.08;
+  const chord = (a: number, b: number) => {
+    const p = pointAt(r, a);
+    const q = pointAt(r, b);
+    return Math.hypot(q[0] - p[0], q[1] - p[1]);
+  };
+  const ok = (a: number, b: number, room: number) => {
+    const c = chord(a, b);
+    if (c < 1e-6 || c > room) return false;
+    if (c < ratio * (b - a)) return false;
+    const p = pointAt(r, a);
+    const q = pointAt(r, b);
+    const u: [number, number] = [(q[0] - p[0]) / c, (q[1] - p[1]) / c];
+    const x = extents(r, a, b, p, u);
+    return x.vMax - x.vMin <= W * 0.6;
+  };
+  const breaks: number[] = [];
+  let a = s0;
+  let used = 0;
+  for (;;) {
+    const room = L - used;
+    const lastOne = breaks.length + 1 >= maxSegments;
+    let b: number;
+    if (ok(a, r.length, room) && (lastOne || chord(a, r.length) <= room))
+      b = r.length;
+    else {
+      // The furthest end that still keeps the segment straight and inside the room left.
+      let lo = a;
+      let hi = r.length;
+      const fits = (m: number) =>
+        lastOne ? chord(a, m) <= room : ok(a, m, room);
+      for (let k = 0; k < 30; k++) {
+        const mid = (lo + hi) / 2;
+        if (fits(mid)) lo = mid;
+        else hi = mid;
+      }
+      b = lo;
+      // A turn too tight for any straight piece: take a short one and carry on.
+      if (chord(a, b) < minW && !lastOne) {
+        let l2 = a;
+        let h2 = r.length;
+        for (let k = 0; k < 30; k++) {
+          const mid = (l2 + h2) / 2;
+          if (chord(a, mid) <= Math.min(minW, room)) l2 = mid;
+          else h2 = mid;
+        }
+        b = l2;
+      }
+    }
+    used += chord(a, b);
+    if (b >= r.length - 1e-6 || L - used < minW || lastOne || b <= a + 1e-6)
+      return {
+        segments: breaks.map((x) => x + k0),
+        end: b + k0,
+        start: s0 + k0,
+      };
+    breaks.push(b + k0);
+    a = b;
+  }
+}
+
+/** Fit with exactly about `n` segments: the straightness that gives that many. */
+export function fitSegmentsN(
+  t: ChartTemplate,
+  r: Route,
+  index: number,
+  n: number,
+  from?: number,
+): { segments: number[]; end: number; start: number } | null {
+  n = Math.max(1, Math.min(12, Math.round(n)));
+  let lo = 0.2;
+  let hi = 0.99999;
+  let best = fitSegments(t, r, index, lo, n, from);
+  for (let k = 0; k < 24; k++) {
+    const mid = (lo + hi) / 2;
+    const f = fitSegments(t, r, index, mid, n, from);
+    if (f && f.segments.length + 1 <= n) {
+      best = f;
+      lo = mid;
+    } else hi = mid;
+  }
+  return best;
 }

@@ -30,6 +30,7 @@ import { useEditor } from "../state/store";
 const sheetOf = (tokens: Record<string, string>) =>
   Math.max(0, (parseInt(tokens.SHEET ?? "1", 10) || 1) - 1);
 import { PlanView } from "./PlanView";
+import { chartBody } from "../model/chartText";
 import { useSurvey } from "../state/surveyData";
 import { approxTextWidth, fontSize, wrapLines } from "./svgText";
 
@@ -118,7 +119,17 @@ export function PanelContent({
     case "chartInfo":
       return null;
     default:
-      return <BodyText p={p} top={top} tokens={tokens} />;
+      return (
+        <BodyText
+          p={{
+            ...p,
+            body: chartBody(template, sheetOf(tokens), p),
+            body2: chartBody(template, sheetOf(tokens), p, true),
+          }}
+          top={top}
+          tokens={tokens}
+        />
+      );
   }
 }
 

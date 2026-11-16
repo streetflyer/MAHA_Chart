@@ -155,6 +155,12 @@ export function editSheet(
     const old = sheetRange(t, index);
     sheets[index].end = patch.start + (old.end - old.start) * 1000;
   }
+  // A chart fitted to a curve moves with its segments.
+  const segs = sheets[index].segments;
+  if (patch.start !== undefined && segs && patch.segments === undefined) {
+    const d = patch.start - sheetRange(t, index).start * 1000;
+    sheets[index].segments = segs.map((x) => x + d);
+  }
   // Parts of a fitted curve stay joined: the neighbouring parts stretch or shrink to meet the moved one.
   const me = sheets[index];
   if (me.part && (patch.start !== undefined || patch.end !== undefined)) {
@@ -252,4 +258,52 @@ export function resolveTokens(
   return text.replace(/\{([A-Z0-9_#]+)\}/g, (m, key: string) =>
     key in values ? values[key] : m,
   );
+}
+
+/**
+ * Give chart `index` its segments for a curved line (or none: back to one straight
+ * frame) and its new end KP (m); the charts after it move along so the next one starts
+ * where this one ends (less the overlap), and charts left past the line's end go.
+ */
+export function fitSheet(
+  t: ChartTemplate,
+  index: number,
+  segments: number[] | undefined,
+  end: number | undefined,
+  /** New start KP (m), when the fit starts where the plan view showed the line. */
+  start?: number,
+): ChartTemplate {
+  const sheets = materializeSheets(t);
+  const me = sheets[index];
+  if (!me) return t;
+  sheets[index] = {
+    ...me,
+    start: start ?? me.start,
+    segments: segments?.length ? segments : undefined,
+    end,
+    rotation: segments?.length ? 0 : me.rotation,
+    panU: segments?.length ? 0 : me.panU,
+    panV: segments?.length ? 0 : me.panV,
+    part: undefined,
+  };
+  const myEnd = end ?? sheets[index].start + t.scale.kpPerSheet;
+  const next = sheets[index + 1];
+  if (next) {
+    const d = myEnd - t.scale.overlap - next.start;
+    for (let j = index + 1; j < sheets.length; j++) {
+      const f = sheets[j];
+      sheets[j] = {
+        ...f,
+        start: f.start + d,
+        end: f.end !== undefined ? f.end + d : undefined,
+        segments: f.segments?.map((x) => x + d),
+      };
+    }
+  }
+  const lineEnd = startKp(t) * 1000 + Math.max(t.scale.routeLength, 0);
+  const keep =
+    t.scale.routeLength > 0
+      ? sheets.filter((f, j) => j <= index || f.start < lineEnd - 1)
+      : sheets;
+  return { ...t, scale: { ...t.scale, sheets: keep } };
 }

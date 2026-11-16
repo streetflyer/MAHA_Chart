@@ -1,5 +1,6 @@
 import { scaleTokens, sheetCount, sheetRange } from "./scale";
 import type { ChartTemplate } from "./types";
+import { chartFields } from "./chartText";
 
 /**
  * KP range (km) of the runline the plan view of a chart shows. Set by the drawing code,
@@ -91,5 +92,7 @@ export function templateTokens(
     NUM_CHARTS: String(n).padStart(2, "0"),
     KP_START: start.toFixed(3),
     KP_END: end.toFixed(3),
+    // Values typed for this chart only win.
+    ...chartFields(t, sheetIndex),
   };
 }

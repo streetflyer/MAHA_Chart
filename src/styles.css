@@ -2133,3 +2133,68 @@ fieldset.plain {
   background: #dcfce7;
   border-color: #16a34a;
 }
+.inline-only-chart {
+  position: absolute;
+  z-index: 31;
+  background: #fff;
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font:
+    12px system-ui,
+    sans-serif;
+  color: #111827;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.params-dialog {
+  width: min(900px, 96vw);
+  max-height: 88vh;
+}
+.pm-table {
+  overflow: auto;
+  max-height: 60vh;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.pm-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.pm-table th {
+  position: sticky;
+  top: 0;
+  background: var(--chrome);
+  text-align: left;
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.pm-table td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.pm-table td input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.pm-key {
+  font-family: ui-monospace, monospace;
+  white-space: nowrap;
+}
+.pm-note {
+  font-family: system-ui, sans-serif;
+  color: var(--muted, #6b7280);
+  font-size: 11px;
+  white-space: normal;
+}
+.pm-sep {
+  font-weight: 600;
+  background: rgba(127, 127, 127, 0.08);
+}
+.pm-chart {
+  max-width: 200px;
+}
