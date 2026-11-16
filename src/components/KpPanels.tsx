@@ -23,7 +23,7 @@ import {
   type Dataset,
   type EventLayout,
   type EventLabelEdit,
-  eventKey,
+  eventKeys,
   type LabelPos,
 } from "../model/datasets";
 import {
@@ -414,9 +414,9 @@ export function KpPanelData({
         {lines &&
           p.type !== "events" &&
           p.kpLines !== false &&
-          allTicks.map(([kp, x]) => (
+          allTicks.map(([kp, x], i) => (
             <line
-              key={kp}
+              key={`${kp}-${i}`}
               className="kp-line"
               x1={x}
               y1={p.y}
@@ -563,9 +563,9 @@ function KpLabels({
   const side = (x: number) => (x < x0 + 4 ? 1 : x > x1 - 4 ? -1 : 0);
   return (
     <g className="kp-label">
-      {ticks.map(([kp, x]) => (
+      {ticks.map(([kp, x], i) => (
         <text
-          key={kp}
+          key={`${kp}-${i}`}
           x={x + side(x) * 0.6}
           y={y}
           fontSize={fontSize(cap)}
@@ -1170,7 +1170,7 @@ function TransProfiles({
         hi={maxLat}
         o={{ line: niceGrid(maxLat * 2) / 2 }}
       />
-      {picks.map((pr) => {
+      {picks.map((pr, pi) => {
         const x0 = toX(pr.kp);
         let dots = "";
         for (let i = 0; i < pr.pts.length; i += 2) {
@@ -1182,7 +1182,7 @@ function TransProfiles({
           dots += `M${(x0 + dx).toFixed(2)} ${(cy - lat * kL).toFixed(2)}h0.01`;
         }
         return (
-          <g key={pr.kp}>
+          <g key={`${pr.kp}-${pi}`}>
             <path
               d={dots}
               stroke={d.color}
@@ -1374,9 +1374,9 @@ function EventsPanel({
       const own = { ...p.rowFont, ...row.font };
       const kf = rf(DEFAULT_FONT);
       const cap = Math.min(own.size ?? 1.8, rh / 3);
-      for (const [kp, x] of ticks) {
+      for (const [ti, [kp, x]] of ticks.entries()) {
         out.push(
-          <g key={`kp${kp}`}>
+          <g key={`kp${kp}-${ti}`}>
             <line
               x1={x}
               y1={y0 + rh - 1.2}
@@ -1603,6 +1603,8 @@ function PointTicks({
   const canLabel = labels && list.length <= 80;
   const textW = (code: string, cap: number) =>
     measureText(code, cap, !!font.bold, font.family);
+  // One key per mark, even when the file lists the same code at the same KP twice.
+  const keys = eventKeys(list);
 
   // Codes stay in line: labels that would overprint step aside along a common baseline.
   // If they are still packed, the row's codes shrink (down to 60 %) until they fit.
@@ -1611,8 +1613,8 @@ function PointTicks({
     const fs = fontSize(cap);
     let free = -Infinity;
     let worst = 0;
-    const out = list.map((e) => {
-      const ed = edits?.[eventKey(e.code, e.kp)];
+    const out = list.map((e, i) => {
+      const ed = edits?.[keys[i]];
       const text = ed?.text ?? e.code;
       const ecap = ed?.size ?? cap;
       const efs = fontSize(ecap);
@@ -1650,10 +1652,10 @@ function PointTicks({
   let path = "";
   const texts: ReactElement[] = [];
   out.forEach((l, i) => {
-    const { e, ed, text, ecap, efs, x, lx } = l;
+    const { ed, text, ecap, efs, x, lx } = l;
     path += `M${x.toFixed(2)} ${bottom.toFixed(2)}V${top.toFixed(2)}`;
     if (!canLabel || text === "") return;
-    const key = eventKey(e.code, e.kp);
+    const key = keys[i];
     const inCluster = clustered.has(i);
     const base = (inCluster ? top - rise : top) - layout.labelGap;
     const fx = lx + (ed?.dx ?? 0);

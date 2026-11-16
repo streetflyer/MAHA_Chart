@@ -202,6 +202,21 @@ export interface EventLabelEdit {
 export const eventKey = (code: string, kp: number) =>
   `${code}@${kp.toFixed(3)}`;
 
+/**
+ * One key per listed event. A file can list the same code at the same KP more than once
+ * (two anodes on one joint, or a repeated row): the first keeps `CODE@kp`, so saved label
+ * edits still find it, and each repeat gets `#2`, `#3`… so no two marks share a key.
+ */
+export function eventKeys(list: { code: string; kp: number }[]): string[] {
+  const seen = new Map<string, number>();
+  return list.map((e) => {
+    const k = eventKey(e.code, e.kp);
+    const n = (seen.get(k) ?? 0) + 1;
+    seen.set(k, n);
+    return n === 1 ? k : `${k}#${n}`;
+  });
+}
+
 /** Where the marks and codes of single events sit in their row. */
 export interface EventLayout {
   /** Tick from the row's foot, or standing in the middle of the row. */
