@@ -21,7 +21,13 @@ import {
   listUserTemplates,
   saveUserTemplate,
 } from "../model/storage";
-import type { ChartTemplate, PanelType, PaperSizeName } from "../model/types";
+import type {
+  ChartTemplate,
+  Panel,
+  PanelKpLine,
+  PanelType,
+  PaperSizeName,
+} from "../model/types";
 import { ADDABLE_TYPES, PANEL_DEFAULTS } from "../state/panelDefaults";
 import { chartInfoLocked, useEditor } from "../state/store";
 import { useSurvey } from "../state/surveyData";
@@ -34,6 +40,9 @@ import { normaliseShortcut, shortcutOf, usePrefs } from "../state/prefs";
 import { useHoverTip } from "../state/hoverInfo";
 import { useMatchPick } from "../state/matchPick";
 import { ParametersDialog } from "./ParametersDialog";
+import { kpToX } from "./KpPanels";
+import { kpFinder } from "./CpPanel";
+import { withGridLine } from "../model/kpGrid";
 import { clearChartData } from "../state/chartData";
 import { chartsToDxf } from "../model/dxfExport";
 import { chartsToPdf } from "../model/pdfExport";
@@ -545,6 +554,9 @@ export function Editor({ onExit }: { onExit(): void }) {
           : [];
       items = [
         ...rowItems,
+        ...(p.type === "longProfile" || p.type === "transProfile"
+          ? [...gridLineMenu(p, at.x), "separator" as const]
+          : []),
         {
           label: "Rename",
           shortcut: "F2",
@@ -613,6 +625,59 @@ export function Editor({ onExit }: { onExit(): void }) {
       ];
     }
     setMenu({ x: clientX, y: clientY, items });
+  }
+
+  /** Right-click menu of a profile panel: vertical grid lines at the data's ends or at a KP. */
+  function gridLineMenu(p: Panel, atX: number): MenuItem[] {
+    const route = useSurvey.getState().route;
+    const sheet = s().sheetIndex;
+    const toX = kpToX(template, route, sheet);
+    const k0 = (parseFloat(template.fields.START_KP ?? "0") || 0) * 1000;
+    const len = route?.length ?? template.scale.routeLength;
+    const here = toX ? kpFinder(toX, [k0 - len, k0 + 2 * len])(atX) : k0;
+    const add = (line: PanelKpLine) =>
+      s().updatePanel(p.id, { kpGrid: withGridLine(p, line) });
+    return [
+      {
+        label: "Vertical grid line",
+        submenu: [
+          {
+            label: "At the left of the data",
+            action: () => add({ at: "left" }),
+          },
+          {
+            label: "At the right of the data",
+            action: () => add({ at: "right" }),
+          },
+          {
+            label: "At a KP…",
+            action: async () => {
+              const v = await askText(
+                "Vertical grid line at KP (km)",
+                (here / 1000).toFixed(3),
+                "Add",
+              );
+              const kp = parseFloat((v ?? "").replace(",", "."));
+              if (Number.isFinite(kp)) add({ at: "kp", kp: kp * 1000 });
+            },
+          },
+          "separator",
+          {
+            label:
+              p.kpStartLine === false
+                ? "Show the grid line at the start of the chart"
+                : "Hide the grid line at the start of the chart",
+            action: () =>
+              s().updatePanel(p.id, { kpStartLine: p.kpStartLine === false }),
+          },
+          {
+            label: "Remove the grid lines I added",
+            disabled: !p.kpGrid?.length,
+            action: () => s().updatePanel(p.id, { kpGrid: undefined }),
+          },
+        ],
+      },
+    ];
   }
 
   function insertRow(panelId: string, rowId: string, offset: 0 | 1) {

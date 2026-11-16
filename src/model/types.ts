@@ -172,6 +172,10 @@ export interface Panel {
   kpLines?: boolean;
   /** KP values along the foot of the profile and CP panels (default on). */
   kpLabels?: boolean;
+  /** Longitudinal and transverse profiles: a grid line with its KP label at the left edge, where the plan view's line starts (default on). */
+  kpStartLine?: boolean;
+  /** Vertical grid lines added by the user, drawn on every chart whose stretch they fall in. */
+  kpGrid?: PanelKpLine[];
   locked?: boolean;
   /** Free text body shown inside the panel (notes, geodetic parameters, ...). May contain {TOKENS}. */
   body?: string;
@@ -553,6 +557,12 @@ export interface ChartTemplate {
    */
   chartText?: Record<string, ChartText>;
   updatedAt?: string;
+}
+
+/** A vertical grid line the user added: at the left or right end of the data, or at a KP (m). */
+export interface PanelKpLine {
+  at: "left" | "right" | "kp";
+  kp?: number;
 }
 
 export interface ChartText {

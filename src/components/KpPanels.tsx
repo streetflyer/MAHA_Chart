@@ -1,4 +1,4 @@
-import { drawingNoOf, setShownRange } from "../model/tokens";
+import { chartKpRange, drawingNoOf, setShownRange } from "../model/tokens";
 import { Cp } from "./CpPanel";
 import { askText } from "./Dialog";
 import { useEditor } from "../state/store";
@@ -9,6 +9,7 @@ import { useSmoothTool } from "../state/smoothTool";
 import { kpFinder } from "./CpPanel";
 import { hoverSources } from "../state/hoverInfo";
 import { kpPanelLines } from "./hoverText";
+import { extraGridKps } from "../model/kpGrid";
 import { autoVideoText } from "../model/video";
 import { useEffect, useMemo, type ReactElement } from "react";
 import { nearestProfile } from "../model/crossProfile";
@@ -362,6 +363,24 @@ export function KpPanelData({
     ([kp]) => !shown || (kp >= shown[0] - 0.5 && kp <= shown[1] + 0.5),
   );
   const lines = route || mine.length > 0;
+  // The grid line at the left edge (where the plan view's line starts) and the ones the user added;
+  // regular lines too close to one of them give way to it, so its KP label reads.
+  // The stretch the grid lines run over: the plan view's line, or without a line the chart's own KP range.
+  const own = chartKpRange(t, sheetIndex);
+  const gridSpan: [number, number] = seen ?? [own.start * 1000, own.end * 1000];
+  const extras: [number, number][] = extraGridKps(p, mine, gridSpan)
+    .map((kp): [number, number] => {
+      const x = toX(kp);
+      // A KP the plan view shows but the panel's own stretch ends just before (where the line leaves the frame): on the edge.
+      const edge = x > p.x + p.w + 0.6 ? p.x + p.w : x < x0 - 0.6 ? x0 : x;
+      return [kp, Number.isFinite(x) ? edge : x0];
+    })
+    .filter(([, x]) => x >= x0 - 0.01 && x <= p.x + p.w + 0.01);
+  const near = (x: number) => extras.some(([, ex]) => Math.abs(ex - x) < 5);
+  const allTicks: [number, number][] = [
+    ...ticks.filter(([, x]) => !near(x)),
+    ...extras,
+  ].sort((a, b) => a[0] - b[0]);
   // A chart fitted to a curve: a line where each segment of the plan view ends, as in the plan view.
   const joins = route
     ? (chartSegments(t, route, sheetIndex) ?? [])
@@ -395,7 +414,7 @@ export function KpPanelData({
         {lines &&
           p.type !== "events" &&
           p.kpLines !== false &&
-          ticks.map(([kp, x]) => (
+          allTicks.map(([kp, x]) => (
             <line
               key={kp}
               className="kp-line"
@@ -474,7 +493,12 @@ export function KpPanelData({
             p.type === "transProfile" ||
             p.type === "cp") &&
           p.kpLabels !== false && (
-            <KpLabels ticks={ticks} y={p.y + p.h - 1.2} />
+            <KpLabels
+              ticks={allTicks}
+              y={p.y + p.h - 1.2}
+              x0={x0}
+              x1={p.x + p.w}
+            />
           )}
       </g>
     </g>
@@ -523,12 +547,32 @@ export const fontProps = (f: DataFont) => ({
     : { fill: f.color },
 });
 
-function KpLabels({ ticks, y }: { ticks: [number, number][]; y: number }) {
+function KpLabels({
+  ticks,
+  y,
+  x0,
+  x1,
+}: {
+  ticks: [number, number][];
+  y: number;
+  /** Left and right edge of the panel: a label on an edge sits inside it instead of being centred (and cut off). */
+  x0: number;
+  x1: number;
+}) {
   const cap = 1.8;
+  const side = (x: number) => (x < x0 + 4 ? 1 : x > x1 - 4 ? -1 : 0);
   return (
     <g className="kp-label">
       {ticks.map(([kp, x]) => (
-        <text key={kp} x={x} y={y} fontSize={fontSize(cap)} textAnchor="middle">
+        <text
+          key={kp}
+          x={x + side(x) * 0.6}
+          y={y}
+          fontSize={fontSize(cap)}
+          textAnchor={
+            side(x) === 1 ? "start" : side(x) === -1 ? "end" : "middle"
+          }
+        >
           {kpText(kp)}
         </text>
       ))}
