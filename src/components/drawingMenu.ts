@@ -3,6 +3,11 @@ import { addTexts, editTexts } from "../model/drawingOps";
 import type { DxfText } from "../model/dxf";
 import { useDrawingEdit, type TextFormat } from "../state/drawingEdit";
 import { askText } from "./Dialog";
+import { lineColour } from "./LineworkLayer";
+import { shapeFrom } from "../model/legendShape";
+import { newId } from "../model/ids";
+import type { LegendItem } from "../model/types";
+import { useEditor } from "../state/store";
 import { addCallout } from "./calloutEdit";
 import type { MenuItem } from "./ContextMenu";
 import {
@@ -152,6 +157,45 @@ function moreColours(current: string) {
   input.click();
 }
 
+/** The chosen drawing objects become a symbol in the (first) legend panel; the name is asked for. */
+export async function addToLegend() {
+  const de = useDrawingEdit.getState();
+  const ed = useEditor.getState();
+  const legend = ed.template?.panels.find((q) => q.type === "legend");
+  if (!de.ctx || !legend) return;
+  const ctx = de.ctx;
+  const sets = planSets();
+  let name = "";
+  const sources = sets.flatMap((d) => {
+    const g = new Set(de.selected[d.id] ?? []);
+    if (!g.size) return [];
+    name ||= d.lw.texts.find((t) => g.has(t.group))?.text.split("\n")[0] ?? "";
+    return [{ lw: d.lw, groups: g, colourOf: (i: number) => lineColour(d, i) }];
+  });
+  const shape = shapeFrom(sources, ctx.project);
+  if (!shape) return;
+  const label = await askText(
+    "Name in the legend",
+    name || "Drawing object",
+    "Add",
+  );
+  if (label === null) return;
+  const item: LegendItem = {
+    id: newId("lg"),
+    group: "plan",
+    symbol: "drawing",
+    label,
+    color: "#000000",
+    custom: true,
+    shape,
+    size: 6,
+    rot: 0,
+    keepColours: true,
+  };
+  ed.updatePanel(legend.id, { legend: [...(legend.legend ?? []), item] });
+  ed.select({ kind: "panel", id: legend.id });
+}
+
 /** Right-click menu of drawing-edit mode: text copy/paste, new text, Word-like font menu, copy format. */
 export function drawingMenu(at: { x: number; y: number }): MenuItem[] {
   const de = useDrawingEdit.getState();
@@ -173,6 +217,13 @@ export function drawingMenu(at: { x: number; y: number }): MenuItem[] {
       shortcut: "Ctrl+V",
       disabled: !de.textClip?.length,
       action: () => pasteTextsAt(at),
+    },
+    {
+      label: "Add to legend panel",
+      disabled:
+        nothing ||
+        !useEditor.getState().template?.panels.some((q) => q.type === "legend"),
+      action: () => void addToLegend(),
     },
     { label: "Add new text here…", action: () => void addTextAt(at) },
     {

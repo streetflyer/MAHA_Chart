@@ -50,6 +50,7 @@ import {
 import { planStyle } from "./PlanView";
 import { useSurvey } from "../state/surveyData";
 import { useImport } from "./ImportDialog";
+import { askText } from "./Dialog";
 import { editPlanItemText, matchLabelOf } from "./planItems";
 import {
   calloutsOf,
@@ -1377,6 +1378,26 @@ export function SheetView({
       return void editPlanItemText(
         ml ?? `${pDbl.getAttribute("data-north")}|north`,
       );
+    }
+    // Double-click on the "This Chart" label of the key plan edits its wording.
+    const tcEl = el.closest("[data-thischart]");
+    if (tcEl) {
+      const id = tcEl.getAttribute("data-thischart")!;
+      const panel = template.panels.find((q) => q.id === id);
+      if (panel) {
+        const st = keyplanStyle(panel);
+        void askText(
+          "Text on this chart's box",
+          st.thisChart?.text ?? "This Chart",
+        ).then(
+          (v) =>
+            v !== null &&
+            store().updatePanel(id, {
+              keyplan: { ...st, thisChart: { ...st.thisChart, text: v } },
+            }),
+        );
+      }
+      return;
     }
     // Double-click in the key plan: scroll to zoom and drag to move its map.
     const dk = toMm(e.clientX, e.clientY);

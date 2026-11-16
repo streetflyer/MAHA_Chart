@@ -168,6 +168,23 @@ export function selectionBox(selected: Record<string, number[]>): Box | null {
   return b;
 }
 
+/** The chosen object when it is one text and nothing else. */
+function loneText(
+  selected: Record<string, number[]>,
+): { d: LineworkSet; t: DxfText } | null {
+  let found: { d: LineworkSet; t: DxfText } | null = null;
+  for (const d of planSets()) {
+    const g = selected[d.id];
+    if (!g?.length) continue;
+    const set = new Set(g);
+    if (d.lw.lines.some((_, i) => set.has(d.lw.groups[i]))) return null;
+    const ts = d.lw.texts.filter((t) => set.has(t.group));
+    if (ts.length !== 1 || found) return null;
+    found = { d, t: ts[0] };
+  }
+  return found;
+}
+
 /** Where the rotate handle sits on paper: above the middle of the chosen objects. */
 export function rotateHandle(
   ctx: PlanContext,
@@ -184,6 +201,30 @@ export function rotateHandle(
   if (!b) return null;
   const cE = (b.minE + b.maxE) / 2;
   const cN = (b.minN + b.maxN) / 2;
+  // One text alone: the grip stands at the end of the text, along its own direction, and
+  // turns it about its anchor.
+  const lone = loneText(selected);
+  if (lone) {
+    const pl = placeText(lone.d, lone.t, ctx.project, ctx.mmPerM, ctx.uAngle);
+    if (pl) {
+      const w = Math.max(
+        ...lone.t.text.split("\n").map((l) => approxTextWidth(l, pl.cap)),
+      );
+      const end =
+        pl.anchor === "start" ? w : pl.anchor === "middle" ? w / 2 : 0;
+      const L = end + 5;
+      const a = (pl.ang * Math.PI) / 180;
+      const r = ctx.rect;
+      return {
+        x: Math.min(r.x + r.w - 3, Math.max(r.x + 3, pl.x + Math.cos(a) * L)),
+        y: Math.min(r.y + r.h - 3, Math.max(r.y + 3, pl.y - Math.sin(a) * L)),
+        cx: pl.x,
+        cy: pl.y,
+        cE: lone.t.x,
+        cN: lone.t.y,
+      };
+    }
+  }
   const corners = [
     ctx.project(b.minE, b.minN),
     ctx.project(b.maxE, b.minN),

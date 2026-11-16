@@ -338,7 +338,35 @@ export interface MatchlineStyle {
   family: string;
 }
 
+/** The label across the current chart's box in the key plan. */
+export interface ThisChartStyle {
+  /** Shown unless false. */
+  on?: boolean;
+  text?: string;
+  family?: string;
+  /** Cap height, mm; unset follows the size of the box. */
+  size?: number;
+  color?: string;
+  bold?: boolean;
+  italic?: boolean;
+  /** Degrees clockwise on paper; unset runs along the box's long side. */
+  rot?: number;
+}
+
+/** Hatching of the current chart's box in the key plan. */
+export interface BoxHatch {
+  on: boolean;
+  pattern: "diagonal" | "cross" | "horizontal" | "vertical" | "dots" | "solid";
+  color: string;
+  /** Distance between hatch lines, mm. */
+  spacing: number;
+  /** 0 to 1. */
+  opacity: number;
+}
+
 export interface KeyplanStyle {
+  thisChart?: ThisChartStyle;
+  hatch?: BoxHatch;
   /** Sea / background fill. */
   background: string;
   /** Colour of background DXF linework. */
@@ -386,7 +414,15 @@ export type LegendSymbol =
   | "freespan"
   | "box"
   | "circle"
-  | "pipeBand";
+  | "pipeBand"
+  | "drawing";
+
+/** A drawing object turned into a legend symbol: lines centred on 0 with the longer side 1 (x right, y down). */
+export interface LegendShape {
+  lines: number[][];
+  /** The colour each line has in the drawing. */
+  colors: string[];
+}
 
 export interface LegendItem {
   id: string;
@@ -408,6 +444,12 @@ export interface LegendItem {
   boldPos?: "top" | "middle" | "bottom";
   boldColor?: string;
   boldDash?: boolean;
+  /** A symbol taken from a drawing object (symbol "drawing"): its lines, size (mm) and turn (degrees). */
+  shape?: LegendShape;
+  size?: number;
+  rot?: number;
+  /** Draw it in the colours it has in the drawing instead of the item's colour. */
+  keepColours?: boolean;
 }
 
 /**

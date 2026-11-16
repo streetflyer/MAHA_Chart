@@ -1,3 +1,4 @@
+import { placeShape } from "../model/legendShape";
 import { codeMatcher, isKpRow, isVideoRow, rowCodes } from "../model/events";
 import { useMemo } from "react";
 import { LEGEND_GROUPS } from "../model/presets";
@@ -724,13 +725,17 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
         y += 2;
       }
       for (const it of gi) {
+        // A symbol taken from a drawing can be bigger than the standard symbol column.
+        const sw =
+          it.symbol === "drawing" ? Math.max(symW, it.size ?? 6) : symW;
         const lines = wrapLines(
           resolveTokens(it.label, tokens),
-          colW - symW - 2,
+          colW - sw - 2,
           labelCap,
         );
         const lh = fontSize(labelCap) * 1.15;
         const rowH = Math.max(
+          it.symbol === "drawing" ? (it.size ?? 6) + 1 : 0,
           it.symbol === "kpMarker" || it.symbol === "assetBlob"
             ? 7
             : it.symbol === "burial" || it.symbol === "freespan"
@@ -741,16 +746,16 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
         const cy = y + rowH / 2;
         out.push(
           <g key={it.id} data-legend={it.id}>
-            <LegendSymbolView it={it} x={x} cy={cy} w={symW} tokens={tokens} />
+            <LegendSymbolView it={it} x={x} cy={cy} w={sw} tokens={tokens} />
             <text
-              x={x + symW + 2}
+              x={x + sw + 2}
               y={cy - ((lines.length - 1) * lh) / 2}
               fontSize={fontSize(labelCap)}
               dominantBaseline="middle"
               {...textFont}
             >
               {lines.map((l, j) => (
-                <tspan key={j} x={x + symW + 2} dy={j === 0 ? 0 : lh}>
+                <tspan key={j} x={x + sw + 2} dy={j === 0 ? 0 : lh}>
                   {l}
                 </tspan>
               ))}
@@ -1020,6 +1025,32 @@ function LegendSymbolView({
             d={`M${xa} ${top} V${bot} M${xb} ${top} V${bot}`}
             style={{ stroke: c, strokeWidth: 0.25, fill: "none" }}
           />
+        </g>
+      );
+    }
+    case "drawing": {
+      if (!it.shape) return null;
+      const size = it.size ?? 6;
+      const lines = placeShape(
+        it.shape,
+        x + Math.max(w, size) / 2,
+        cy,
+        size,
+        it.rot ?? 0,
+      );
+      return (
+        <g fill="none" strokeLinejoin="round" strokeLinecap="round">
+          {lines.map((pts, i) => (
+            <polyline
+              key={i}
+              points={pts.map((v) => v.toFixed(2)).join(" ")}
+              style={{
+                stroke: it.keepColours !== false ? it.shape!.colors[i] || c : c,
+                strokeWidth: 0.2,
+                fill: "none",
+              }}
+            />
+          ))}
         </g>
       );
     }

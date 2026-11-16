@@ -62,6 +62,7 @@ import { autoVideoText, productKeys } from "../model/video";
 import { canWrite, subHandle, useProject } from "../state/project";
 import { useImport } from "./ImportDialog";
 import { askCodes } from "./Dialog";
+import { FONT_FAMILIES } from "../model/datasets";
 import {
   DraftNumber,
   FontControls,
@@ -2037,7 +2038,14 @@ function LegendEditor({ p }: { p: Panel }) {
               <ColourBox
                 value={it.color}
                 title="Colour"
-                onChange={(c) => update(it.id, { color: c })}
+                onChange={(c) =>
+                  update(
+                    it.id,
+                    it.symbol === "drawing"
+                      ? { color: c, keepColours: false }
+                      : { color: c },
+                  )
+                }
               />
               <input
                 defaultValue={it.label}
@@ -2092,6 +2100,46 @@ function LegendEditor({ p }: { p: Panel }) {
                 ))}
               </select>
             </div>
+            {it.symbol === "drawing" && (
+              <div className="legend-row sub" data-legend-drawing={it.id}>
+                <label className="field">
+                  <span>Size (mm)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={0.5}
+                    defaultValue={it.size ?? 6}
+                    key={`s${it.size}`}
+                    onBlur={(e) => {
+                      const v = Number(e.target.value);
+                      if (v > 0) update(it.id, { size: v });
+                    }}
+                  />
+                </label>
+                <label className="field">
+                  <span>Turn (°)</span>
+                  <input
+                    type="number"
+                    step={5}
+                    defaultValue={it.rot ?? 0}
+                    key={`r${it.rot}`}
+                    onBlur={(e) =>
+                      update(it.id, { rot: Number(e.target.value) || 0 })
+                    }
+                  />
+                </label>
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    checked={it.keepColours !== false}
+                    onChange={(e) =>
+                      update(it.id, { keepColours: e.target.checked })
+                    }
+                  />
+                  Drawing colours
+                </label>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -2187,6 +2235,164 @@ function ImageProps({ im }: { im: ImageItem }) {
   );
 }
 
+/** The "This Chart" label and the hatch of the current chart's box in the key plan. */
+function KeyplanThisChart({
+  st,
+  set,
+}: {
+  st: KeyplanStyle;
+  set: (patch: Partial<KeyplanStyle>) => void;
+}) {
+  const tc = st.thisChart ?? {};
+  const setTc = (patch: Partial<NonNullable<KeyplanStyle["thisChart"]>>) =>
+    set({ thisChart: { ...tc, ...patch } });
+  const hatch = st.hatch ?? {
+    on: false,
+    pattern: "diagonal" as const,
+    color: st.currentColor,
+    spacing: 2,
+    opacity: 0.6,
+  };
+  const setH = (patch: Partial<typeof hatch>) =>
+    set({ hatch: { ...hatch, ...patch } });
+  return (
+    <>
+      <h4>This chart</h4>
+      <label className="check">
+        <input
+          type="checkbox"
+          data-thischart-on
+          checked={tc.on !== false}
+          onChange={(e) => setTc({ on: e.target.checked })}
+        />
+        Write a label across this chart&apos;s box
+      </label>
+      {tc.on !== false && (
+        <>
+          <Field
+            label="Text"
+            value={tc.text ?? "This Chart"}
+            onCommit={(v) => setTc({ text: v })}
+          />
+          <div className="row2">
+            <label className="field">
+              <span>Font</span>
+              <select
+                value={tc.family ?? "Arial"}
+                onChange={(e) => setTc({ family: e.target.value })}
+              >
+                {FONT_FAMILIES.map((f) => (
+                  <option key={f}>{f}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Colour</span>
+              <ColourBox
+                value={tc.color ?? st.currentColor}
+                onChange={(c) => setTc({ color: c })}
+              />
+            </label>
+          </div>
+          <div className="row2">
+            <Field
+              label="Size (0 = fit the box)"
+              type="number"
+              step={0.5}
+              suffix="mm"
+              value={tc.size ?? 0}
+              onCommit={(v) => setTc({ size: num(v) > 0 ? num(v) : undefined })}
+            />
+            <Field
+              label="Turn (blank = along the box)"
+              type="number"
+              step={5}
+              suffix="°"
+              value={tc.rot ?? ""}
+              onCommit={(v) => setTc({ rot: v === "" ? undefined : num(v) })}
+            />
+          </div>
+          <div className="row2">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={!!tc.bold}
+                onChange={(e) => setTc({ bold: e.target.checked })}
+              />
+              Bold
+            </label>
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={!!tc.italic}
+                onChange={(e) => setTc({ italic: e.target.checked })}
+              />
+              Italic
+            </label>
+          </div>
+        </>
+      )}
+      <label className="check">
+        <input
+          type="checkbox"
+          data-hatch-on
+          checked={hatch.on}
+          onChange={(e) => setH({ on: e.target.checked })}
+        />
+        Hatch this chart&apos;s box
+      </label>
+      {hatch.on && (
+        <>
+          <div className="row2">
+            <label className="field">
+              <span>Pattern</span>
+              <select
+                value={hatch.pattern}
+                onChange={(e) =>
+                  setH({ pattern: e.target.value as typeof hatch.pattern })
+                }
+              >
+                <option value="diagonal">Diagonal lines</option>
+                <option value="cross">Cross hatch</option>
+                <option value="horizontal">Horizontal lines</option>
+                <option value="vertical">Vertical lines</option>
+                <option value="dots">Dots</option>
+                <option value="solid">Solid tint</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Colour</span>
+              <ColourBox
+                value={hatch.color}
+                onChange={(c) => setH({ color: c })}
+              />
+            </label>
+          </div>
+          <div className="row2">
+            <Field
+              label="Spacing"
+              type="number"
+              step={0.5}
+              suffix="mm"
+              value={hatch.spacing}
+              onCommit={(v) => num(v) > 0.3 && setH({ spacing: num(v) })}
+            />
+            <Field
+              label="Strength (0–1)"
+              type="number"
+              step={0.1}
+              value={hatch.opacity}
+              onCommit={(v) =>
+                setH({ opacity: Math.min(1, Math.max(0.05, num(v))) })
+              }
+            />
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 function KeyplanEditor({ p }: { p: Panel }) {
   const s = useEditor.getState();
   const st = keyplanStyle(p);
@@ -2234,6 +2440,7 @@ function KeyplanEditor({ p }: { p: Panel }) {
           Fit the whole map
         </button>
       </div>
+      <KeyplanThisChart st={st} set={set} />
       <div className="row2">{colour("Background", "background")}</div>
       <div className="row2">
         {colour("Survey line", "routeColor")}

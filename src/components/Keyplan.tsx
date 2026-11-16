@@ -21,7 +21,12 @@ import {
   type Bounds,
   type Route,
 } from "../model/route";
-import type { ChartTemplate, KeyplanStyle, Panel } from "../model/types";
+import type {
+  BoxHatch,
+  ChartTemplate,
+  KeyplanStyle,
+  Panel,
+} from "../model/types";
 import { useSurvey } from "../state/surveyData";
 import { routePath } from "./linework";
 import { LineworkLayer } from "./LineworkLayer";
@@ -242,6 +247,7 @@ export function Keyplan({
   const sy = (n: number) => area.y + (view.maxN - n) * k;
   const project = (e: number, n: number): [number, number] => [sx(e), sy(n)];
   const clipId = `kp-clip-${p.id}`;
+  const hatchId = `kp-hatch-${p.id}`;
   const lw = Math.max(0.12, Math.min(area.w, area.h) / 300);
 
   return (
@@ -250,6 +256,7 @@ export function Keyplan({
         <clipPath id={clipId}>
           <rect x={area.x} y={area.y} width={area.w} height={area.h} />
         </clipPath>
+        {st.hatch?.on && <HatchPattern id={hatchId} h={st.hatch} />}
       </defs>
       <rect
         x={area.x}
@@ -315,10 +322,20 @@ export function Keyplan({
               <g key={i}>
                 <polygon
                   points={pts}
-                  fill="none"
+                  fill={cur && st.hatch?.on ? `url(#${hatchId})` : "none"}
                   stroke={cur ? st.currentColor : st.boundaryColor}
                   strokeWidth={cur ? lw * 2.4 : lw * 1.6}
                 />
+                {cur && st.thisChart?.on !== false && (
+                  <ThisChartLabel
+                    f={f}
+                    sx={sx}
+                    sy={sy}
+                    style={st.thisChart ?? {}}
+                    fallback={st.currentColor}
+                    panelId={p.id}
+                  />
+                )}
                 {cur && (
                   <polygon
                     points={pts}
@@ -522,6 +539,94 @@ function KeyplanMatchlines({
         );
       })}
     </g>
+  );
+}
+
+/** Hatch of the current chart's box. */
+function HatchPattern({ id, h }: { id: string; h: BoxHatch }) {
+  const g = h.spacing;
+  const st = {
+    stroke: h.color,
+    strokeWidth: Math.max(0.1, g * 0.07),
+    opacity: h.opacity,
+  };
+  return (
+    <pattern id={id} width={g} height={g} patternUnits="userSpaceOnUse">
+      {h.pattern === "solid" && (
+        <rect width={g} height={g} fill={h.color} opacity={h.opacity * 0.5} />
+      )}
+      {h.pattern === "dots" && (
+        <circle
+          cx={g / 2}
+          cy={g / 2}
+          r={g * 0.14}
+          fill={h.color}
+          opacity={h.opacity}
+        />
+      )}
+      {(h.pattern === "diagonal" || h.pattern === "cross") && (
+        <path
+          d={`M0 ${g}L${g} 0M${-g / 4} ${g / 4}L${g / 4} ${-g / 4}M${g * 0.75} ${g * 1.25}L${g * 1.25} ${g * 0.75}`}
+          style={st}
+        />
+      )}
+      {h.pattern === "cross" && (
+        <path
+          d={`M0 0L${g} ${g}M${-g / 4} ${g * 0.75}L${g / 4} ${g * 1.25}M${g * 0.75} ${-g / 4}L${g * 1.25} ${g / 4}`}
+          style={st}
+        />
+      )}
+      {h.pattern === "horizontal" && <path d={`M0 ${g / 2}H${g}`} style={st} />}
+      {h.pattern === "vertical" && <path d={`M${g / 2} 0V${g}`} style={st} />}
+    </pattern>
+  );
+}
+
+/** "This Chart" across the current chart's box: along its long side unless turned by the user. */
+function ThisChartLabel({
+  f,
+  sx,
+  sy,
+  style,
+  fallback,
+  panelId,
+}: {
+  f: [number, number][];
+  sx: (e: number) => number;
+  sy: (n: number) => number;
+  style: NonNullable<KeyplanStyle["thisChart"]>;
+  fallback: string;
+  panelId: string;
+}) {
+  if (f.length < 4) return null;
+  const pts = f.map(([e, n]) => [sx(e), sy(n)]);
+  const cx = pts.reduce((a, q) => a + q[0], 0) / pts.length;
+  const cy = pts.reduce((a, q) => a + q[1], 0) / pts.length;
+  const d01 = Math.hypot(pts[1][0] - pts[0][0], pts[1][1] - pts[0][1]);
+  const d12 = Math.hypot(pts[2][0] - pts[1][0], pts[2][1] - pts[1][1]);
+  const [a, b] = d01 >= d12 ? [pts[0], pts[1]] : [pts[1], pts[2]];
+  let ang = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+  if (ang > 90) ang -= 180;
+  if (ang <= -90) ang += 180;
+  const short = Math.min(d01, d12);
+  const cap = style.size ?? Math.min(8, Math.max(1.2, short * 0.3));
+  return (
+    <text
+      data-thischart={panelId}
+      x={cx}
+      y={cy}
+      transform={`rotate(${style.rot ?? ang} ${cx} ${cy})`}
+      textAnchor="middle"
+      dominantBaseline="central"
+      fontSize={fontSize(cap)}
+      fontFamily={`${style.family ?? "Arial"}, Arial, sans-serif`}
+      fontWeight={style.bold ? 700 : undefined}
+      fontStyle={style.italic ? "italic" : undefined}
+      style={{ fill: style.color ?? fallback }}
+      pointerEvents="all"
+    >
+      {style.text ?? "This Chart"}
+    </text>
   );
 }
 
