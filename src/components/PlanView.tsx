@@ -35,6 +35,8 @@ import { niceGrid } from "./Keyplan";
 import { linesPath, routePath } from "./linework";
 import { LineworkLayer } from "./LineworkLayer";
 import { Callouts, inverseOf, planProjection } from "./Callouts";
+import { hoverSources } from "../state/hoverInfo";
+import { planLines } from "./hoverText";
 import { lineworkFor } from "../model/datasets";
 import { fontSize, measureText } from "./svgText";
 
@@ -59,6 +61,12 @@ export function PlanView({
 }) {
   const route = useSurvey((s) => s.route);
   const datasets = useSurvey((s) => s.datasets);
+  useEffect(
+    () => () => {
+      hoverSources.delete(p.id);
+    },
+    [p.id],
+  );
   const sets = useMemo(() => lineworkFor(datasets, "plan"), [datasets]);
   const st = planStyle(p);
   const rect = useMemo(
@@ -131,7 +139,13 @@ export function PlanView({
 
   if (!geo || !view) return null;
   const project = view.project;
-  planProjection.set(p.id, { project, unproject: inverseOf(project) });
+  const unproject = inverseOf(project);
+  planProjection.set(p.id, { project, unproject });
+  const k0h = (parseFloat(template.fields.START_KP ?? "0") || 0) * 1000;
+  hoverSources.set(p.id, {
+    rect,
+    info: (x, y) => planLines(...unproject(x, y), route, k0h),
+  });
   // The runline's own colour and width, set on import or in its data list entry.
   const routeColor = before?.color ?? st.routeColor;
   const routeWidth = before?.kind === "route" ? before.width : st.routeWidth;
@@ -254,7 +268,7 @@ function Matchlines({
     const r = chartKpRange(template, i);
     return { start: r.start * 1000, end: r.end * 1000 };
   });
-  matchSpecs(ranges, sheetIndex, st.mode, shown).forEach((m, k) => {
+  matchSpecs(ranges, sheetIndex, st.mode, shown, st.pairs).forEach((m, k) => {
     const c = project(...pointAt(route, m.kp - k0));
     const a = project(...pointAt(route, m.kp - k0 + 1));
     const b = project(...pointAt(route, m.kp - k0 - 1));
@@ -263,11 +277,19 @@ function Matchlines({
     const tl = Math.hypot(tx, ty) || 1;
     tx /= tl;
     ty /= tl;
-    // The line runs square to the route on paper; clip it to the plan view.
+    // The line runs square to the route on paper, or along the line drawn in the key
+    // plan; clip it to the plan view.
+    let [lx, ly] = [-ty, tx];
+    if (m.a && m.b) {
+      const pa = project(...m.a);
+      const pb = project(...m.b);
+      const d = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]);
+      if (d > 1e-9) [lx, ly] = [(pb[0] - pa[0]) / d, (pb[1] - pa[1]) / d];
+    }
     const L = Math.hypot(rect.w, rect.h);
     const seg = clip(
-      [c[0] - ty * L, c[1] + tx * L],
-      [c[0] + ty * L, c[1] - tx * L],
+      [c[0] - lx * L, c[1] - ly * L],
+      [c[0] + lx * L, c[1] + ly * L],
       rect,
     );
     if (!seg) return;

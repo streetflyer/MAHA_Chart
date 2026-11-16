@@ -12,13 +12,14 @@ without guessing from pixels.
 
 Which edit mode the sheet is in. One at a time.
 
-| State     | Entered by                               | Data lives in    |
-| --------- | ---------------------------------------- | ---------------- |
-| `idle`    | Esc, Done, a click outside the panel     |                  |
-| `drawing` | double-click the plan view               | `useDrawingEdit` |
-| `cp`      | double-click the CP panel                | `useCpEdit`      |
-| `events`  | double-click an Engineering Events panel | `useEventEdit`   |
-| `smooth`  | "Smooth tool" in the profile properties  | `useSmoothTool`  |
+| State       | Entered by                                                       | Data lives in                                                       |
+| ----------- | ---------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `idle`      | Esc, Done, a click outside the panel                             |                                                                     |
+| `drawing`   | double-click the plan view                                       | `useDrawingEdit`                                                    |
+| `cp`        | double-click the CP panel                                        | `useCpEdit`                                                         |
+| `events`    | double-click an Engineering Events panel                         | `useEventEdit`                                                      |
+| `smooth`    | "Smooth tool" in the profile properties                          | `useSmoothTool`                                                     |
+| `matchline` | "Pick matchline" / "Draw a matchline" in the key plan properties | `useMatchPick` (tool `pick` or `draw`, first point of a drawn line) |
 
 - Read: `currentMode()`, `useMode()`, or `[data-mode]` on `.editor`.
 - Change: `enterMode(mode, { panelId, datasetId })`, `exitMode()`.
@@ -30,6 +31,12 @@ Which edit mode the sheet is in. One at a time.
   - exporting to PDF / DXF leaves the mode first, so edit outlines are never printed.
 - The user sees the mode in the bar at the top of the sheet (`ModeBar`, and
   `EventEditBar` for `events`).
+- `matchline` needs its key plan panel and a route; a click outside the key plan ends it,
+  Esc drops a half-drawn line first. Chosen lines are saved in the plan view's
+  `plan.match.pairs` (boundary index → `{ kp, a?, b? }`).
+- "Hover info" (`usePrefs.hoverInfo`, shortcut `usePrefs.hoverKey`, F3 by default) is a
+  browser setting, not a mode: the sheet asks `hoverSources` (`state/hoverInfo.ts`) what
+  lies under the pointer; `[data-hover-info]` on its toolbar button shows it.
 - "Pan map" (`useEditor.panMap`) is a separate on/off toggle, not a mode: it only changes
   what a plain drag in the plan view does.
 

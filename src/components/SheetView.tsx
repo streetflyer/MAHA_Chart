@@ -51,6 +51,10 @@ import {
   withCallouts,
 } from "./calloutEdit";
 import { planProjection } from "./Callouts";
+import { useMatchPick } from "../state/matchPick";
+import { usePrefs } from "../state/prefs";
+import { infoAt, useHoverTip } from "../state/hoverInfo";
+import { keyplanToGrid, matchClick } from "./matchPicking";
 import { calloutLayout } from "../model/callout";
 import {
   eventLabelOf,
@@ -394,6 +398,21 @@ export function SheetView({
       return;
     }
     if (e.button !== 0) return;
+    // Choosing matchlines: clicks in the key plan pick or draw them; a click elsewhere finishes.
+    const mp = useMatchPick.getState();
+    if (mp.active) {
+      const under = document.elementsFromPoint(e.clientX, e.clientY);
+      const hit =
+        under.find((x) => x.closest("[data-mpick]")) ??
+        under.find((x) => x.closest("[data-mview]")) ??
+        (e.target as Element);
+      const r = matchClick(hit, at.x, at.y);
+      if (r !== false) {
+        if (r) onNotice(r);
+        return;
+      }
+      mp.exit();
+    }
     // Smooth tool: a click inside the profile smooths along the helper line.
     const sm = useSmoothTool.getState();
     if (sm.active) {
@@ -769,6 +788,23 @@ export function SheetView({
   function onPointerMove(e: React.PointerEvent) {
     const at = toMm(e.clientX, e.clientY);
     onCursor(at);
+    const mp = useMatchPick.getState();
+    if (mp.active && mp.tool === "draw" && mp.first) {
+      const area = document
+        .elementsFromPoint(e.clientX, e.clientY)
+        .find((x) => x.closest("[data-mview]"))
+        ?.closest("[data-mview]");
+      if (area)
+        mp.setHover(
+          keyplanToGrid(area.getAttribute("data-mview")!)(at.x, at.y),
+        );
+    }
+    if (usePrefs.getState().hoverInfo && !drag) {
+      const lines = infoAt(at.x, at.y);
+      useHoverTip.setState({
+        tip: lines.length ? { x: e.clientX, y: e.clientY, lines } : null,
+      });
+    }
     if (useSmoothTool.getState().active && !drag)
       useSmoothTool.getState().setHover(smoothNodeAt(at));
     if (
@@ -1527,7 +1563,10 @@ export function SheetView({
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerLeave={() => onCursor(null)}
+        onPointerLeave={() => {
+          onCursor(null);
+          useHoverTip.setState({ tip: null });
+        }}
         onDoubleClick={onDoubleClick}
         onContextMenu={handleContextMenu}
         style={{

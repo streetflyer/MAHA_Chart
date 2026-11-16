@@ -1,11 +1,23 @@
-import { useMemo } from "react";
-import { planPanel } from "../model/scale";
+import { useEffect, useMemo } from "react";
+import { planPanel, sheetCount, sheetRange } from "../model/scale";
+import { planStyle } from "../model/planStyle";
+import {
+  boundaryLines,
+  clipPolygon,
+  DEFAULT_MATCHLINES,
+} from "../model/matchlines";
+import { chartKpRange } from "../model/tokens";
+import { useMatchPick } from "../state/matchPick";
+import { hoverSources } from "../state/hoverInfo";
 import {
   chartFrames,
   emptyBounds,
   extend,
   routeBounds,
+  nearestChainage,
+  pointAt,
   type Bounds,
+  type Route,
 } from "../model/route";
 import type { ChartTemplate, KeyplanStyle, Panel } from "../model/types";
 import { useSurvey } from "../state/surveyData";
@@ -107,6 +119,34 @@ export function Keyplan({
       maxN: cN + h / 2,
     } as Bounds;
   }, [route, background, half, st.showBoundaries, area.w, area.h]);
+
+  const pick = useMatchPick();
+  const picking = pick.active && pick.panelId === p.id;
+  // Hover info: grid coordinates under the pointer.
+  useEffect(() => {
+    if (!view) return;
+    const k = area.w / (view.maxE - view.minE);
+    hoverSources.set(p.id, {
+      rect: area,
+      info: (x, y) => {
+        const e = view.minE + (x - area.x) / k;
+        const n = view.maxN - (y - area.y) / k;
+        const lines = [`E ${e.toFixed(2)}`, `N ${n.toFixed(2)}`];
+        if (route) {
+          const k0 = (parseFloat(template.fields.START_KP ?? "0") || 0) * 1000;
+          const c = nearestChainage(route, e, n);
+          const [pe, pn] = pointAt(route, c);
+          lines.push(
+            `Nearest KP ${((k0 + c) / 1000).toFixed(3)}, ${Math.hypot(e - pe, n - pn).toFixed(1)} m off the line`,
+          );
+        }
+        return ["Key plan", ...lines];
+      },
+    });
+    return () => {
+      hoverSources.delete(p.id);
+    };
+  });
 
   const projectBg = useMemo(() => {
     if (!view) return null;
@@ -222,6 +262,80 @@ export function Keyplan({
             );
           })}
       </g>
+      {route && (st.showMatchlines || picking) && (
+        <g clipPath={`url(#${clipId})`}>
+          <KeyplanMatchlines
+            template={template}
+            route={route}
+            project={project}
+            half={half}
+            lw={lw}
+            picking={picking}
+          />
+        </g>
+      )}
+      {picking && (
+        <g
+          className="mpick-layer"
+          data-mview={[view.minE, view.maxN, k, area.x, area.y].join(",")}
+          pointerEvents="all"
+          clipPath={`url(#${clipId})`}
+        >
+          <rect
+            x={area.x}
+            y={area.y}
+            width={area.w}
+            height={area.h}
+            fill="transparent"
+            style={{ cursor: "crosshair" }}
+          />
+          {[sheetIndex - 1, sheetIndex].map((b) => {
+            if (b < 0 || b + 1 >= frames.length) return null;
+            const o = clipPolygon(frames[b], frames[b + 1]);
+            if (o.length < 3) return null;
+            return (
+              <polygon
+                key={b}
+                className="mpick-overlap"
+                data-mpick={b}
+                points={o
+                  .map(([e, n]) => `${sx(e).toFixed(2)},${sy(n).toFixed(2)}`)
+                  .join(" ")}
+                fill="#22c55e"
+                fillOpacity={0.35}
+                stroke="#15803d"
+                strokeWidth={lw * 2}
+                style={{
+                  cursor: pick.tool === "pick" ? "pointer" : "crosshair",
+                }}
+              >
+                <title>{`Overlap of Charts ${b + 1} and ${b + 2}${pick.tool === "pick" ? ": click to put their matchline here" : ""}`}</title>
+              </polygon>
+            );
+          })}
+          {pick.tool === "draw" && pick.first && (
+            <>
+              <circle
+                cx={sx(pick.first[0])}
+                cy={sy(pick.first[1])}
+                r={lw * 3}
+                fill="#15803d"
+              />
+              {pick.hover && (
+                <line
+                  x1={sx(pick.first[0])}
+                  y1={sy(pick.first[1])}
+                  x2={sx(pick.hover[0])}
+                  y2={sy(pick.hover[1])}
+                  stroke="#15803d"
+                  strokeWidth={lw * 2.4}
+                  strokeDasharray={`${lw * 6} ${lw * 3}`}
+                />
+              )}
+            </>
+          )}
+        </g>
+      )}
       {st.showGrid && (
         <Grid
           area={area}
@@ -243,6 +357,71 @@ export function Keyplan({
           size={Math.min(area.w, area.h) * 0.13}
         />
       )}
+    </g>
+  );
+}
+
+/** Every chart's matchlines in the key plan: across the line, as wide as the chart frames. */
+function KeyplanMatchlines({
+  template,
+  route,
+  project,
+  half,
+  lw,
+  picking,
+}: {
+  picking: boolean;
+  template: ChartTemplate;
+  route: Route;
+  project: (e: number, n: number) => [number, number];
+  half: number;
+  lw: number;
+}) {
+  const plan = planPanel(template);
+  const ml = { ...DEFAULT_MATCHLINES, ...(plan ? planStyle(plan).match : {}) };
+  const k0 = (parseFloat(template.fields.START_KP ?? "0") || 0) * 1000;
+  const n = sheetCount(template);
+  const ranges = Array.from({ length: n }, (_, i) => {
+    const r = sheetRange(template, i);
+    return { start: r.start * 1000, end: r.end * 1000 };
+  });
+  const shown = ranges.map((_, i) => {
+    const r = chartKpRange(template, i);
+    return { start: r.start * 1000, end: r.end * 1000 };
+  });
+  return (
+    <g>
+      {boundaryLines(ranges, ml.mode, shown, ml.pairs).map((m) => {
+        const c = pointAt(route, m.kp - k0);
+        let d: [number, number];
+        if (m.a && m.b) d = [m.b[0] - m.a[0], m.b[1] - m.a[1]];
+        else {
+          const p1 = pointAt(route, m.kp - k0 + 1);
+          const p0 = pointAt(route, m.kp - k0 - 1);
+          d = [-(p1[1] - p0[1]), p1[0] - p0[0]];
+        }
+        const l = Math.hypot(d[0], d[1]) || 1;
+        const r = half || 50;
+        const a = project(c[0] - (d[0] / l) * r, c[1] - (d[1] / l) * r);
+        const b = project(c[0] + (d[0] / l) * r, c[1] + (d[1] / l) * r);
+        const own = !!ml.pairs?.[String(m.boundary)];
+        return (
+          <line
+            key={m.boundary}
+            className="kp-matchline"
+            data-boundary={m.boundary}
+            x1={a[0]}
+            y1={a[1]}
+            x2={b[0]}
+            y2={b[1]}
+            stroke={own && picking ? "#15803d" : ml.color}
+            strokeWidth={lw * 2.2}
+            strokeDasharray={`${lw * 8} ${lw * 3} ${lw * 1.5} ${lw * 3}`}
+          >
+            <title>{`Matchline of Charts ${m.boundary + 1} and ${m.boundary + 2}, KP ${(m.kp / 1000).toFixed(3)}${own ? " (chosen in the key plan)" : ""}`}</title>
+          </line>
+        );
+      })}
     </g>
   );
 }

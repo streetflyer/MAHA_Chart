@@ -13,18 +13,26 @@ import { useCpEdit } from "./cpEdit";
 import { useDrawingEdit } from "./drawingEdit";
 import { useEventEdit } from "./eventEdit";
 import { useSmoothTool } from "./smoothTool";
+import { useMatchPick } from "./matchPick";
 import { useSurvey } from "./surveyData";
 import { useEditor } from "./store";
 import { alignmentSheetA1 } from "../model/builtinTemplates";
 import type { Dataset } from "../model/datasets";
 
-const off = { drawing: false, cp: false, events: false, smooth: false };
+const off = {
+  drawing: false,
+  cp: false,
+  events: false,
+  smooth: false,
+  matchline: false,
+};
 const none: ModeTargets = {
   drawingPanel: null,
   cpPanel: null,
   cpDataset: null,
   eventsPanel: null,
   smoothDataset: null,
+  matchPanel: null,
 };
 
 describe("mode machine: rules", () => {
@@ -51,6 +59,17 @@ describe("mode machine: rules", () => {
     expect(
       modeStillValid("smooth", { ...none, smoothDataset: "d1" }, world),
     ).toBe(false);
+  });
+  it("choosing matchlines needs the key plan and a line", () => {
+    const t = { ...none, matchPanel: "p_key" };
+    const route = { id: "r", kind: "route" as const, visible: false };
+    expect(
+      modeStillValid("matchline", t, { panels: ["p_key"], datasets: [route] }),
+    ).toBe(true);
+    expect(
+      modeStillValid("matchline", t, { panels: ["p_key"], datasets: [] }),
+    ).toBe(false);
+    expect(modeOf({ ...off, matchline: true })).toBe("matchline");
   });
 });
 
@@ -97,6 +116,10 @@ describe("mode machine: on the stores", () => {
     useEventEdit.getState().enter("anything");
     expect(useCpEdit.getState().active).toBe(false);
     expect(currentMode()).toBe("events");
+    enterMode("matchline", { panelId: "p_key", tool: "draw" });
+    expect(currentMode()).toBe("matchline");
+    expect(useMatchPick.getState().tool).toBe("draw");
+    expect(useEventEdit.getState().active).toBe(false);
   });
   it("a mode ends when its data is removed", () => {
     enterMode("cp", { panelId: cpPanel(), datasetId: "cp1" });

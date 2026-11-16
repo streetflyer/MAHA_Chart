@@ -15,7 +15,7 @@ import { ColourBox } from "./ColourBox";
 import { useEffect, useRef, useState } from "react";
 import { newId } from "../model/ids";
 import { PAPER_SIZES } from "../model/paper";
-import { formatScale, sheetCount } from "../model/scale";
+import { formatScale, planPanel, sheetCount } from "../model/scale";
 import type {
   ChartTemplate,
   EventRow,
@@ -78,6 +78,9 @@ import {
 } from "../model/legendData";
 import { useLegendItems } from "./PanelContent";
 import { keyplanStyle } from "./Keyplan";
+import { withMatchPair } from "./matchPicking";
+import { useMatchPick } from "../state/matchPick";
+import { enterMode, exitMode } from "../state/mode";
 import { planStyle } from "./PlanView";
 import { DrawingEditPanel, DrawingLook } from "./DrawingProps";
 import { BarShape } from "./scaleBars";
@@ -2238,7 +2241,80 @@ function KeyplanEditor({ p }: { p: Panel }) {
           />{" "}
           Chart boundaries
         </label>
+        <label
+          className="check"
+          title="Draw every chart's matchlines across the line in the key plan"
+        >
+          <input
+            type="checkbox"
+            checked={!!st.showMatchlines}
+            onChange={(e) => set({ showMatchlines: e.target.checked })}
+          />{" "}
+          Matchlines
+        </label>
       </div>
+      <KeyplanMatchTools p={p} />
+    </>
+  );
+}
+
+/** Choose matchlines in the key plan: pick an overlap, draw a line, or go back to the automatic ones. */
+function KeyplanMatchTools({ p }: { p: Panel }) {
+  const mp = useMatchPick();
+  const t = useEditor((s) => s.template);
+  const plan = t ? planPanel(t) : undefined;
+  const pairs = plan ? planStyle(plan).match?.pairs : undefined;
+  const count = Object.keys(pairs ?? {}).length;
+  const on = (tool: "pick" | "draw") =>
+    mp.active && mp.panelId === p.id && mp.tool === tool;
+  const toggle = (tool: "pick" | "draw") =>
+    on(tool) ? exitMode() : enterMode("matchline", { panelId: p.id, tool });
+  return (
+    <>
+      <h4>Matchlines</h4>
+      <div className="btn-row">
+        <button
+          type="button"
+          className={on("pick") ? "active" : ""}
+          aria-pressed={on("pick")}
+          data-match-tool="pick"
+          onClick={() => toggle("pick")}
+          title="Show where this chart overlaps its neighbours in green; click in a green overlap to put the matchline of those two charts there"
+        >
+          Pick matchline in the key plan
+        </button>
+        <button
+          type="button"
+          className={on("draw") ? "active" : ""}
+          aria-pressed={on("draw")}
+          data-match-tool="draw"
+          onClick={() => toggle("draw")}
+          title="Click two points in the key plan, across the survey line, to draw the matchline where you want it"
+        >
+          Draw a matchline
+        </button>
+      </div>
+      {count > 0 && (
+        <div className="btn-row">
+          <span className="hint">
+            {count} matchline{count > 1 ? "s" : ""} chosen in the key plan.
+          </span>
+          <button
+            type="button"
+            onClick={() =>
+              useEditor.getState().commit((tt) => withMatchPair(tt, null, null))
+            }
+            title="Forget the matchlines picked or drawn in the key plan and use the automatic ones"
+          >
+            Reset
+          </button>
+        </div>
+      )}
+      <p className="hint">
+        A chosen matchline is used by both charts it joins. Matchlines show in
+        the plan view when "Show matchlines" is on there (choosing one turns it
+        on).
+      </p>
     </>
   );
 }

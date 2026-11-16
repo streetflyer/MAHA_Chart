@@ -302,8 +302,19 @@ export interface MatchLabel {
   flip?: boolean;
 }
 
+/** A matchline the user picked or drew in the key plan, between chart i and chart i + 1. */
+export interface MatchPair {
+  /** KP in metres where the line crosses the route. */
+  kp: number;
+  /** A line drawn by the user: its two ends in grid metres. Unset: square to the route. */
+  a?: [number, number];
+  b?: [number, number];
+}
+
 export interface MatchlineStyle {
   on: boolean;
+  /** Picked or drawn matchlines, keyed by the 0-based index i of the boundary between chart i and i + 1. */
+  pairs?: Record<string, MatchPair>;
   /** Text turned 180° (reads from the other side). */
   flip?: boolean;
   /** Edits of single labels, keyed `chartNumber-neighbourNumber`. */
@@ -338,6 +349,8 @@ export interface KeyplanStyle {
   showGrid: boolean;
   showNorthArrow: boolean;
   showBoundaries: boolean;
+  /** Draw the matchlines (where neighbouring charts meet) across the route. */
+  showMatchlines?: boolean;
 }
 
 export interface TextStyle {

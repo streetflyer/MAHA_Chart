@@ -7,6 +7,8 @@ import { useVideo } from "../state/video";
 import { useEventEdit } from "../state/eventEdit";
 import { useSmoothTool } from "../state/smoothTool";
 import { kpFinder } from "./CpPanel";
+import { hoverSources } from "../state/hoverInfo";
+import { kpPanelLines } from "./hoverText";
 import { autoVideoText } from "../model/video";
 import { useEffect, useMemo, type ReactElement } from "react";
 import { nearestProfile } from "../model/crossProfile";
@@ -254,6 +256,27 @@ export function KpPanelData({
   const toX = useKpToX(t, sheetIndex);
   const datasets = useSurvey((s) => s.datasets);
   const route = useSurvey((s) => s.route);
+  // Hover info: the KP under the pointer and the data there.
+  useEffect(() => {
+    if (!toX) return;
+    const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+    const len = route?.length ?? t.scale.routeLength;
+    const find = kpFinder(toX, [k0 - len, k0 + 2 * len]);
+    const x0 = p.type === "events" ? p.x + (p.labelWidth ?? 30) : p.x;
+    hoverSources.set(p.id, {
+      rect: { x: x0, y: p.y, w: p.x + p.w - x0, h: p.h },
+      info: (x) =>
+        kpPanelLines(
+          p.title || p.type,
+          find(x),
+          datasets.filter((d) => d.visible && targetPanel(d) === p.type),
+          (1.5 * t.scale.horizontal) / 1000,
+        ),
+    });
+    return () => {
+      hoverSources.delete(p.id);
+    };
+  });
   if (!toX) return null;
   const x0 = p.type === "events" ? p.x + (p.labelWidth ?? 30) : p.x;
   const clipId = `kp-clip-${p.id}`;

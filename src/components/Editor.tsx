@@ -30,6 +30,9 @@ import { titleInsideHeight } from "./PanelContent";
 import { ContextMenu, type MenuItem } from "./ContextMenu";
 import { drawingMenu } from "./drawingMenu";
 import { askChoice, askConfirm, askText } from "./Dialog";
+import { normaliseShortcut, shortcutOf, usePrefs } from "../state/prefs";
+import { useHoverTip } from "../state/hoverInfo";
+import { useMatchPick } from "../state/matchPick";
 import { chartsToDxf } from "../model/dxfExport";
 import { chartsToPdf } from "../model/pdfExport";
 import { ThemeButton } from "./ThemeButton";
@@ -257,6 +260,18 @@ export function Editor({ onExit }: { onExit(): void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || s().editing) return;
+      if (shortcutOf(e) === usePrefs.getState().hoverKey) {
+        e.preventDefault();
+        toggleHoverInfo();
+        return;
+      }
+      if (e.key === "Escape" && useMatchPick.getState().active) {
+        // Esc drops a line half drawn first, then finishes.
+        const mp = useMatchPick.getState();
+        if (mp.first) mp.setFirst(null);
+        else mp.exit();
+        return;
+      }
       if (
         useEventEdit.getState().active &&
         (e.ctrlKey || e.metaKey) &&
@@ -854,6 +869,9 @@ export function Editor({ onExit }: { onExit(): void }) {
           </button>
         </div>
         <div className="group">
+          <HoverInfoButtons />
+        </div>
+        <div className="group">
           <button
             onClick={() => s().undo()}
             disabled={!canUndo}
@@ -966,6 +984,7 @@ export function Editor({ onExit }: { onExit(): void }) {
           />
           <EventEditBar />
           <ModeBar />
+          <HoverTip />
           {progress && (
             <div
               className="save-progress"
@@ -1516,5 +1535,73 @@ function PaneResizer({
         el.addEventListener("pointerup", up);
       }}
     />
+  );
+}
+
+function toggleHoverInfo() {
+  const p = usePrefs.getState();
+  p.setHoverInfo(!p.hoverInfo);
+  if (p.hoverInfo) useHoverTip.setState({ tip: null });
+}
+
+/** Hover info on/off and its shortcut, on the toolbar. */
+function HoverInfoButtons() {
+  const on = usePrefs((p) => p.hoverInfo);
+  const key = usePrefs((p) => p.hoverKey);
+  async function change() {
+    const v = await askText(
+      "Shortcut for hover info (e.g. F3, F4, Ctrl+I, Alt+H)",
+      key,
+      "Set",
+    );
+    if (v === null) return;
+    const k = normaliseShortcut(v);
+    if (k) usePrefs.getState().setHoverKey(k);
+  }
+  return (
+    <span className="btn-pair">
+      <button
+        className={on ? "active" : ""}
+        aria-pressed={on}
+        data-hover-info={on ? "on" : "off"}
+        onClick={toggleHoverInfo}
+        title={`Show what is under the pointer: easting, northing, KP and offset in the plan view and key plan, KP and values in the profiles (${key})`}
+      >
+        Hover info ({key})
+      </button>
+      <button
+        className="hover-key"
+        onClick={() => void change()}
+        title="Change the hover info shortcut"
+        aria-label="Change the hover info shortcut"
+      >
+        ⌨
+      </button>
+    </span>
+  );
+}
+
+/** The hover info box next to the pointer. */
+function HoverTip() {
+  const tip = useHoverTip((s) => s.tip);
+  const on = usePrefs((p) => p.hoverInfo);
+  if (!on || !tip) return null;
+  const right = tip.x + 260 > window.innerWidth;
+  return (
+    <div
+      className="hover-tip"
+      role="tooltip"
+      style={{
+        left: right ? undefined : tip.x + 16,
+        right: right ? window.innerWidth - tip.x + 16 : undefined,
+        top: tip.y + 18,
+      }}
+    >
+      {tip.lines.map((l, i) => (
+        <div key={i} className={i === 0 ? "hover-tip-head" : ""}>
+          {l}
+        </div>
+      ))}
+    </div>
   );
 }

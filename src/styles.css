@@ -2082,3 +2082,54 @@ fieldset.plain {
 .mode-bar .mode-hint {
   color: var(--muted);
 }
+
+/* Hover info */
+.btn-pair {
+  display: inline-flex;
+}
+.btn-pair > button:first-child {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.btn-pair > .hover-key {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  border-left: none;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.hover-tip {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  background: rgba(20, 24, 31, 0.92);
+  color: #f3f4f6;
+  font:
+    12px/1.45 system-ui,
+    sans-serif;
+  padding: 6px 9px;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  max-width: 260px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.hover-tip-head {
+  font-weight: 600;
+  color: #93c5fd;
+}
+/* Choosing matchlines in the key plan */
+.sheet .mpick-overlap:hover {
+  fill-opacity: 0.6;
+}
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0;
+}
+.btn-row button.active {
+  background: #dcfce7;
+  border-color: #16a34a;
+}

@@ -3,6 +3,7 @@ import type { Dataset } from "../model/datasets";
 import { useCpEdit } from "./cpEdit";
 import { useDrawingEdit } from "./drawingEdit";
 import { useEventEdit } from "./eventEdit";
+import { useMatchPick } from "./matchPick";
 import { useSmoothTool } from "./smoothTool";
 import { useEditor } from "./store";
 import { useSurvey } from "./surveyData";
@@ -14,6 +15,7 @@ import { useSurvey } from "./surveyData";
  *   idle ──double-click CP panel───────────▶ cp        (useCpEdit)
  *   idle ──double-click events panel───────▶ events    (useEventEdit)
  *   idle ──"Smooth tool" in the properties─▶ smooth    (useSmoothTool)
+ *   idle ──"Pick / Draw matchline" (key plan)▶ matchline (useMatchPick)
  *   any  ──Esc / Done / click outside──────▶ idle
  *   any  ──enter another mode──────────────▶ that mode (the old one is left first)
  *   any  ──its panel or data disappears────▶ idle      (folder switch, file removed, template closed)
@@ -24,9 +26,23 @@ import { useSurvey } from "./surveyData";
  * `useMode()`, change it with `enterMode()` / `exitMode()`. The editor root carries it as
  * `data-mode` for tests and automation.
  */
-export type Mode = "idle" | "drawing" | "cp" | "events" | "smooth";
+export type Mode =
+  | "idle"
+  | "drawing"
+  | "cp"
+  | "events"
+  | "smooth"
+  | "matchline";
 
-export const MODES: Mode[] = ["idle", "drawing", "cp", "events", "smooth"];
+export const MODES: Mode[] = [
+  "idle",
+  "drawing",
+  "cp",
+  "events",
+  "smooth",
+  "matchline",
+];
+const ON = ["drawing", "cp", "events", "smooth", "matchline"] as const;
 
 /** What the user is told while a mode is on. */
 export const MODE_INFO: Record<
@@ -49,6 +65,10 @@ export const MODE_INFO: Record<
     label: "Smooth tool",
     hint: "Click on the profile to smooth along the helper line. Esc finishes.",
   },
+  matchline: {
+    label: "Choosing matchlines",
+    hint: "Pick: click a green overlap in the key plan. Draw: click two points across the line. Esc or Done finishes.",
+  },
 };
 
 export interface ModeFlags {
@@ -56,6 +76,7 @@ export interface ModeFlags {
   cp: boolean;
   events: boolean;
   smooth: boolean;
+  matchline: boolean;
 }
 
 /** The mode a set of store flags stands for. More than one on is never left standing: see `conflicts`. */
@@ -64,6 +85,7 @@ export function modeOf(f: ModeFlags): Mode {
   if (f.cp) return "cp";
   if (f.events) return "events";
   if (f.smooth) return "smooth";
+  if (f.matchline) return "matchline";
   return "idle";
 }
 
@@ -72,9 +94,7 @@ export function conflicts(
   f: ModeFlags,
   entered: Exclude<Mode, "idle">,
 ): Exclude<Mode, "idle">[] {
-  return (["drawing", "cp", "events", "smooth"] as const).filter(
-    (m) => m !== entered && f[m],
-  );
+  return ON.filter((m) => m !== entered && f[m]);
 }
 
 /** What a mode needs to stay on; anything missing sends it back to idle. */
@@ -90,6 +110,7 @@ export interface ModeTargets {
   cpDataset: string | null;
   eventsPanel: string | null;
   smoothDataset: string | null;
+  matchPanel: string | null;
 }
 
 /** Is the thing a mode works on still there? */
@@ -115,6 +136,8 @@ export function modeStillValid(
       );
     case "smooth":
       return data(t.smoothDataset, "long");
+    case "matchline":
+      return panel(t.matchPanel) && w.datasets.some((d) => d.kind === "route");
   }
 }
 
@@ -123,6 +146,7 @@ const flags = (): ModeFlags => ({
   cp: useCpEdit.getState().active,
   events: useEventEdit.getState().active,
   smooth: useSmoothTool.getState().active,
+  matchline: useMatchPick.getState().active,
 });
 
 export const currentMode = (): Mode => modeOf(flags());
@@ -132,13 +156,13 @@ const leave: Record<Exclude<Mode, "idle">, () => void> = {
   cp: () => useCpEdit.getState().exit(),
   events: () => useEventEdit.getState().exit(),
   smooth: () => useSmoothTool.getState().stop(),
+  matchline: () => useMatchPick.getState().exit(),
 };
 
 /** Back to idle, whatever is on. */
 export function exitMode() {
   const f = flags();
-  for (const m of ["drawing", "cp", "events", "smooth"] as const)
-    if (f[m]) leave[m]();
+  for (const m of ON) if (f[m]) leave[m]();
 }
 
 /**
@@ -147,7 +171,7 @@ export function exitMode() {
  */
 export function enterMode(
   m: Mode,
-  target: { panelId?: string; datasetId?: string } = {},
+  target: { panelId?: string; datasetId?: string; tool?: "pick" | "draw" } = {},
 ) {
   if (m === "idle") return exitMode();
   const { panelId, datasetId } = target;
@@ -157,11 +181,13 @@ export function enterMode(
   else if (m === "events" && panelId) useEventEdit.getState().enter(panelId);
   else if (m === "smooth" && datasetId)
     useSmoothTool.getState().start(datasetId);
+  else if (m === "matchline" && panelId)
+    useMatchPick.getState().enter(panelId, target.tool ?? "pick");
 }
 
 function validate() {
   const f = flags();
-  if (!f.drawing && !f.cp && !f.events && !f.smooth) return;
+  if (!ON.some((m) => f[m])) return;
   const world: ModeWorld = {
     panels: useEditor.getState().template?.panels.map((p) => p.id) ?? [],
     datasets: useSurvey.getState().datasets,
@@ -172,8 +198,9 @@ function validate() {
     cpDataset: useCpEdit.getState().datasetId,
     eventsPanel: useEventEdit.getState().panelId,
     smoothDataset: useSmoothTool.getState().datasetId,
+    matchPanel: useMatchPick.getState().panelId,
   };
-  for (const m of ["drawing", "cp", "events", "smooth"] as const)
+  for (const m of ON)
     if (f[m] && !modeStillValid(m, targets, world)) leave[m]();
 }
 
@@ -202,6 +229,7 @@ export function installModeMachine() {
   watch("cp", useCpEdit);
   watch("events", useEventEdit);
   watch("smooth", useSmoothTool);
+  watch("matchline", useMatchPick);
   // A mode never outlives what it edits.
   useSurvey.subscribe((s, p) => s.datasets !== p.datasets && validate());
   useEditor.subscribe((s, p) => s.template !== p.template && validate());
