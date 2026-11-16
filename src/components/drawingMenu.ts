@@ -191,6 +191,7 @@ export async function addToLegend() {
     size: 6,
     rot: 0,
     keepColours: true,
+    chart: ed.sheetIndex,
   };
   ed.updatePanel(legend.id, { legend: [...(legend.legend ?? []), item] });
   ed.select({ kind: "panel", id: legend.id });

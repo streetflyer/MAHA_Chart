@@ -1817,8 +1817,14 @@ function CodeDefsEditor({
 
 function LegendEditor({ p }: { p: Panel }) {
   const s = useEditor.getState();
-  const items = p.legend ?? [];
-  const setItems = (legend: LegendItem[]) => s.updatePanel(p.id, { legend });
+  const chartNo = useEditor((x) => x.sheetIndex);
+  const mine = (i: LegendItem) => i.chart === undefined || i.chart === chartNo;
+  const items = (p.legend ?? []).filter(mine);
+  // Items added on other charts stay as they are.
+  const setItems = (legend: LegendItem[]) =>
+    s.updatePanel(p.id, {
+      legend: [...(p.legend ?? []).filter((i) => !mine(i)), ...legend],
+    });
   const update = (id: string, patch: Partial<LegendItem>) =>
     setItems(items.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   const [preset, setPreset] = useState("0");

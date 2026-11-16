@@ -595,13 +595,16 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
   const plan = useEditor((s) =>
     s.template?.panels.find((x) => x.type === "plan"),
   );
+  const chartNo = useEditor((s) => s.sheetIndex);
   const panels = useEditor((s) => s.template?.panels);
   const eventPanels = useMemo(
     () => panels?.filter((x) => x.type === "events"),
     [panels],
   );
   return useMemo(() => {
-    const manual = p.legend ?? [];
+    const manual = (p.legend ?? []).filter(
+      (i) => i.chart === undefined || i.chart === chartNo,
+    );
     const ld = p.legendData ?? { on: true, overrides: {} };
     if (!ld.on)
       return {
@@ -653,6 +656,7 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
     };
   }, [
     p.legend,
+    chartNo,
     p.legendData,
     p.eventCodes,
     p.legendStyle,

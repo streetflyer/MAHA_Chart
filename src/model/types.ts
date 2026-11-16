@@ -428,6 +428,8 @@ export interface LegendShape {
 
 export interface LegendItem {
   id: string;
+  /** The chart (from 0) it was added on; unset: shown on every chart. */
+  chart?: number;
   group: LegendGroup;
   symbol: LegendSymbol;
   label: string;
