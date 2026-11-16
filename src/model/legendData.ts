@@ -1,6 +1,12 @@
 import { isBurialLink, linkLook } from "./events";
 import type { Dataset } from "./datasets";
-import type { LegendGroup, LegendItem, LegendStyle } from "./types";
+import type {
+  CodeDefSpec,
+  LegendGroup,
+  LegendItem,
+  LegendStyle,
+} from "./types";
+import type { EventRecord } from "./datasets";
 
 export const DEFAULT_LEGEND_STYLE: LegendStyle = {
   family: "Arial",
@@ -164,11 +170,78 @@ export function dataLegend(
   return out;
 }
 
+/** The columns a definition can be written from: the file's own, then code, group, subgroup and value. */
+export function definitionSources(
+  datasets: Dataset[],
+): { id: string; name: string; sample: string }[] {
+  const evs = datasets.filter(
+    (d): d is Extract<Dataset, { kind: "events" }> =>
+      d.kind === "events" && d.visible,
+  );
+  const out: { id: string; name: string; sample: string }[] = [];
+  const first = (f: (r: EventRecord) => string) => {
+    for (const d of evs)
+      for (const r of d.records) {
+        const v = f(r);
+        if (v) return v;
+      }
+    return "";
+  };
+  const width = Math.max(0, ...evs.map((d) => d.columns?.length ?? 0));
+  for (let i = 0; i < width; i++) {
+    const name =
+      evs.map((d) => d.columns?.[i]).find(Boolean) ?? `Column ${i + 1}`;
+    out.push({ id: `c:${i}`, name, sample: first((r) => r.cells?.[i] ?? "") });
+  }
+  out.push(
+    { id: "code", name: "Event code", sample: first((r) => r.code) },
+    {
+      id: "group",
+      name: "Code group (before the dot)",
+      sample: first((r) => partOf(r.code, "group")),
+    },
+    {
+      id: "sub",
+      name: "Code subgroup (after the dot)",
+      sample: first((r) => partOf(r.code, "sub")),
+    },
+    {
+      id: "value",
+      name: "Value / description column",
+      sample: first((r) => r.value),
+    },
+  );
+  return out;
+}
+
+function partOf(code: string, which: "group" | "sub"): string {
+  const i = code.indexOf(".");
+  if (i < 0) return which === "group" ? code : "";
+  return which === "group" ? code.slice(0, i) : code.slice(i + 1);
+}
+
+/** One event's definition written from the user's parts; empty parts are left out. */
+export function writeDefinition(r: EventRecord, spec: CodeDefSpec): string {
+  const bits = spec.parts
+    .map((p) => {
+      if (p.startsWith("c:")) return r.cells?.[Number(p.slice(2))] ?? "";
+      if (p.startsWith("t:")) return p.slice(2);
+      if (p === "code") return r.code;
+      if (p === "group" || p === "sub") return partOf(r.code, p);
+      return r.value;
+    })
+    .map((b) => b.trim())
+    .filter(Boolean);
+  if (!bits.length) return "";
+  return `${spec.prefix}${bits.join(spec.connector)}${spec.suffix}`;
+}
+
 /** "CODE<Tab>Description" lines for the codes in the imported events (those within a KP range in metres, when given). */
 export function dataEventCodes(
   datasets: Dataset[],
   range?: [number, number],
   shown?: (code: string) => boolean,
+  spec?: CodeDefSpec,
 ): string {
   // The wording of a code comes from all the events, so a chart whose own readings of it are
   // long free text still shows the same definition as the properties panel; the range and the
@@ -180,9 +253,14 @@ export function dataEventCodes(
       for (const r of d.records) {
         const c = r.code.toUpperCase();
         if (!desc.has(c)) desc.set(c, new Map());
-        const v = r.value.trim();
+        const v = spec?.parts.length
+          ? writeDefinition(r, spec)
+          : r.value.trim();
         // Descriptions like "Pipeline Feature - Flange" define a code; free text (pipe specs, dates, 0) doesn't.
-        if (v && v.length <= 48 && !/^-?[\d.]+$/.test(v))
+        if (
+          v &&
+          (spec?.parts.length || (v.length <= 48 && !/^-?[\d.]+$/.test(v)))
+        )
           desc.get(c)!.set(v, (desc.get(c)!.get(v) ?? 0) + 1);
         if (range && (r.kp < range[0] || r.kp > range[1])) continue;
         if (shown && !shown(r.code)) continue;

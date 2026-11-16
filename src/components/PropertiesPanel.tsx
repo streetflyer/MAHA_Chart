@@ -77,7 +77,8 @@ import {
   dataEventCodes,
 } from "../model/legendData";
 import { useLegendItems } from "./PanelContent";
-import { keyplanStyle } from "./Keyplan";
+import { useCodeDefs } from "../state/codeDefs";
+import { keyplanFit, keyplanStyle } from "./Keyplan";
 import { datasetRemoved } from "../state/chartData";
 import { withMatchPair } from "./matchPicking";
 import { useMatchPick } from "../state/matchPick";
@@ -1914,9 +1915,18 @@ function LegendEditor({ p }: { p: Panel }) {
           </option>
         </select>
       </label>
+      {fromEvents && (
+        <button
+          type="button"
+          data-codedefs-open
+          onClick={() => useCodeDefs.getState().open(p.id)}
+        >
+          Write the definitions from the file&apos;s columns…
+        </button>
+      )}
       {fromEvents ? (
         <CodeDefsEditor
-          all={dataEventCodes(datasets)}
+          all={dataEventCodes(datasets, undefined, undefined, ls.codeDef)}
           edits={ls.codeEdits ?? {}}
           hidden={ls.codeHidden ?? []}
           onChange={(codeEdits, codeHidden) => setLs({ codeEdits, codeHidden })}
@@ -2200,6 +2210,30 @@ function KeyplanEditor({ p }: { p: Panel }) {
   return (
     <>
       <h4>Key plan</h4>
+      <div className="btn-row">
+        <button
+          type="button"
+          data-keyview
+          onClick={() => enterMode("keyview", { panelId: p.id })}
+          title="Scroll to zoom the key plan's map and drag to move it (or double-click the key plan)"
+        >
+          Zoom and move the map
+        </button>
+        <button
+          type="button"
+          onClick={() => keyplanFit.get(p.id)?.(false)}
+          title="Fit the survey line and the chart frames"
+        >
+          Fit line and charts
+        </button>
+        <button
+          type="button"
+          onClick={() => keyplanFit.get(p.id)?.(true)}
+          title="Fit the whole map, background drawing included"
+        >
+          Fit the whole map
+        </button>
+      </div>
       <div className="row2">{colour("Background", "background")}</div>
       <div className="row2">
         {colour("Survey line", "routeColor")}

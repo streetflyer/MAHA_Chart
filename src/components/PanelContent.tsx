@@ -643,6 +643,7 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
               chart && rowMatchers.length
                 ? (c) => rowMatchers.some((m) => m(c))
                 : undefined,
+              ls?.codeDef,
             )
           : (p.eventCodes ?? ""),
         fromEvents ? ls?.codeEdits : undefined,

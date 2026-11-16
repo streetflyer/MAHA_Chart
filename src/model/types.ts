@@ -355,6 +355,8 @@ export interface KeyplanStyle {
   showBoundaries: boolean;
   /** Draw the matchlines (where neighbouring charts meet) across the route. */
   showMatchlines?: boolean;
+  /** Zoomed and moved view: centre (grid E, N) and width in metres; unset fits the line and charts. */
+  view?: { cE: number; cN: number; w: number };
 }
 
 export interface TextStyle {
@@ -408,6 +410,18 @@ export interface LegendItem {
   boldDash?: boolean;
 }
 
+/**
+ * How an event code's definition is written from the imported events: columns of the file
+ * (`c:<n>`), the code (`code`), its group and subgroup (`group`, `sub`, split at the dot),
+ * the value column (`value`), or the user's own text (`t:<text>`), joined by the connector.
+ */
+export interface CodeDefSpec {
+  parts: string[];
+  prefix: string;
+  suffix: string;
+  connector: string;
+}
+
 /** Text look of a legend panel. */
 export interface LegendStyle {
   family: string;
@@ -430,6 +444,8 @@ export interface LegendStyle {
   codeScope?: "all" | "chart";
   /** The user's own wording of a code's definition, by code. */
   codeEdits?: Record<string, string>;
+  /** Definitions written from the imported file's columns instead of the value column. */
+  codeDef?: CodeDefSpec;
   /** Codes left out of the definitions. */
   codeHidden?: string[];
   /** Heading wording, by group; unset keeps the standard heading. */

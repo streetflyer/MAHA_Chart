@@ -58,10 +58,13 @@ import {
 } from "../state/workspace";
 import { useSmoothTool } from "../state/smoothTool";
 import { eventLabelMenu } from "./eventLabelEdit";
+import { codeDefMenu } from "./legendEdit";
+import { CodeDefsDialog } from "./CodeDefsDialog";
 import { useEventEdit } from "../state/eventEdit";
 import { EventEditBar } from "./EventEditBar";
 import { ModeBar } from "./ModeBar";
 import { exitMode, useMode } from "../state/mode";
+import { useKeyplanView } from "../state/keyplanView";
 import { undoEventLabels } from "./eventLabelEdit";
 import { planItemMenu } from "./planItems";
 import { calloutMenu } from "./calloutEdit";
@@ -311,6 +314,10 @@ export function Editor({ onExit }: { onExit(): void }) {
         e.preventDefault();
         return;
       }
+      if (e.key === "Escape" && useKeyplanView.getState().active) {
+        useKeyplanView.getState().exit();
+        return;
+      }
       if (e.key === "Escape" && useEventEdit.getState().active) {
         useEventEdit.getState().exit();
         return;
@@ -403,6 +410,14 @@ export function Editor({ onExit }: { onExit(): void }) {
   ) {
     if (target.kind === "cp") {
       setMenu({ x: clientX, y: clientY, items: cpMenu(at) });
+      return;
+    }
+    if (target.kind === "codedef") {
+      setMenu({
+        x: clientX,
+        y: clientY,
+        items: codeDefMenu(target.id ?? "", target.code),
+      });
       return;
     }
     if (target.kind === "evlabel") {
@@ -1083,6 +1098,7 @@ export function Editor({ onExit }: { onExit(): void }) {
           <EventEditBar />
           <ModeBar />
           <HoverTip />
+          <CodeDefsDialog />
           {showParams && (
             <ParametersDialog onClose={() => setShowParams(false)} />
           )}

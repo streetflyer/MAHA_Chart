@@ -19,6 +19,7 @@ Which edit mode the sheet is in. One at a time.
 | `cp`        | double-click the CP panel                                        | `useCpEdit`                                                         |
 | `events`    | double-click an Engineering Events panel                         | `useEventEdit`                                                      |
 | `smooth`    | "Smooth tool" in the profile properties                          | `useSmoothTool`                                                     |
+| `keyview` | Double-click the key plan, or "Zoom and move the map" in the key plan properties | `useKeyplanView` (panel; `rotating` keeps a chart's rotation grip on screen while dragged) |
 | `matchline` | "Pick matchline" / "Draw a matchline" in the key plan properties | `useMatchPick` (tool `pick` or `draw`, first point of a drawn line) |
 
 - Read: `currentMode()`, `useMode()`, or `[data-mode]` on `.editor`.
@@ -31,6 +32,7 @@ Which edit mode the sheet is in. One at a time.
   - exporting to PDF / DXF leaves the mode first, so edit outlines are never printed.
 - The user sees the mode in the bar at the top of the sheet (`ModeBar`, and
   `EventEditBar` for `events`).
+- `keyview` needs its key plan panel; wheel zooms, a drag on the map moves it, a click outside the key plan ends it. The view stays on the panel (`keyplan.view`) after the mode ends; "Fit line and charts" clears it.
 - `matchline` needs its key plan panel and a route; a click outside the key plan ends it,
   Esc drops a half-drawn line first. Chosen lines are saved in the plan view's
   `plan.match.pairs` (boundary index → `{ kp, a?, b? }`).

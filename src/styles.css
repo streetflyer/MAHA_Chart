@@ -2198,3 +2198,51 @@ fieldset.plain {
 .pm-chart {
   max-width: 200px;
 }
+
+.codedefs-dialog {
+  width: min(560px, 94vw);
+}
+.cd-cols {
+  max-height: 200px;
+  overflow: auto;
+  border: 1px solid var(--line, #8884);
+  padding: 4px 8px;
+  margin-bottom: 8px;
+}
+.cd-sample {
+  opacity: 0.6;
+  font-size: 11px;
+}
+.cd-add {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.cd-add input {
+  flex: 1;
+}
+.cd-order {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+.cd-order li {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.cd-order li span {
+  flex: 1;
+}
+.cd-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.cd-preview {
+  margin: 8px 0;
+  padding: 6px 8px;
+  background: #8881;
+  font-size: 12px;
+  min-height: 3em;
+  white-space: pre-wrap;
+}

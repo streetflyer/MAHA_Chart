@@ -25,6 +25,7 @@ const off = {
   events: false,
   smooth: false,
   matchline: false,
+  keyview: false,
 };
 const none: ModeTargets = {
   drawingPanel: null,
@@ -33,6 +34,7 @@ const none: ModeTargets = {
   eventsPanel: null,
   smoothDataset: null,
   matchPanel: null,
+  keyviewPanel: null,
 };
 
 describe("mode machine: rules", () => {
@@ -60,6 +62,17 @@ describe("mode machine: rules", () => {
       modeStillValid("smooth", { ...none, smoothDataset: "d1" }, world),
     ).toBe(false);
   });
+  it("the key plan view needs its panel", () => {
+    const t = { ...none, keyviewPanel: "p_key" };
+    expect(
+      modeStillValid("keyview", t, { panels: ["p_key"], datasets: [] }),
+    ).toBe(true);
+    expect(modeStillValid("keyview", t, { panels: [], datasets: [] })).toBe(
+      false,
+    );
+    expect(modeOf({ ...off, keyview: true })).toBe("keyview");
+  });
+
   it("choosing matchlines needs the key plan and a line", () => {
     const t = { ...none, matchPanel: "p_key" };
     const route = { id: "r", kind: "route" as const, visible: false };

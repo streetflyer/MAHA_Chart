@@ -1,4 +1,6 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useEditor } from "../state/store";
+import { useKeyplanView, viewFitting } from "../state/keyplanView";
 import { planPanel, sheetCount, sheetRange } from "../model/scale";
 import { planStyle } from "../model/planStyle";
 import {
@@ -25,6 +27,9 @@ import { routePath } from "./linework";
 import { LineworkLayer } from "./LineworkLayer";
 import { lineworkFor } from "../model/datasets";
 import { fontSize } from "./svgText";
+
+/** Zoom-to-fit actions of the key plans on the sheet, by panel id (used by the mode bar and the menu). */
+export const keyplanFit = new Map<string, (whole: boolean) => void>();
 
 export const DEFAULT_KEYPLAN: KeyplanStyle = {
   background: "#cfe6ff",
@@ -102,6 +107,17 @@ export function Keyplan({
       extend(b, background.bounds.maxE, background.bounds.maxN);
     }
     if (!Number.isFinite(b.minE)) return null;
+    if (st.view) {
+      // Zoomed and moved by the user: the panel's own aspect, centred where it was left.
+      const w = st.view.w;
+      const h = w / (area.w / area.h);
+      return {
+        minE: st.view.cE - w / 2,
+        maxE: st.view.cE + w / 2,
+        minN: st.view.cN - h / 2,
+        maxN: st.view.cN + h / 2,
+      } as Bounds;
+    }
     // Pad and match the panel's aspect so the map fills it without distortion.
     const padE = (b.maxE - b.minE) * 0.08 + 1;
     const padN = (b.maxN - b.minN) * 0.08 + 1;
@@ -118,10 +134,51 @@ export function Keyplan({
       minN: cN - h / 2,
       maxN: cN + h / 2,
     } as Bounds;
-  }, [route, background, half, st.showBoundaries, area.w, area.h]);
+  }, [
+    route,
+    background,
+    half,
+    st.showBoundaries,
+    st.view?.cE,
+    st.view?.cN,
+    st.view?.w,
+    area.w,
+    area.h,
+  ]);
 
   const pick = useMatchPick();
   const picking = pick.active && pick.panelId === p.id;
+  const kv = useKeyplanView();
+  const viewing = kv.active && kv.panelId === p.id;
+  const [zone, setZone] = useState(false);
+  useEffect(() => {
+    keyplanFit.set(p.id, (whole) => {
+      const ed = useEditor.getState();
+      if (!whole) {
+        ed.updatePanel(p.id, { keyplan: { ...st, view: undefined } });
+        return;
+      }
+      // The whole map: line, every chart frame and the background drawing.
+      const b = emptyBounds();
+      if (route) {
+        const rb = routeBounds(route);
+        extend(b, rb.minE, rb.minN);
+        extend(b, rb.maxE, rb.maxN);
+      }
+      for (const f of frames) for (const [e, n] of f) extend(b, e, n);
+      if (background) {
+        extend(b, background.bounds.minE, background.bounds.minN);
+        extend(b, background.bounds.maxE, background.bounds.maxN);
+      }
+      if (!Number.isFinite(b.minE)) return;
+      ed.updatePanel(p.id, {
+        keyplan: { ...st, view: viewFitting(b, area.w / area.h) },
+      });
+    });
+    return () => {
+      keyplanFit.delete(p.id);
+    };
+  });
   // Hover info: grid coordinates under the pointer.
   useEffect(() => {
     if (!view) return;
@@ -201,6 +258,28 @@ export function Keyplan({
         height={area.h}
         fill={st.background}
       />
+      {viewing && (
+        <rect
+          className="kp-pan-layer"
+          data-kview={[
+            view.minE,
+            view.maxN,
+            k,
+            area.x,
+            area.y,
+            p.id,
+            area.w,
+            area.h,
+          ].join(",")}
+          x={area.x}
+          y={area.y}
+          width={area.w}
+          height={area.h}
+          fill="transparent"
+          pointerEvents="all"
+          style={{ cursor: "grab" }}
+        />
+      )}
       <g clipPath={`url(#${clipId})`}>
         {projectBg && (
           <LineworkLayer
@@ -225,14 +304,30 @@ export function Keyplan({
             const pts = f
               .map(([e, n]) => `${sx(e).toFixed(2)},${sy(n).toFixed(2)}`)
               .join(" ");
+            const cur = i === sheetIndex;
+            const zoneHandlers = cur
+              ? {
+                  onPointerEnter: () => setZone(true),
+                  onPointerLeave: () => setZone(false),
+                }
+              : {};
             return (
               <g key={i}>
                 <polygon
                   points={pts}
                   fill="none"
-                  stroke={i === sheetIndex ? st.currentColor : st.boundaryColor}
-                  strokeWidth={i === sheetIndex ? lw * 2.4 : lw * 1.6}
+                  stroke={cur ? st.currentColor : st.boundaryColor}
+                  strokeWidth={cur ? lw * 2.4 : lw * 1.6}
                 />
+                {cur && (
+                  <polygon
+                    points={pts}
+                    fill="transparent"
+                    pointerEvents="all"
+                    data-kzone
+                    {...zoneHandlers}
+                  />
+                )}
                 <polygon
                   className="kp-frame-hit"
                   points={pts}
@@ -242,26 +337,30 @@ export function Keyplan({
                   )}
                   pointerEvents="stroke"
                   strokeWidth={Math.max(lw * 6, 0.8)}
+                  {...zoneHandlers}
                 >
                   <title>{`Chart ${i + 1}: drag along the line to fine-tune`}</title>
                 </polygon>
-                {i === sheetIndex && f.length === 4 && (
-                  <RotateHandle
-                    f={f}
-                    sx={sx}
-                    sy={sy}
-                    index={i}
-                    viewAttr={[view.minE, view.maxN, k, area.x, area.y].join(
-                      ",",
-                    )}
-                    lw={lw}
-                    color={st.currentColor}
-                  />
-                )}
               </g>
             );
           })}
       </g>
+      {st.showBoundaries &&
+        frames[sheetIndex] &&
+        frames[sheetIndex].length === 4 && (
+          <RotateHandle
+            f={frames[sheetIndex]}
+            sx={sx}
+            sy={sy}
+            index={sheetIndex}
+            viewAttr={[view.minE, view.maxN, k, area.x, area.y].join(",")}
+            lw={lw}
+            color={st.currentColor}
+            area={area}
+            show={zone || kv.rotating}
+            onZone={setZone}
+          />
+        )}
       {route && (st.showMatchlines || picking) && (
         <g clipPath={`url(#${clipId})`}>
           <KeyplanMatchlines
@@ -426,7 +525,11 @@ function KeyplanMatchlines({
   );
 }
 
-/** A round grip off the end of the current chart's frame; drag it to turn the frame. */
+/**
+ * A round grip off the end of the current chart's frame; drag it to turn the frame. It shows
+ * while the pointer is over the chart's box (or while it is dragged). When the box, or the
+ * grip, is outside the key plan it is always shown, held at the panel's edge.
+ */
 function RotateHandle({
   f,
   sx,
@@ -435,6 +538,9 @@ function RotateHandle({
   viewAttr,
   lw,
   color,
+  area,
+  show,
+  onZone,
 }: {
   f: [number, number][];
   sx: (e: number) => number;
@@ -443,6 +549,9 @@ function RotateHandle({
   viewAttr: string;
   lw: number;
   color: string;
+  area: { x: number; y: number; w: number; h: number };
+  show: boolean;
+  onZone(v: boolean): void;
 }) {
   const ce = (f[0][0] + f[2][0]) / 2;
   const cn = (f[0][1] + f[2][1]) / 2;
@@ -455,23 +564,72 @@ function RotateHandle({
   const hx = mx + ((mx - cx) / d) * off;
   const hy = my + ((my - cy) / d) * off;
   const r = Math.max(lw * 4, 0.7);
+  const m = r + lw * 2;
+  const within = (x: number, y: number) =>
+    x >= area.x + m &&
+    x <= area.x + area.w - m &&
+    y >= area.y + m &&
+    y <= area.y + area.h - m;
+  // Is any of the chart's box inside the key plan? If not, the grip stays on show.
+  const xs = f.map(([e]) => sx(e));
+  const ys = f.map(([, n]) => sy(n));
+  const seen =
+    Math.max(...xs) >= area.x &&
+    Math.min(...xs) <= area.x + area.w &&
+    Math.max(...ys) >= area.y &&
+    Math.min(...ys) <= area.y + area.h;
+  const out = !within(hx, hy);
+  if (!show && seen) return null;
+  const px = Math.min(Math.max(hx, area.x + m), area.x + area.w - m);
+  const py = Math.min(Math.max(hy, area.y + m), area.y + area.h - m);
+  const zone = {
+    onPointerEnter: () => onZone(true),
+    onPointerLeave: () => onZone(false),
+  };
   return (
-    <g>
-      <line x1={mx} y1={my} x2={hx} y2={hy} stroke={color} strokeWidth={lw} />
+    <g data-rotate-handle={seen ? "hover" : "always"}>
+      {!out && (
+        <>
+          <line
+            x1={mx}
+            y1={my}
+            x2={px}
+            y2={py}
+            stroke={color}
+            strokeWidth={lw}
+          />
+          <line
+            x1={mx}
+            y1={my}
+            x2={px}
+            y2={py}
+            stroke="transparent"
+            strokeWidth={Math.max(lw * 8, 1.2)}
+            pointerEvents="stroke"
+            {...zone}
+          />
+        </>
+      )}
       <circle
         className="kp-rotate"
-        cx={hx}
-        cy={hy}
+        cx={px}
+        cy={py}
         r={r}
         fill="#fff"
         stroke={color}
         strokeWidth={lw * 1.4}
+        strokeDasharray={out ? `${lw * 2} ${lw * 1.5}` : undefined}
         pointerEvents="all"
         data-frame={index}
         data-view={viewAttr}
         data-centre={`${ce},${cn}`}
+        {...zone}
       >
-        <title>Drag to rotate this chart (hold Shift for any angle)</title>
+        <title>
+          {!seen
+            ? `Chart ${index + 1} is outside the key plan: drag this to rotate it (hold Shift for any angle)`
+            : "Drag to rotate this chart (hold Shift for any angle)"}
+        </title>
       </circle>
     </g>
   );

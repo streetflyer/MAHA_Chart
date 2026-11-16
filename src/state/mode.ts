@@ -3,6 +3,7 @@ import type { Dataset } from "../model/datasets";
 import { useCpEdit } from "./cpEdit";
 import { useDrawingEdit } from "./drawingEdit";
 import { useEventEdit } from "./eventEdit";
+import { useKeyplanView } from "./keyplanView";
 import { useMatchPick } from "./matchPick";
 import { useSmoothTool } from "./smoothTool";
 import { useEditor } from "./store";
@@ -16,6 +17,7 @@ import { useSurvey } from "./surveyData";
  *   idle ──double-click events panel───────▶ events    (useEventEdit)
  *   idle ──"Smooth tool" in the properties─▶ smooth    (useSmoothTool)
  *   idle ──"Pick / Draw matchline" (key plan)▶ matchline (useMatchPick)
+ *   idle ──double-click the key plan─────────▶ keyview   (useKeyplanView: wheel zooms, drag moves the map)
  *   any  ──Esc / Done / click outside──────▶ idle
  *   any  ──enter another mode──────────────▶ that mode (the old one is left first)
  *   any  ──its panel or data disappears────▶ idle      (folder switch, file removed, template closed)
@@ -32,7 +34,8 @@ export type Mode =
   | "cp"
   | "events"
   | "smooth"
-  | "matchline";
+  | "matchline"
+  | "keyview";
 
 export const MODES: Mode[] = [
   "idle",
@@ -41,8 +44,16 @@ export const MODES: Mode[] = [
   "events",
   "smooth",
   "matchline",
+  "keyview",
 ];
-const ON = ["drawing", "cp", "events", "smooth", "matchline"] as const;
+const ON = [
+  "drawing",
+  "cp",
+  "events",
+  "smooth",
+  "matchline",
+  "keyview",
+] as const;
 
 /** What the user is told while a mode is on. */
 export const MODE_INFO: Record<
@@ -69,6 +80,10 @@ export const MODE_INFO: Record<
     label: "Choosing matchlines",
     hint: "Pick: click a green overlap in the key plan. Draw: click two points across the line. Esc or Done finishes.",
   },
+  keyview: {
+    label: "Key plan view",
+    hint: "Scroll to zoom, drag the map to move it. Esc or Done finishes.",
+  },
 };
 
 export interface ModeFlags {
@@ -77,6 +92,7 @@ export interface ModeFlags {
   events: boolean;
   smooth: boolean;
   matchline: boolean;
+  keyview: boolean;
 }
 
 /** The mode a set of store flags stands for. More than one on is never left standing: see `conflicts`. */
@@ -86,6 +102,7 @@ export function modeOf(f: ModeFlags): Mode {
   if (f.events) return "events";
   if (f.smooth) return "smooth";
   if (f.matchline) return "matchline";
+  if (f.keyview) return "keyview";
   return "idle";
 }
 
@@ -111,6 +128,7 @@ export interface ModeTargets {
   eventsPanel: string | null;
   smoothDataset: string | null;
   matchPanel: string | null;
+  keyviewPanel: string | null;
 }
 
 /** Is the thing a mode works on still there? */
@@ -138,6 +156,8 @@ export function modeStillValid(
       return data(t.smoothDataset, "long");
     case "matchline":
       return panel(t.matchPanel) && w.datasets.some((d) => d.kind === "route");
+    case "keyview":
+      return panel(t.keyviewPanel);
   }
 }
 
@@ -147,6 +167,7 @@ const flags = (): ModeFlags => ({
   events: useEventEdit.getState().active,
   smooth: useSmoothTool.getState().active,
   matchline: useMatchPick.getState().active,
+  keyview: useKeyplanView.getState().active,
 });
 
 export const currentMode = (): Mode => modeOf(flags());
@@ -157,6 +178,7 @@ const leave: Record<Exclude<Mode, "idle">, () => void> = {
   events: () => useEventEdit.getState().exit(),
   smooth: () => useSmoothTool.getState().stop(),
   matchline: () => useMatchPick.getState().exit(),
+  keyview: () => useKeyplanView.getState().exit(),
 };
 
 /** Back to idle, whatever is on. */
@@ -183,6 +205,7 @@ export function enterMode(
     useSmoothTool.getState().start(datasetId);
   else if (m === "matchline" && panelId)
     useMatchPick.getState().enter(panelId, target.tool ?? "pick");
+  else if (m === "keyview" && panelId) useKeyplanView.getState().enter(panelId);
 }
 
 function validate() {
@@ -199,6 +222,7 @@ function validate() {
     eventsPanel: useEventEdit.getState().panelId,
     smoothDataset: useSmoothTool.getState().datasetId,
     matchPanel: useMatchPick.getState().panelId,
+    keyviewPanel: useKeyplanView.getState().panelId,
   };
   for (const m of ON)
     if (f[m] && !modeStillValid(m, targets, world)) leave[m]();
@@ -230,6 +254,7 @@ export function installModeMachine() {
   watch("events", useEventEdit);
   watch("smooth", useSmoothTool);
   watch("matchline", useMatchPick);
+  watch("keyview", useKeyplanView);
   // A mode never outlives what it edits.
   useSurvey.subscribe((s, p) => s.datasets !== p.datasets && validate());
   useEditor.subscribe((s, p) => s.template !== p.template && validate());

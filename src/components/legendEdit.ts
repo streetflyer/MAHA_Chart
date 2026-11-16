@@ -1,6 +1,8 @@
 import { useEditor } from "../state/store";
 import { useSurvey } from "../state/surveyData";
 import { askText } from "./Dialog";
+import { useCodeDefs } from "../state/codeDefs";
+import type { MenuItem } from "./ContextMenu";
 import { LEGEND_GROUPS } from "../model/presets";
 import type { LegendGroup, Panel } from "../model/types";
 
@@ -118,4 +120,92 @@ export function editLegendAt(
       });
   })();
   return true;
+}
+
+/** A right-click on the event code definitions of a legend: which legend and which code. */
+export function codeDefAt(
+  clientX: number,
+  clientY: number,
+): { panelId: string; code?: string } | null {
+  const over = (t: Element) => {
+    const r = t.getBoundingClientRect();
+    return (
+      clientX >= r.left - 2 &&
+      clientX <= r.right + 2 &&
+      clientY >= r.top - 1 &&
+      clientY <= r.bottom + 1
+    );
+  };
+  const line = [
+    ...document.querySelectorAll("svg.sheet [data-codes] tspan[data-line]"),
+  ].find(over);
+  const head = [
+    ...document.querySelectorAll('svg.sheet [data-lhead="codes"]'),
+  ].find(over);
+  const hit = line ?? head;
+  if (!hit) return null;
+  const p = legendOf(hit);
+  return p
+    ? { panelId: p.id, code: line?.getAttribute("data-line") ?? undefined }
+    : null;
+}
+
+/** Menu of a legend's event code definitions. */
+export function codeDefMenu(panelId: string, code?: string): MenuItem[] {
+  const p = useEditor.getState().template?.panels.find((q) => q.id === panelId);
+  const items: MenuItem[] = [
+    {
+      label: "Write the definitions from the file's columns…",
+      action: () => useCodeDefs.getState().open(panelId),
+    },
+  ];
+  if (p?.legendStyle?.codeDef)
+    items.push({
+      label: "Back to the file's value column",
+      action: () =>
+        useEditor.getState().updatePanel(panelId, {
+          legendStyle: {
+            ...p.legendStyle,
+            codeDef: undefined,
+          } as Panel["legendStyle"],
+        }),
+    });
+  if (code) {
+    const key = code.trim().toUpperCase();
+    items.push({
+      label: `Write the definition of ${code}…`,
+      action: async () => {
+        const cur =
+          p?.legendStyle?.codeEdits?.[key] ??
+          document
+            .querySelector(`svg.sheet [data-codes] tspan[data-line="${code}"]`)
+            ?.textContent?.slice(code.length)
+            .trim() ??
+          "";
+        const v = await askText(`Definition of ${code}`, cur);
+        if (v === null) return;
+        useEditor.getState().updatePanel(panelId, {
+          legendStyle: {
+            ...p?.legendStyle,
+            codeEdits: { ...p?.legendStyle?.codeEdits, [key]: v },
+          } as Panel["legendStyle"],
+        });
+      },
+    });
+    if (p?.legendStyle?.codeEdits?.[key] !== undefined)
+      items.push({
+        label: `Back to the written definition of ${code}`,
+        action: () => {
+          const { [key]: _gone, ...rest } = p.legendStyle!.codeEdits!;
+          void _gone;
+          useEditor.getState().updatePanel(panelId, {
+            legendStyle: {
+              ...p.legendStyle,
+              codeEdits: rest,
+            } as Panel["legendStyle"],
+          });
+        },
+      });
+  }
+  return items;
 }

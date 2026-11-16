@@ -541,6 +541,12 @@ export function buildDataset(
       const i = h.findIndex((c) => c === "TIMESTAMP" || c === "DATETIME");
       if (i >= 0) timeCol = i;
     }
+    const width = Math.max(0, ...data.slice(0, 200).map((r) => r.length));
+    const headRow = t && m.header ? (t.rows[m.skip] ?? []) : [];
+    const columns = Array.from(
+      { length: width },
+      (_, i) => (headRow[i] ?? "").trim() || `Column ${i + 1}`,
+    );
     for (const r of m.span ? [] : data) {
       const k = num(r[col("kp")]);
       const code = (r[col("code")] ?? "").trim();
@@ -551,6 +557,7 @@ export function buildDataset(
         code,
         value: col("value") !== undefined ? (r[col("value")] ?? "").trim() : "",
         ...(Number.isFinite(t) ? { t } : {}),
+        cells: r.map((c) => String(c ?? "").trim()),
       });
     }
     records.push(
@@ -561,6 +568,7 @@ export function buildDataset(
       ...base,
       kind: "events",
       records,
+      columns: m.span ? undefined : columns,
       labels: true,
       font: { ...DEFAULT_FONT },
       links: m.links,

@@ -128,6 +128,8 @@ export interface EventRecord {
   /** Freespan / burial listings: length and height (m) carried on the start record. */
   length?: number;
   height?: number;
+  /** Every cell of the row in the imported file, so a definition can be written from any column. */
+  cells?: string[];
 }
 
 /** Text look for data drawn on the sheet. */
@@ -538,6 +540,8 @@ export type Dataset =
   | (Base & {
       kind: "events";
       records: EventRecord[];
+      /** Names of the file's columns, as the cells of each record are ordered. */
+      columns?: string[];
       labels: boolean;
       font: DataFont;
       links: EventLink[];

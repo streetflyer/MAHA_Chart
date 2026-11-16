@@ -1,3 +1,5 @@
+import { useKeyplanView } from "../state/keyplanView";
+import { keyplanFit } from "./Keyplan";
 import { MODE_INFO, exitMode, useMode } from "../state/mode";
 
 /**
@@ -17,9 +19,26 @@ export function ModeBar() {
     >
       <span>{info.label}</span>
       <span className="mode-hint">Esc to finish</span>
+      {mode === "keyview" && <KeyviewTools />}
       <button type="button" onClick={() => exitMode()}>
         Done
       </button>
     </div>
+  );
+}
+
+/** Zoom-to-fit buttons of the key plan view mode. */
+function KeyviewTools() {
+  const id = useKeyplanView((s) => s.panelId);
+  const fit = (whole: boolean) => id && keyplanFit.get(id)?.(whole);
+  return (
+    <>
+      <button type="button" data-kv-fit="line" onClick={() => fit(false)}>
+        Fit line and charts
+      </button>
+      <button type="button" data-kv-fit="whole" onClick={() => fit(true)}>
+        Fit the whole map
+      </button>
+    </>
   );
 }

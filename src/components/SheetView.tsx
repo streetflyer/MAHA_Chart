@@ -1,5 +1,13 @@
 import { editSessionAt } from "./KpPanels";
-import { editLegendAt } from "./legendEdit";
+import { keyplanStyle } from "./Keyplan";
+import { enterMode } from "../state/mode";
+import { codeDefAt, editLegendAt } from "./legendEdit";
+import {
+  panView,
+  useKeyplanView,
+  zoomAbout,
+  type KeyView,
+} from "../state/keyplanView";
 import { editPairAt } from "./pairEdit";
 import {
   useCallback,
@@ -103,8 +111,10 @@ export interface ContextTarget {
     | "cp"
     | "planitem"
     | "callout"
-    | "evlabel";
+    | "evlabel"
+    | "codedef";
   id?: string;
+  code?: string;
   rowId?: string;
 }
 
@@ -161,6 +171,7 @@ type Drag =
       hit?: Selection;
     }
   | { type: "north"; panelId: string }
+  | { type: "kview"; panelId: string; start: Pt; view: KeyView; k: number }
   | {
       type: "callout";
       id: string;
@@ -338,6 +349,15 @@ export function SheetView({
     return { x: pt.x, y: pt.y };
   }, []);
 
+  /** The map shown in a key plan (from its pan layer): centre and width in metres. */
+  function keyViewOf(el: Element): KeyView {
+    const [minE, maxN, k, , , , aw, ah] = el
+      .getAttribute("data-kview")!
+      .split(",")
+      .map(Number);
+    return { cE: minE + aw / k / 2, cN: maxN - ah / k / 2, w: aw / k };
+  }
+
   /** Screen pixels per paper millimetre at the current zoom. */
   const pxPerMm = (): number => svgRef.current?.getScreenCTM()?.a ?? 1;
 
@@ -346,6 +366,30 @@ export function SheetView({
     const svg = svgRef.current!;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      // Adjusting the key plan: the wheel zooms the map under the pointer, not the sheet.
+      if (useKeyplanView.getState().active) {
+        const kv = document
+          .elementsFromPoint(e.clientX, e.clientY)
+          .find((x) => x.closest("[data-kview]"))
+          ?.closest("[data-kview]");
+        if (kv) {
+          const [minE, maxN, k, ax, ay, id] = kv
+            .getAttribute("data-kview")!
+            .split(",");
+          const pm = toMm(e.clientX, e.clientY);
+          const eK = Number(minE) + (pm.x - Number(ax)) / Number(k);
+          const nK = Number(maxN) - (pm.y - Number(ay)) / Number(k);
+          const panel = store().template?.panels.find((q) => q.id === id);
+          if (panel) {
+            const cur = keyViewOf(kv);
+            const next = zoomAbout(cur, eK, nK, Math.exp(e.deltaY * 0.0015));
+            store().updatePanel(id, {
+              keyplan: { ...keyplanStyle(panel), view: next },
+            });
+          }
+          return;
+        }
+      }
       const p = toMm(e.clientX, e.clientY);
       const k = Math.exp(e.deltaY * 0.0015);
       setView((v) => {
@@ -602,6 +646,26 @@ export function SheetView({
       });
       return;
     }
+    // Adjusting the key plan view: a drag on the map moves it; a click outside finishes.
+    const kvs = useKeyplanView.getState();
+    if (kvs.active && !frameEl) {
+      const hit = document
+        .elementsFromPoint(e.clientX, e.clientY)
+        .find((x) => x.closest("[data-kview]"))
+        ?.closest("[data-kview]");
+      if (hit) {
+        store().beginGesture();
+        setDrag({
+          type: "kview",
+          panelId: kvs.panelId!,
+          start: at,
+          view: keyViewOf(hit),
+          k: Number(hit.getAttribute("data-kview")!.split(",")[2]),
+        });
+        return;
+      }
+      kvs.exit();
+    }
     const route = useSurvey.getState().route;
     if (frameEl && route) {
       // Slide a chart's frame along the line in the key plan to fine-tune its overlap.
@@ -621,6 +685,7 @@ export function SheetView({
         // Rotation handle: turn the frame about its centre.
         const c = centre.split(",").map(Number) as [number, number];
         const g = toGrid(at);
+        useKeyplanView.getState().setRotating(true);
         setDrag({
           type: "rotate",
           index,
@@ -1053,6 +1118,22 @@ export function SheetView({
       }));
       return;
     }
+    if (drag.type === "kview") {
+      const view = panView(
+        drag.view,
+        -(at.x - drag.start.x) / drag.k,
+        (at.y - drag.start.y) / drag.k,
+      );
+      store().updateGesture((t) => ({
+        ...t,
+        panels: t.panels.map((q) =>
+          q.id === drag.panelId
+            ? { ...q, keyplan: { ...keyplanStyle(q), view } }
+            : q,
+        ),
+      }));
+      return;
+    }
     if (drag.type === "rotate") {
       const g = drag.toGrid(at);
       let deg =
@@ -1222,6 +1303,8 @@ export function SheetView({
             );
           }, SLOW_CLICK_MS);
       }
+    } else if (drag.type === "kview") {
+      store().endGesture();
     } else if (drag.type === "mapPan") {
       store().endGesture();
       // Shift+click on the plan view without dragging still adds it to the selection.
@@ -1236,6 +1319,7 @@ export function SheetView({
       drag.type === "callout"
     ) {
       store().endGesture();
+      useKeyplanView.getState().setRotating(false);
       // A click (no drag) on a text box opens its settings in the Properties panel.
       if (drag.type === "callout" && !drag.moved) {
         const { panelId, cid } = splitCallout(drag.id);
@@ -1293,6 +1377,23 @@ export function SheetView({
       return void editPlanItemText(
         ml ?? `${pDbl.getAttribute("data-north")}|north`,
       );
+    }
+    // Double-click in the key plan: scroll to zoom and drag to move its map.
+    const dk = toMm(e.clientX, e.clientY);
+    const kp = template.panels.find(
+      (q) =>
+        q.type === "keyplan" &&
+        dk.x >= q.x &&
+        dk.x <= q.x + q.w &&
+        dk.y >= q.y &&
+        dk.y <= q.y + q.h,
+    );
+    if (kp && !el.closest("[data-frame]")) {
+      if (!useKeyplanView.getState().active) {
+        enterMode("keyview", { panelId: kp.id });
+        store().select({ kind: "panel", id: kp.id });
+      }
+      return;
     }
     // Double-click in a plan view that has a drawing switches to editing the drawing's objects.
     const pp = planPanel(template);
@@ -1459,6 +1560,13 @@ export function SheetView({
       return onContextMenu(e.clientX, e.clientY, at, {
         kind: "evlabel",
         id: evEl.getAttribute("data-evlabel")!,
+      });
+    const cd = codeDefAt(e.clientX, e.clientY);
+    if (cd)
+      return onContextMenu(e.clientX, e.clientY, at, {
+        kind: "codedef",
+        id: cd.panelId,
+        code: cd.code,
       });
     const planEl = planItemUnder(e);
     const coEl = planEl?.getAttribute("data-callout");
