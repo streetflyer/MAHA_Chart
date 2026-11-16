@@ -8,6 +8,9 @@ interface Prefs {
   hoverInfo: boolean;
   /** Shortcut that turns hover info on and off, e.g. "F3" or "Ctrl+I". */
   hoverKey: string;
+  /** Shortcut that turns the ruler on and off. */
+  rulerKey: string;
+  setRulerKey(k: string): void;
   setHoverInfo(on: boolean): void;
   setHoverKey(k: string): void;
 }
@@ -26,7 +29,11 @@ function keep(p: Prefs) {
   try {
     localStorage.setItem(
       KEY,
-      JSON.stringify({ hoverInfo: p.hoverInfo, hoverKey: p.hoverKey }),
+      JSON.stringify({
+        hoverInfo: p.hoverInfo,
+        hoverKey: p.hoverKey,
+        rulerKey: p.rulerKey,
+      }),
     );
   } catch {
     /* private window: settings last for this visit only */
@@ -38,6 +45,11 @@ const saved = load();
 export const usePrefs = create<Prefs>((set, get) => ({
   hoverInfo: saved.hoverInfo ?? false,
   hoverKey: saved.hoverKey || "F3",
+  rulerKey: saved.rulerKey || "F4",
+  setRulerKey: (rulerKey) => {
+    set({ rulerKey });
+    keep(get());
+  },
   setHoverInfo: (hoverInfo) => {
     set({ hoverInfo });
     keep(get());

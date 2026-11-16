@@ -12,6 +12,7 @@ import {
   gridToPlan,
   segmentsProjection,
   pointAt,
+  nearestChainage,
   type Bounds,
   type ChartGeometry,
 } from "../model/route";
@@ -38,6 +39,7 @@ import { linesPath, routePath } from "./linework";
 import { LineworkLayer } from "./LineworkLayer";
 import { Callouts, inverseOf, planProjection } from "./Callouts";
 import { hoverSources } from "../state/hoverInfo";
+import { rulerSources } from "../state/ruler";
 import { planLines } from "./hoverText";
 import { lineworkFor } from "../model/datasets";
 import { fontSize, measureText } from "./svgText";
@@ -66,10 +68,14 @@ export function PlanView({
   useEffect(
     () => () => {
       hoverSources.delete(p.id);
+      rulerSources.delete(p.id);
     },
     [p.id],
   );
-  const sets = useMemo(() => lineworkFor(datasets, "plan"), [datasets]);
+  const sets = useMemo(
+    () => lineworkFor(datasets, "plan", sheetIndex),
+    [datasets, sheetIndex],
+  );
   const st = planStyle(p);
   const rect = useMemo(
     () => ({ x: p.x, y: p.y, w: p.w, h: p.h }),
@@ -181,6 +187,29 @@ export function PlanView({
   hoverSources.set(p.id, {
     rect,
     info: (x, y) => planLines(...unproject(x, y), route, k0h),
+  });
+  rulerSources.set(p.id, {
+    rect,
+    kpAt: (x, y) =>
+      route ? k0h + nearestChainage(route, ...unproject(x, y)) : null,
+    at: (kp) => {
+      if (!route) return null;
+      const c = kp - k0h;
+      if (c < 0 || c > route.length) return null;
+      const a = project(...pointAt(route, c));
+      const b = project(...pointAt(route, Math.min(route.length, c + 1)));
+      const d = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+      // Square to the line, across the whole plan view.
+      const nx = -(b[1] - a[1]) / d;
+      const ny = (b[0] - a[0]) / d;
+      const L = Math.hypot(rect.w, rect.h);
+      return {
+        x1: a[0] - nx * L,
+        y1: a[1] - ny * L,
+        x2: a[0] + nx * L,
+        y2: a[1] + ny * L,
+      };
+    },
   });
   // The runline's own colour and width, set on import or in its data list entry.
   const routeColor = before?.color ?? st.routeColor;

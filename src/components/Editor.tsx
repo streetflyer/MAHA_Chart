@@ -64,6 +64,7 @@ import { useEventEdit } from "../state/eventEdit";
 import { EventEditBar } from "./EventEditBar";
 import { ModeBar } from "./ModeBar";
 import { exitMode, useMode } from "../state/mode";
+import { useRuler } from "../state/ruler";
 import { useKeyplanView } from "../state/keyplanView";
 import { undoEventLabels } from "./eventLabelEdit";
 import { planItemMenu } from "./planItems";
@@ -292,6 +293,12 @@ export function Editor({ onExit }: { onExit(): void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || s().editing) return;
+      if (shortcutOf(e) === usePrefs.getState().rulerKey) {
+        e.preventDefault();
+        const r = useRuler.getState();
+        r.setOn(!r.on);
+        return;
+      }
       if (shortcutOf(e) === usePrefs.getState().hoverKey) {
         e.preventDefault();
         toggleHoverInfo();
@@ -983,6 +990,7 @@ export function Editor({ onExit }: { onExit(): void }) {
             Parameters…
           </button>
           <HoverInfoButtons />
+          <RulerButtons />
         </div>
         <div className="group">
           <button
@@ -1695,6 +1703,42 @@ function HoverInfoButtons() {
         onClick={() => void change()}
         title="Change the hover info shortcut"
         aria-label="Change the hover info shortcut"
+      >
+        ⌨
+      </button>
+    </span>
+  );
+}
+
+function RulerButtons() {
+  const on = useRuler((r) => r.on);
+  const key = usePrefs((p) => p.rulerKey);
+  async function change() {
+    const v = await askText(
+      "Shortcut for the ruler (e.g. F4, Ctrl+R, Alt+K)",
+      key,
+      "Set",
+    );
+    if (v === null) return;
+    const k = normaliseShortcut(v);
+    if (k) usePrefs.getState().setRulerKey(k);
+  }
+  return (
+    <span className="btn-pair">
+      <button
+        className={on ? "active" : ""}
+        aria-pressed={on}
+        data-ruler={on ? "on" : "off"}
+        onClick={() => useRuler.getState().setOn(!on)}
+        title={`Show a red line at the same KP in every panel, following the pointer (${key})`}
+      >
+        Ruler ({key})
+      </button>
+      <button
+        className="hover-key"
+        onClick={() => void change()}
+        title="Change the ruler shortcut"
+        aria-label="Change the ruler shortcut"
       >
         ⌨
       </button>

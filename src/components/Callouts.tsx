@@ -1,3 +1,4 @@
+import { useEditor } from "../state/store";
 import type { Callout, PlanStyle } from "../model/types";
 import { calloutLayout, leaderStart } from "../model/callout";
 import { fontSize, measureText } from "./svgText";
@@ -37,11 +38,14 @@ export function Callouts({
   st: PlanStyle;
   project: (e: number, n: number) => Pt;
 }) {
+  const chart = useEditor((s) => s.sheetIndex);
   return (
     <>
-      {(st.callouts ?? []).map((c) => (
-        <CalloutView key={c.id} c={c} panelId={panelId} project={project} />
-      ))}
+      {(st.callouts ?? [])
+        .filter((c) => c.chart === undefined || c.chart === chart)
+        .map((c) => (
+          <CalloutView key={c.id} c={c} panelId={panelId} project={project} />
+        ))}
     </>
   );
 }

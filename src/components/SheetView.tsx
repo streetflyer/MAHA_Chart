@@ -51,6 +51,8 @@ import { planStyle } from "./PlanView";
 import { useSurvey } from "../state/surveyData";
 import { useImport } from "./ImportDialog";
 import { askText } from "./Dialog";
+import { rulerTo, useRuler } from "../state/ruler";
+import { RulerLines } from "./RulerLines";
 import { editPlanItemText, matchLabelOf } from "./planItems";
 import {
   calloutsOf,
@@ -857,6 +859,7 @@ export function SheetView({
   function onPointerMove(e: React.PointerEvent) {
     const at = toMm(e.clientX, e.clientY);
     onCursor(at);
+    if (useRuler.getState().on) rulerTo(at.x, at.y);
     const mp = useMatchPick.getState();
     if (mp.active && mp.tool === "draw" && mp.first) {
       const area = document
@@ -1754,6 +1757,7 @@ export function SheetView({
             px={px}
           />
         ))}
+        <RulerLines />
         {guides.x !== undefined && (
           <line
             className="guide"

@@ -265,6 +265,8 @@ export interface CalloutRow {
 /** A plan view text box: a coloured title band, the coordinates it points at, and an arrow. */
 export interface Callout {
   id: string;
+  /** The chart (from 0) it was added on; unset: shown on every chart. */
+  chart?: number;
   /** Title band text; new lines allowed. */
   title: string;
   /** Grid coordinates the arrow points at. */

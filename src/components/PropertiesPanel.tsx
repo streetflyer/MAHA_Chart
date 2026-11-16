@@ -2669,7 +2669,10 @@ function MatchlineControls({
 
 /** Text boxes with an arrow in the plan view. */
 function CalloutEditor({ p }: { p: Panel }) {
-  const list = planStyle(p).callouts ?? [];
+  const chart = useEditor((s) => s.sheetIndex);
+  const list = (planStyle(p).callouts ?? []).filter(
+    (c) => c.chart === undefined || c.chart === chart,
+  );
   const [note, setNote] = useState("");
   return (
     <>

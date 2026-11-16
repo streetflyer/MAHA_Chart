@@ -496,6 +496,8 @@ export type Dataset =
   | (Base & {
       kind: "linework";
       lw: Linework;
+      /** Drawing edits made on one chart (from 0) leave the others alone: that chart's own copy of the drawing. */
+      chartLw?: Record<number, Linework>;
       /** Survey line only: its start and/or end matched to the longitudinal profile's first/last KP. */
       kpMatch?: KpMatch;
       /** The survey line's polylines before that match. */
@@ -594,19 +596,26 @@ type LineworkSet = Extract<Dataset, { kind: "linework" }>;
 export function lineworkFor(
   datasets: Dataset[],
   where: "plan" | "siteplan",
+  /** The chart being drawn: its own edits of a drawing replace the shared drawing. */
+  chart?: number,
 ): LineworkSet[] {
   // A survey line copied into the runline is greyed out in the panel and never drawn (nor printed):
   // the runline is drawn in its place.
   const copied = datasets.some(isCopiedRunline);
-  return datasets.filter(
-    (d): d is LineworkSet =>
-      d.kind === "linework" &&
-      d.visible &&
-      !(copied && d.target === "asbuilt") &&
-      (d.target === where ||
-        (where === "plan" && d.target === "asbuilt") ||
-        !!d.both),
-  );
+  return datasets
+    .filter(
+      (d): d is LineworkSet =>
+        d.kind === "linework" &&
+        d.visible &&
+        !(copied && d.target === "asbuilt") &&
+        (d.target === where ||
+          (where === "plan" && d.target === "asbuilt") ||
+          !!d.both),
+    )
+    .map((d) => {
+      const own = chart === undefined ? undefined : d.chartLw?.[chart];
+      return own ? { ...d, lw: own } : d;
+    });
 }
 
 /** Line styles offered for grid lines: label and dash pattern in mm. */

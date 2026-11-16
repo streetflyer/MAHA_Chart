@@ -8,6 +8,7 @@ import { useEventEdit } from "../state/eventEdit";
 import { useSmoothTool } from "../state/smoothTool";
 import { kpFinder } from "./CpPanel";
 import { hoverSources } from "../state/hoverInfo";
+import { rulerSources } from "../state/ruler";
 import { kpPanelLines } from "./hoverText";
 import { extraGridKps } from "../model/kpGrid";
 import { autoVideoText } from "../model/video";
@@ -334,8 +335,20 @@ export function KpPanelData({
           (1.5 * t.scale.horizontal) / 1000,
         ),
     });
+    const x1 = p.x + p.w;
+    rulerSources.set(p.id, {
+      rect: { x: x0, y: p.y, w: x1 - x0, h: p.h },
+      kpAt: (x) => find(x),
+      at: (kp) => {
+        const x = toX(kp);
+        return Math.abs(x) < 1e5 && x >= x0 - 0.01 && x <= x1 + 0.01
+          ? { x1: x, y1: p.y, x2: x, y2: p.y + p.h }
+          : null;
+      },
+    });
     return () => {
       hoverSources.delete(p.id);
+      rulerSources.delete(p.id);
     };
   });
   if (!toX) return null;

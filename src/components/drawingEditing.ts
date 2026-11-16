@@ -9,6 +9,7 @@ import {
 import { lineworkFor } from "../model/datasets";
 import type { DxfText } from "../model/dxf";
 import { useDrawingEdit, type PlanContext } from "../state/drawingEdit";
+import { useEditor } from "../state/store";
 import { useSurvey } from "../state/surveyData";
 import { layerShown, placeText, type LineworkSet } from "./LineworkLayer";
 import { copyTexts, pasteTextsAt } from "./drawingMenu";
@@ -18,7 +19,11 @@ type Pt = [number, number];
 
 /** The drawings shown in the plan view. */
 export const planSets = (): LineworkSet[] =>
-  lineworkFor(useSurvey.getState().datasets, "plan");
+  lineworkFor(
+    useSurvey.getState().datasets,
+    "plan",
+    useEditor.getState().sheetIndex,
+  );
 
 /** A grid point near the drawings, so paper↔grid maps don't lose precision to the large coordinates. */
 function anchorOf(sets: LineworkSet[]): Pt {

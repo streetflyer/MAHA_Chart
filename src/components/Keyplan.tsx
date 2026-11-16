@@ -11,6 +11,7 @@ import {
 import { chartKpRange } from "../model/tokens";
 import { useMatchPick } from "../state/matchPick";
 import { hoverSources } from "../state/hoverInfo";
+import { rulerSources } from "../state/ruler";
 import {
   chartFrames,
   emptyBounds,
@@ -205,8 +206,20 @@ export function Keyplan({
         return ["Key plan", ...lines];
       },
     });
+    rulerSources.set(p.id, {
+      rect: area,
+      kpAt: (x, y) => {
+        if (!route) return null;
+        const e = view.minE + (x - area.x) / k;
+        const n = view.maxN - (y - area.y) / k;
+        const k0 = (parseFloat(template.fields.START_KP ?? "0") || 0) * 1000;
+        return k0 + nearestChainage(route, e, n);
+      },
+      at: () => null,
+    });
     return () => {
       hoverSources.delete(p.id);
+      rulerSources.delete(p.id);
     };
   });
 

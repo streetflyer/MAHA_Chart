@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { DxfText, Linework } from "../model/dxf";
+import { useEditor } from "./store";
 import { useSurvey } from "./surveyData";
 
 type Pt = [number, number];
@@ -23,6 +24,8 @@ export type Preview =
   | { kind: "box"; x0: number; y0: number; x1: number; y1: number };
 
 interface Snapshot {
+  /** The chart the change was made on. */
+  chart: number;
   /** The drawings' linework before the change, by dataset id. */
   lw: Record<string, Linework>;
 }
@@ -64,9 +67,19 @@ interface DrawingEdit {
 
 const survey = () => useSurvey.getState();
 
-function lineworkOf(id: string): Linework | null {
+const chartNow = () => useEditor.getState().sheetIndex;
+
+/** The drawing as chart `chart` shows it: its own edited copy, else the shared drawing. */
+function lineworkOf(id: string, chart = chartNow()): Linework | null {
   const d = survey().datasets.find((x) => x.id === id);
-  return d?.kind === "linework" ? d.lw : null;
+  return d?.kind === "linework" ? (d.chartLw?.[chart] ?? d.lw) : null;
+}
+
+/** Edits belong to one chart: the result is kept as that chart's own copy of the drawing. */
+function writeLinework(id: string, chart: number, lw: Linework) {
+  const d = survey().datasets.find((x) => x.id === id);
+  if (d?.kind !== "linework") return;
+  survey().updateDataset(id, { chartLw: { ...d.chartLw, [chart]: lw } });
 }
 
 export const useDrawingEdit = create<DrawingEdit>((set, get) => ({
@@ -96,16 +109,17 @@ export const useDrawingEdit = create<DrawingEdit>((set, get) => ({
   setPreview: (preview) => set({ preview }),
   select: (selected) => set({ selected }),
   change: (ids, f, keepSelection = true) => {
+    const chart = chartNow();
     const before: Record<string, Linework> = {};
     for (const id of ids) {
-      const lw = lineworkOf(id);
+      const lw = lineworkOf(id, chart);
       if (!lw) continue;
       before[id] = lw;
-      survey().updateDataset(id, { lw: f(lw, id) });
+      writeLinework(id, chart, f(lw, id));
     }
     if (!Object.keys(before).length) return;
     set((s) => ({
-      past: [...s.past.slice(-49), { lw: before }],
+      past: [...s.past.slice(-49), { chart, lw: before }],
       future: [],
       selected: keepSelection ? s.selected : {},
     }));
@@ -116,13 +130,13 @@ export const useDrawingEdit = create<DrawingEdit>((set, get) => ({
     if (!snap) return;
     const now: Record<string, Linework> = {};
     for (const [id, lw] of Object.entries(snap.lw)) {
-      const cur = lineworkOf(id);
+      const cur = lineworkOf(id, snap.chart);
       if (cur) now[id] = cur;
-      survey().updateDataset(id, { lw });
+      writeLinework(id, snap.chart, lw);
     }
     set((s) => ({
       past: s.past.slice(0, -1),
-      future: [{ lw: now }, ...s.future],
+      future: [{ chart: snap.chart, lw: now }, ...s.future],
     }));
   },
   redo: () => {
@@ -131,10 +145,19 @@ export const useDrawingEdit = create<DrawingEdit>((set, get) => ({
     if (!snap) return;
     const now: Record<string, Linework> = {};
     for (const [id, lw] of Object.entries(snap.lw)) {
-      const cur = lineworkOf(id);
+      const cur = lineworkOf(id, snap.chart);
       if (cur) now[id] = cur;
-      survey().updateDataset(id, { lw });
+      writeLinework(id, snap.chart, lw);
     }
-    set((s) => ({ future: s.future.slice(1), past: [...s.past, { lw: now }] }));
+    set((s) => ({
+      future: s.future.slice(1),
+      past: [...s.past, { chart: snap.chart, lw: now }],
+    }));
   },
 }));
+
+// Edits belong to the chart they were made on: switching chart ends the editing.
+useEditor.subscribe((s, p) => {
+  if (s.sheetIndex !== p.sheetIndex && useDrawingEdit.getState().active)
+    useDrawingEdit.getState().exit();
+});

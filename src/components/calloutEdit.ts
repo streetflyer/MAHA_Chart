@@ -64,7 +64,10 @@ export function addCallout(panelId: string, at?: { x: number; y: number }) {
   const x = at?.x ?? p.x + p.w * 0.45;
   const y = at?.y ?? p.y + p.h * 0.6;
   const [e, n] = pj.unproject(x, y);
-  const c = newCallout(Math.round(e * 10) / 10, Math.round(n * 10) / 10);
+  const c = {
+    ...newCallout(Math.round(e * 10) / 10, Math.round(n * 10) / 10),
+    chart: s.sheetIndex,
+  };
   // Keep the new box inside the panel.
   if (y + c.dy < p.y + 2) c.dy = 6;
   if (x + c.dx + c.w > p.x + p.w - 2) c.dx = -c.w - 12;
