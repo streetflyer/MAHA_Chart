@@ -103,3 +103,12 @@ its KP panels cover only `start`..`end`, and moving it keeps its neighbours join
 
 These work and are covered by end-to-end checks; make them explicit the next time they
 need a change.
+
+## Data on the chart (`src/state/chartData.ts`)
+
+The chart draws only what the user put there. Taking data off (the × in the data list,
+right-click a file chip → "Remove from the chart", the toolbar's "Clear data…")
+also forgets the file's import recipe and settings (`FolderState.off` keeps it from being
+offered as new). "Check imported data" offers only files that are not on the chart and
+were not taken off on purpose. A folder's chart is kept when you leave it even if empty,
+so emptied data does not come back when the folder is opened again.

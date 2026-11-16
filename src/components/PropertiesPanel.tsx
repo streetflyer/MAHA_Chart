@@ -78,6 +78,7 @@ import {
 } from "../model/legendData";
 import { useLegendItems } from "./PanelContent";
 import { keyplanStyle } from "./Keyplan";
+import { datasetRemoved } from "../state/chartData";
 import { withMatchPair } from "./matchPicking";
 import { useMatchPick } from "../state/matchPick";
 import { enterMode, exitMode } from "../state/mode";
@@ -3017,7 +3018,11 @@ function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
           <button
             className="link"
             title="Remove"
-            onClick={() => sv.removeDataset(d.id)}
+            onClick={() => {
+              sv.removeDataset(d.id);
+              // Its file is not read again by itself.
+              datasetRemoved(useProject.getState().active, d.name);
+            }}
           >
             ×
           </button>

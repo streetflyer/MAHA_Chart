@@ -34,6 +34,7 @@ import { normaliseShortcut, shortcutOf, usePrefs } from "../state/prefs";
 import { useHoverTip } from "../state/hoverInfo";
 import { useMatchPick } from "../state/matchPick";
 import { ParametersDialog } from "./ParametersDialog";
+import { clearChartData } from "../state/chartData";
 import { chartsToDxf } from "../model/dxfExport";
 import { chartsToPdf } from "../model/pdfExport";
 import { ThemeButton } from "./ThemeButton";
@@ -257,6 +258,23 @@ export function Editor({ onExit }: { onExit(): void }) {
     } catch (e) {
       flash((e as Error).message);
     }
+  }
+
+  async function clearData() {
+    const n = useSurvey.getState().datasets.length;
+    if (
+      !(await askConfirm(
+        "Clear the data from the chart?",
+        n
+          ? `All ${n} data sets (the line, plan drawings, profiles, events, CP…) are taken off this chart, and the folder forgets how they were read. The files stay in the folder and the layout stays. You can import them again with Check imported data.`
+          : "There is no data on the chart; this also forgets what the folder remembers about its files.",
+        "Clear data",
+        true,
+      ))
+    )
+      return;
+    clearChartData();
+    flash("The chart is empty: all data was taken off it.");
   }
 
   useEffect(() => {
@@ -871,6 +889,13 @@ export function Editor({ onExit }: { onExit(): void }) {
           </button>
         </div>
         <div className="group">
+          <button
+            onClick={() => void clearData()}
+            title="Take all the data off the chart (the layout stays)"
+            data-clear-data
+          >
+            Clear data…
+          </button>
           <button
             onClick={() => setShowParams(true)}
             title="Show and edit every {PARAMETER} the chart text uses ({TITLE}, {PROJECT}…), for all charts or one chart"

@@ -43,6 +43,8 @@ export interface FolderState {
   chartNo?: string;
   /** Import targets (plan, siteplan) that take the drawing kept in the root folder. */
   rootDrawing?: string[];
+  /** Files the user took off the chart on purpose: "Check imported data" does not offer them again. */
+  off?: string[];
 }
 
 export interface ProjectFile {
@@ -88,6 +90,10 @@ interface ProjectState {
   setNumbers(path: string, patch: { jobNo?: string; chartNo?: string }): void;
   /** Remove a file from a folder's list and forget how it was imported. */
   forgetFile(path: string, name: string): void;
+  /** A file was taken off the chart (on) or put back (off): its recipe and settings are forgotten, and it is not offered as new. */
+  setOff(path: string, file: string, on: boolean): void;
+  /** Forget every recipe and setting of a folder (its chart was cleared). */
+  forgetAll(path: string): void;
   /** Copy the template, import recipes and dataset settings of one folder to another. */
   copySettings(from: string, to: string): void;
 }
@@ -152,7 +158,40 @@ export const useProject = create<ProjectState>((set, get) => ({
           ...f,
           recipes: f.recipes.filter((r) => r.file !== name),
           settings: f.settings?.filter((x) => x.name !== name),
+          off: f.off?.filter((x) => x !== name),
         },
+      },
+      dirty: true,
+    });
+  },
+  setOff: (path, file, on) => {
+    const f = get().folder(path);
+    const off = (f.off ?? []).filter((x) => x !== file);
+    set({
+      folders: {
+        ...get().folders,
+        [path]: {
+          ...f,
+          recipes: on ? f.recipes.filter((r) => r.file !== file) : f.recipes,
+          settings: on
+            ? f.settings?.filter(
+                (x) => x.name !== file && !x.name.startsWith(`${file} `),
+              )
+            : f.settings,
+          off: on ? [...off, file] : off,
+        },
+      },
+      dirty: true,
+    });
+  },
+  forgetAll: (path) => {
+    const f = get().folder(path);
+    const { [path]: _gone, ...charts } = get().charts;
+    set({
+      charts,
+      folders: {
+        ...get().folders,
+        [path]: { ...f, recipes: [], settings: [], off: [] },
       },
       dirty: true,
     });

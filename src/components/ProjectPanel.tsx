@@ -28,6 +28,13 @@ import {
   syncChartNumbers,
 } from "../state/folderSettings";
 import { useImport } from "./ImportDialog";
+import {
+  fileOnChart,
+  isDataOf,
+  newFiles,
+  putBackOnList,
+  takeOffChart,
+} from "../state/chartData";
 import { VideoTiming } from "./VideoTiming";
 
 const COLLAPSE_KEY = "maha.projectPanel";
@@ -224,8 +231,14 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
       return;
     }
     if (s.active === path) {
-      const files = withRoot(node.files);
+      const all = withRoot(node.files);
+      // Only what is new: files already on the chart, or taken off it on purpose, are not offered again.
+      const files = newFiles(path, all);
       if (files.length) useImport.getState().request(files);
+      else if (all.length)
+        onNotice(
+          "No new files to import. Add files to the folder, or right-click a file and choose Import this file again.",
+        );
       else
         onNotice(
           "The data is on the chart, but its files have not been read on this computer yet: use Open folder… on the project folder, then Check imported data.",
@@ -244,7 +257,8 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
     }
     keepActiveTemplate();
     // The chart on screen is kept as it is, to come back to.
-    if (s.active !== null && useSurvey.getState().datasets.length) {
+    // (also when it is empty: data taken off must not come back when the folder is opened again).
+    if (s.active !== null) {
       const sv = useSurvey.getState();
       useProject.setState({
         charts: {
@@ -326,6 +340,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
         onNotice(`Couldn’t copy into the folder: ${(e as Error).message}`);
       }
     }
+    for (const f of files) putBackOnList(path, f.name);
     // Same name replaces the old file in the list.
     node.files = [
       ...node.files.filter((x) => !files.some((f) => f.name === x.name)),
@@ -373,7 +388,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
     if (s.active === path)
       for (const d of useSurvey
         .getState()
-        .datasets.filter((x) => x.name === name))
+        .datasets.filter((x) => isDataOf(x.name, name)))
         useSurvey.getState().removeDataset(d.id);
     useProject.setState({ tree: { ...s.tree! }, dirty: true });
     onNotice(
@@ -403,6 +418,16 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
           disabled: s.active !== path,
           action: () => onNotice(moveToData(name)),
         },
+        {
+          label: "Remove from the chart",
+          disabled: s.active !== path || !fileOnChart(name),
+          action: () => {
+            takeOffChart(path, name);
+            onNotice(
+              `${name} is off the chart. The file stays in the folder; use Import this file again to bring it back.`,
+            );
+          },
+        },
         "separator",
         {
           label: "Remove from the project",
@@ -421,7 +446,10 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
             const f = findNode(s.tree, path)?.files.find(
               (x) => x.name === name,
             );
-            if (f) useImport.getState().request([f]);
+            if (f) {
+              putBackOnList(path, name);
+              useImport.getState().request([f]);
+            }
           },
         },
       ],
@@ -578,6 +606,12 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
 
   const sel = pr.selected !== null ? findNode(pr.tree, pr.selected) : null;
   const recipes = sel ? pr.folder(sel.path).recipes : [];
+  // On the chart: for the folder on screen, what is really drawn; for the others, what was read.
+  const datasetNames = useSurvey((x) => x.datasets).map((d) => d.name);
+  const charted = (file: string) =>
+    sel && pr.active === sel.path
+      ? datasetNames.some((n) => isDataOf(n, file))
+      : recipes.some((r) => r.file === file);
 
   return (
     <aside className="project-panel" data-project-link={projectLink(pr)}>
@@ -663,7 +697,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
             {sel.files.map((f) => (
               <li
                 key={f.name}
-                className={`file-chip${recipes.some((r) => r.file === f.name) ? " charted" : ""}`}
+                className={`file-chip${charted(f.name) ? " charted" : ""}`}
                 title={`${f.name}: double-click to show the data; right-click for more`}
                 onDoubleClick={async () =>
                   void showData(await freshFile(f).catch(() => f), f.name)
@@ -672,7 +706,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
               >
                 <span className="chip-icon">{fileIcon(f.name)}</span>
                 <span className="chip-name">{f.name}</span>
-                {recipes.some((r) => r.file === f.name) && (
+                {charted(f.name) && (
                   <span className="chip-tick" title="On the chart">
                     ✓
                   </span>
@@ -686,7 +720,7 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
                   className="missing"
                   title="Saved in the project file; open the project folder again to read it"
                 >
-                  {recipes.some((r) => r.file === n) ? "✓ " : ""}
+                  {charted(n) ? "✓ " : ""}
                   {n}
                 </li>
               ))}
