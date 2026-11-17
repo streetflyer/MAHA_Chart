@@ -414,9 +414,8 @@ export function ScaleFields({ t }: { t: ChartTemplate }) {
         chart)
       </label>
       <p className="muted">
-        With this on, the start and end KP lines (the end of the runline on the
-        last chart) stand where the plan view draws them, so the KP spacing is
-        stretched to the plan view's. Off: true scale.
+        The spacing stays at true scale; only the start of the profiles moves to
+        where the plan view's line starts.
       </p>
       <div className="row2">
         <Field
