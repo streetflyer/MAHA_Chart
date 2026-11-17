@@ -24,6 +24,7 @@ export const LEGEND_SYMBOLS: Record<LegendSymbol, string> = {
   matchline: "Matchline with chart number",
   assetBlob: "Existing asset symbol",
   seabedProfile: "Seabed profile with marker",
+  seabedProfileKp: "Seabed profile with grey pipe circle and KP (0.000)",
   cpStab: "CP stab (circle + mV)",
   burial: "Burial length bracket",
   freespan: "Freespan length bracket",

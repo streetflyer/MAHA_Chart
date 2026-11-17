@@ -133,7 +133,9 @@ function Inner({ panelId, itemId }: { panelId: string; itemId: string }) {
               }
             />
           </label>
-          {(it.symbol === "pipeBand" || it.symbol === "seabedProfile") && (
+          {(it.symbol === "pipeBand" ||
+            it.symbol === "seabedProfile" ||
+            it.symbol === "seabedProfileKp") && (
             <label className="field">
               <span>Fill</span>
               <ColourBox

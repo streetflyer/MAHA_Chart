@@ -433,6 +433,7 @@ export type LegendSymbol =
   | "matchline"
   | "assetBlob"
   | "seabedProfile"
+  | "seabedProfileKp"
   | "cpStab"
   | "burial"
   | "freespan"

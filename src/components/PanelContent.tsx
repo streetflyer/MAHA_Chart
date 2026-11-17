@@ -1048,6 +1048,43 @@ function SymbolBody({
         </g>
       );
     }
+    case "seabedProfileKp": {
+      // A seabed profile drawn as fine dots with the pipe as a grey circle in a red ring, and its KP text.
+      const lx1 = x + w * 0.62;
+      const px = x + w * 0.3;
+      const wob = [0.1, -0.15, 0.05, 0.2, -0.05, 0.12, -0.1, 0.04, -0.08, 0.1];
+      const pts = wob
+        .map(
+          (o, i) => `${x + (lx1 - x) * (i / (wob.length - 1))},${cy + o * 0.5}`,
+        )
+        .join(" ");
+      return (
+        <g>
+          <polyline
+            points={pts}
+            style={{ ...st(0.12, "0.15 0.35"), strokeLinecap: "round" }}
+          />
+          <circle
+            cx={px}
+            cy={cy + 0.1}
+            r={0.9}
+            style={{
+              fill: it.fill ?? "#dddddd",
+              stroke: it.outline ?? "#e00000",
+              strokeWidth: 0.4,
+            }}
+          />
+          <text
+            x={lx1 + 0.8}
+            y={cy + 0.7}
+            fontSize={fontSize(1.6)}
+            style={{ fill: "#000" }}
+          >
+            {it.symbolText ?? "0.000"}
+          </text>
+        </g>
+      );
+    }
     case "pipeBand":
       return (
         <g>
