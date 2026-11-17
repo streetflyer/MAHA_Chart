@@ -822,20 +822,27 @@ export function Editor({ onExit }: { onExit(): void }) {
     const names = frames.map(
       (_, i) => drawingNoOf(template, i) || `Chart ${i + 1}`,
     );
-    const blob = new Blob([chartBoxesToDxf(frames, names)], {
-      type: "application/dxf",
+    const used = new Set<string>();
+    const files = frames.map((f, i) => {
+      let name = names[i].replace(/[^\w.-]+/g, "_") || `Chart_${i + 1}`;
+      while (used.has(name)) name += "_";
+      used.add(name);
+      return { name: `${name}.dxf`, text: chartBoxesToDxf([f], [names[i]]) };
     });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    const base = (template.fields.CHART_NO || template.name).replace(
-      /[^\w.-]+/g,
-      "_",
+    // One file per chart box, a short pause apart so the browser allows them all.
+    files.forEach((f, i) =>
+      setTimeout(() => {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(
+          new Blob([f.text], { type: "application/dxf" }),
+        );
+        a.download = f.name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      }, i * 350),
     );
-    a.download = `${base}_chart_boxes.dxf`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
     flash(
-      `Saved ${a.download}: ${frames.length} chart boxes in easting / northing`,
+      `Saved ${files.length} DXF files, one per chart box, in easting / northing`,
     );
   }
 
