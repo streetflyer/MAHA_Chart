@@ -2174,7 +2174,7 @@ function LinkedEvents({
             )}
             <path
               d={lines}
-              stroke={font.color}
+              stroke={l.lineColor ?? font.color}
               strokeWidth={0.12}
               fill="none"
             />

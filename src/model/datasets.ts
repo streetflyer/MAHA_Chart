@@ -191,6 +191,8 @@ export interface EventLink {
   boldDash?: boolean;
   /** Height of the light bar (hatch) between the end lines, mm, grown from the middle; 0 is none. Unset: fills between the end lines. */
   hatchSize?: number;
+  /** Colour of the two end lines; unset: the event text colour. */
+  lineColor?: string;
   /** Moves the bold bar down (+) or up (-) from its place on the light bar, mm. */
   boldOffset?: number;
 }

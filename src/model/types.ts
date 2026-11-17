@@ -472,6 +472,10 @@ export interface LegendItem {
   boldPos?: "top" | "middle" | "bottom";
   boldColor?: string;
   boldDash?: boolean;
+  /** Linked event symbols: end line colour, light bar height (fraction of the end lines, unset: full) and the bold bar's shift (fraction of the end lines, + down). */
+  lineColor?: string;
+  hatchFrac?: number;
+  boldShift?: number;
   /** A symbol taken from a drawing object (symbol "drawing"): its lines, size (mm) and turn (degrees). */
   shape?: LegendShape;
   size?: number;

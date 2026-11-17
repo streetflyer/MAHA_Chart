@@ -162,6 +162,12 @@ export function dataLegend(
                 boldPos: k.boldPos,
                 boldColor: k.boldColor,
                 boldDash: k.dashed,
+                lineColor: l.lineColor,
+                hatchFrac:
+                  l.hatchSize === undefined
+                    ? undefined
+                    : Math.min(1, Math.max(0, l.hatchSize / 5)),
+                boldShift: l.boldOffset ? l.boldOffset / 5 : undefined,
               };
             })(),
           });

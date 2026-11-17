@@ -1094,13 +1094,23 @@ function SymbolBody({
       const bot = cy + 1.9;
       const bold = 0.7;
       const pos = it.boldPos ?? (it.symbol === "burial" ? "bottom" : "top");
-      const by =
+      // The light bar is as the linked event's setting: full height between the end lines, or a fraction grown from the middle.
+      const mid = (top + bot) / 2;
+      const hh = (bot - top) * (it.hatchFrac ?? 1);
+      const hTop = mid - hh / 2;
+      const hBot = mid + hh / 2;
+      const rawBy =
         pos === "bottom"
-          ? bot - bold
+          ? hBot - bold
           : pos === "middle"
-            ? (top + bot - bold) / 2
-            : top;
+            ? (hTop + hBot - bold) / 2
+            : hTop;
+      const by = Math.min(
+        bot - bold,
+        Math.max(top, rawBy + (it.boldShift ?? 0) * (bot - top)),
+      );
       const bc = it.boldColor ?? c;
+      const lc = it.lineColor ?? c;
       return (
         <g>
           <text
@@ -1112,13 +1122,15 @@ function SymbolBody({
           >
             {it.symbolText}
           </text>
-          <rect
-            x={xa}
-            y={top}
-            width={xb - xa}
-            height={bot - top}
-            style={{ fill: c, fillOpacity: 0.45 }}
-          />
+          {hh > 0 && (
+            <rect
+              x={xa}
+              y={hTop}
+              width={xb - xa}
+              height={hh}
+              style={{ fill: c, fillOpacity: 0.45 }}
+            />
+          )}
           {it.boldDash ? (
             <path
               d={`M${xa} ${by + bold / 2}H${xb}`}
@@ -1140,7 +1152,7 @@ function SymbolBody({
           )}
           <path
             d={`M${xa} ${top} V${bot} M${xb} ${top} V${bot}`}
-            style={{ stroke: c, strokeWidth: 0.25, fill: "none" }}
+            style={{ stroke: lc, strokeWidth: 0.25, fill: "none" }}
           />
         </g>
       );

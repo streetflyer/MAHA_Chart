@@ -1473,6 +1473,11 @@ export function LinksEditor({
             </select>
           </label>
           <Colour
+            label="End line colour"
+            value={l.lineColor ?? "#000000"}
+            onChange={(lineColor) => set(i, { lineColor })}
+          />
+          <Colour
             label="Bold bar colour"
             value={linkLook(l).boldColor}
             onChange={(boldColor) => set(i, { boldColor })}
