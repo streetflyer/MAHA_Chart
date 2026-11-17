@@ -256,6 +256,12 @@ export function Editor({ onExit }: { onExit(): void }) {
         const w = await handle.createWritable();
         await w.write(blob);
         await w.close();
+        // Read the size back: a sync or antivirus program can leave a short file.
+        const got = (await handle.getFile()).size;
+        if (got !== blob.size)
+          throw new Error(
+            `the file on disk is ${got} bytes, not ${blob.size}. Save again, or save to a folder that is not synced`,
+          );
         lastSave.current = { mode, handle };
       } else downloadBlob(blob, name);
       setProgress({ label, f: 1 });

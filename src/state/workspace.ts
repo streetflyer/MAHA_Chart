@@ -126,11 +126,13 @@ export async function workspaceBlob(
   const ed = useEditor.getState();
   const sv = useSurvey.getState();
   const pr = useProject.getState();
-  const parts: Blob[] = [];
+  // Typed arrays are referenced here and copied together afterwards: this file can hold
+  // hundreds of thousands of small arrays, and one Blob each made saving take minutes.
+  const parts: (Uint8Array | File)[] = [];
   const sizes: number[] = [];
-  const add = (b: Blob) => {
+  const add = (b: Uint8Array | File) => {
     parts.push(b);
-    sizes.push(b.size);
+    sizes.push(b instanceof File ? b.size : b.byteLength);
     return parts.length - 1;
   };
   const storage: Record<string, string> = {};
@@ -200,9 +202,7 @@ export async function workspaceBlob(
     if (ArrayBuffer.isView(v) && !(v instanceof DataView)) {
       const t = v as Typed;
       return {
-        $b: add(
-          new Blob([new Uint8Array(t.buffer, t.byteOffset, t.byteLength)]),
-        ),
+        $b: add(new Uint8Array(t.buffer, t.byteOffset, t.byteLength)),
         $t: t.constructor.name,
       };
     }
@@ -216,11 +216,54 @@ export async function workspaceBlob(
   );
   const len = new Uint8Array(4);
   new DataView(len.buffer).setUint32(0, head.length);
+  onProgress?.(0.2);
+  // Pack the parts back to back into a few big chunks (files are read into memory
+  // here: a file on disk that changed meanwhile can no longer be read later).
+  const CHUNK = 8 * 1048576;
+  const blobParts: BlobPart[] = [MAGIC, len, head];
+  let cur = new Uint8Array(CHUNK);
+  let at = 0;
+  const flush = () => {
+    if (at) blobParts.push(cur.slice(0, at));
+    at = 0;
+  };
+  const files: [number, File][] = [];
+  for (const p of parts) {
+    if (p instanceof File) {
+      flush();
+      files.push([blobParts.length, p]);
+      blobParts.push("");
+      continue;
+    }
+    let off = 0;
+    while (off < p.byteLength) {
+      const n = Math.min(CHUNK - at, p.byteLength - off);
+      cur.set(p.subarray(off, off + n), at);
+      at += n;
+      off += n;
+      if (at === CHUNK) {
+        blobParts.push(cur);
+        cur = new Uint8Array(CHUNK);
+        at = 0;
+      }
+    }
+  }
+  flush();
+  for (const [i, f] of files) {
+    let buf: ArrayBuffer | null = null;
+    for (let k = 0; k < 2 && !buf; k++) {
+      try {
+        buf = await f.arrayBuffer();
+      } catch {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+    // A file that cannot be read keeps its place (and size) as zeros, so the rest still loads.
+    blobParts[i] = buf ?? new Uint8Array(f.size);
+  }
   onProgress?.(0.3);
   const out = await gzip(
-    new Blob([MAGIC, len, head, ...parts], {
-      type: "application/octet-stream",
-    }),
+    new Blob(blobParts, { type: "application/octet-stream" }),
     (f) => onProgress?.(0.3 + 0.65 * f),
   );
   onProgress?.(0.97);
