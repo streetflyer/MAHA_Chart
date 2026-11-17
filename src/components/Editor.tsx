@@ -3,7 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { newId } from "../model/ids";
 import { PAPER_SIZES } from "../model/paper";
 import { BUILTIN_TEMPLATES } from "../model/builtinTemplates";
-import { autoSheets, fitSegments, fitSegmentsN } from "../model/route";
+import {
+  autoSheets,
+  chartFrames,
+  fitSegments,
+  fitSegmentsN,
+} from "../model/route";
 import {
   deleteSheet,
   editSheet,
@@ -44,7 +49,7 @@ import { kpToX } from "./KpPanels";
 import { kpFinder } from "./CpPanel";
 import { withGridLine } from "../model/kpGrid";
 import { clearChartData } from "../state/chartData";
-import { chartsToDxf } from "../model/dxfExport";
+import { chartBoxesToDxf, chartsToDxf } from "../model/dxfExport";
 import { chartsToPdf } from "../model/pdfExport";
 import { ThemeButton } from "./ThemeButton";
 import { ImportDialog, useImport } from "./ImportDialog";
@@ -807,6 +812,33 @@ export function Editor({ onExit }: { onExit(): void }) {
   }
 
   /** Chart(s) as PDF or DXF: the current one or all of them (PDF: one page each; DXF: side by side in one file). */
+  /** Every chart's box in the key plan as rectangles in easting / northing. */
+  function saveChartBoxes() {
+    const route = useSurvey.getState().route;
+    if (!route)
+      return flash("Load the survey line first: the boxes sit on it.");
+    const frames = chartFrames(template, route);
+    if (!frames.length) return flash("No chart boxes to save.");
+    const names = frames.map(
+      (_, i) => drawingNoOf(template, i) || `Chart ${i + 1}`,
+    );
+    const blob = new Blob([chartBoxesToDxf(frames, names)], {
+      type: "application/dxf",
+    });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    const base = (template.fields.CHART_NO || template.name).replace(
+      /[^\w.-]+/g,
+      "_",
+    );
+    a.download = `${base}_chart_boxes.dxf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    flash(
+      `Saved ${a.download}: ${frames.length} chart boxes in easting / northing`,
+    );
+  }
+
   async function saveAs() {
     if (exporting) return flash("Still writing the last file…");
     const n = sheetCount(template);
@@ -814,9 +846,10 @@ export function Editor({ onExit }: { onExit(): void }) {
     const fmt = await askChoice(
       "Save as",
       "PDF is for printing and sending; DXF opens in AutoCAD. A DWG file cannot be written in the browser: open the DXF in AutoCAD, TrueView or the free ODA File Converter and save it as DWG there.",
-      ["PDF", "DXF"],
+      ["PDF", "DXF", "Chart boxes of the key plan (DXF)"],
     );
     if (fmt === null) return;
+    if (fmt === 2) return saveChartBoxes();
     const ext = fmt ? "dxf" : "pdf";
     // Each entry is one file: the charts it holds.
     let files: number[][] = [[cur]];

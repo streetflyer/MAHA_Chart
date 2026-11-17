@@ -323,7 +323,11 @@ function clipPolyline(pts: Pt[], c: Clip): Pt[][] {
 class DxfWriter {
   private out: string[] = [];
   readonly layers = new Map<string, number>();
-  constructor(private readonly paperH: number) {}
+  constructor(
+    private readonly paperH: number,
+    /** Real-world coordinates (y up) in metres, instead of paper mm with y flipped. */
+    private readonly ground = false,
+  ) {}
   private g(code: number, v: string | number) {
     this.out.push(String(code), typeof v === "number" ? fmt(v) : v);
   }
@@ -334,7 +338,7 @@ class DxfWriter {
     this.g(62, color);
   }
   private y(v: number) {
-    return this.paperH - v;
+    return this.ground ? v : this.paperH - v;
   }
   polyline(pts: Pt[], layer: string, color: number, closed = false, width = 0) {
     if (pts.length < 2) return;
@@ -406,7 +410,7 @@ class DxfWriter {
       "9",
       "$INSUNITS",
       "70",
-      "4",
+      this.ground ? "6" : "4",
       "9",
       "$MEASUREMENT",
       "70",
@@ -766,5 +770,25 @@ export async function chartsToDxf(
     }
     k++;
   }
+  return w.toString();
+}
+
+/**
+ * The chart boxes of the key plan as a DXF in grid coordinates (easting, northing, metres): one closed
+ * rectangle per chart on layer CHART_BOXES, with the drawing number written at its centre.
+ */
+export function chartBoxesToDxf(
+  frames: [number, number][][],
+  names: string[],
+): string {
+  const w = new DxfWriter(0, true);
+  frames.forEach((f, i) => {
+    w.polyline(f, "CHART_BOXES", 1, true);
+    const cx = f.reduce((a, p) => a + p[0], 0) / f.length;
+    const cy = f.reduce((a, p) => a + p[1], 0) / f.length;
+    const size =
+      Math.max(...f.map((p) => Math.hypot(p[0] - cx, p[1] - cy))) / 12;
+    w.text(cx, cy, size, 0, names[i] || `Chart ${i + 1}`, "CHART_NAMES", 3);
+  });
   return w.toString();
 }
