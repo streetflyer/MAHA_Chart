@@ -8,6 +8,7 @@ import { shapeFrom } from "../model/legendShape";
 import { newId } from "../model/ids";
 import type { LegendItem } from "../model/types";
 import { useEditor } from "../state/store";
+import { useLegendAdd } from "../state/legendAdd";
 import { addCallout } from "./calloutEdit";
 import type { MenuItem } from "./ContextMenu";
 import {
@@ -158,11 +159,10 @@ function moreColours(current: string) {
 }
 
 /** The chosen drawing objects become a symbol in the (first) legend panel; the name is asked for. */
-export async function addToLegend() {
+/** The chosen objects as a legend shape, with the first text in them as a suggested name. */
+function selectionShape() {
   const de = useDrawingEdit.getState();
-  const ed = useEditor.getState();
-  const legend = ed.template?.panels.find((q) => q.type === "legend");
-  if (!de.ctx || !legend) return;
+  if (!de.ctx) return null;
   const ctx = de.ctx;
   const sets = planSets();
   let name = "";
@@ -184,7 +184,24 @@ export async function addToLegend() {
     ];
   });
   const shape = shapeFrom(sources, ctx.project);
-  if (!shape) return;
+  return shape ? { shape, name } : null;
+}
+
+/** Window to add the chosen objects to legend items that exist. */
+export function addToExistingLegend() {
+  const sel = selectionShape();
+  if (sel)
+    useLegendAdd
+      .getState()
+      .open(sel.shape, sel.name, useEditor.getState().sheetIndex);
+}
+
+export async function addToLegend() {
+  const ed = useEditor.getState();
+  const legend = ed.template?.panels.find((q) => q.type === "legend");
+  const sel = selectionShape();
+  if (!sel || !legend) return;
+  const { shape, name } = sel;
   const label = await askText(
     "Name in the legend",
     name || "Drawing object",
@@ -236,6 +253,13 @@ export function drawingMenu(at: { x: number; y: number }): MenuItem[] {
         nothing ||
         !useEditor.getState().template?.panels.some((q) => q.type === "legend"),
       action: () => void addToLegend(),
+    },
+    {
+      label: "Add to existing legend…",
+      disabled:
+        nothing ||
+        !useEditor.getState().template?.panels.some((q) => q.type === "legend"),
+      action: addToExistingLegend,
     },
     { label: "Add new text here…", action: () => void addTextAt(at) },
     {

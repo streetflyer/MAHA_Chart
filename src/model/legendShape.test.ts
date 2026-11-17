@@ -42,3 +42,21 @@ describe("legend symbol from a drawing object", () => {
     expect(l[3]).toBeCloseTo(24, 5);
   });
 });
+
+import { mergeShapes } from "./legendShape";
+describe("mergeShapes", () => {
+  it("puts the extra object beside the base and renormalises", () => {
+    const sq = {
+      lines: [[-0.5, -0.5, 0.5, -0.5, 0.5, 0.5, -0.5, 0.5, -0.5, -0.5]],
+      colors: ["#000"],
+      widths: [0.03],
+    };
+    const { shape, grow } = mergeShapes(sq, sq);
+    expect(shape.lines).toHaveLength(2);
+    expect(shape.colors).toHaveLength(2);
+    expect(grow).toBeCloseTo(2.15, 5);
+    const xs = shape.lines.flatMap((l) => l.filter((_, k) => k % 2 === 0));
+    expect(Math.max(...xs)).toBeCloseTo(0.5, 3);
+    expect(Math.min(...xs)).toBeCloseTo(-0.5, 3);
+  });
+});

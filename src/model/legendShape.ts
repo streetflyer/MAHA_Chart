@@ -92,3 +92,56 @@ export function placeShape(
     return out;
   });
 }
+
+/**
+ * `extra` placed beside `base` (to its right, with a small gap) as one symbol, centred on 0 and with the
+ * longer side 1 again. `grow` is how much longer the combined side is than the base's, so the caller can
+ * scale the item's size by it and keep the base part the size it had.
+ */
+export function mergeShapes(
+  base: LegendShape,
+  extra: LegendShape,
+): { shape: LegendShape; grow: number } {
+  const bounds = (sh: LegendShape) => {
+    let x0 = Infinity;
+    let x1 = -Infinity;
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (const l of sh.lines)
+      for (let k = 0; k < l.length; k += 2) {
+        x0 = Math.min(x0, l[k]);
+        x1 = Math.max(x1, l[k]);
+        y0 = Math.min(y0, l[k + 1]);
+        y1 = Math.max(y1, l[k + 1]);
+      }
+    return { x0, x1, y0, y1 };
+  };
+  const a = bounds(base);
+  const b = bounds(extra);
+  const gap = 0.15;
+  const dx = a.x1 + gap - b.x0;
+  const dy = (a.y0 + a.y1) / 2 - (b.y0 + b.y1) / 2;
+  const lines = [
+    ...base.lines,
+    ...extra.lines.map((l) => l.map((v, k) => v + (k % 2 ? dy : dx))),
+  ];
+  const colors = [...base.colors, ...extra.colors];
+  const baseW = base.widths ?? base.lines.map(() => 0.03);
+  const widths = [...baseW, ...(extra.widths ?? extra.lines.map(() => 0.03))];
+  const all = bounds({ lines, colors });
+  const span = Math.max(all.x1 - all.x0, all.y1 - all.y0) || 1;
+  const cx = (all.x0 + all.x1) / 2;
+  const cy = (all.y0 + all.y1) / 2;
+  return {
+    shape: {
+      lines: lines.map((l) =>
+        l.map(
+          (v, k) => Math.round(((v - (k % 2 ? cy : cx)) / span) * 1e4) / 1e4,
+        ),
+      ),
+      colors,
+      widths,
+    },
+    grow: span,
+  };
+}

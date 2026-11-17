@@ -321,6 +321,8 @@ export interface MatchPair {
 
 export interface MatchlineStyle {
   on: boolean;
+  /** Other panels (long profile, events, CP) that also show the matchlines, keyed by panel id. */
+  panels?: Record<string, boolean>;
   /** Picked or drawn matchlines, keyed by the 0-based index i of the boundary between chart i and i + 1. */
   pairs?: Record<string, MatchPair>;
   /** Text turned 180° (reads from the other side). */
@@ -368,7 +370,19 @@ export interface BoxHatch {
   opacity: number;
 }
 
+/** Look of the easting or northing labels on the key plan grid. */
+export interface CoordLabelStyle {
+  family?: string;
+  color?: string;
+  /** Cap height in mm; 0 or unset fits the box. */
+  size?: number;
+  bold?: boolean;
+  italic?: boolean;
+}
+
 export interface KeyplanStyle {
+  eastingLabels?: CoordLabelStyle;
+  northingLabels?: CoordLabelStyle;
   thisChart?: ThisChartStyle;
   hatch?: BoxHatch;
   /** Sea / background fill. */

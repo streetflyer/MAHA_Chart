@@ -31,6 +31,7 @@ import {
 import type {
   ImageItem,
   KeyplanStyle,
+  CoordLabelStyle,
   PlanStyle,
   LegendGroup,
   LegendItem,
@@ -2256,6 +2257,101 @@ function ImageProps({ im }: { im: ImageItem }) {
 }
 
 /** The "This Chart" label and the hatch of the current chart's box in the key plan. */
+function CoordLabelFields({
+  title,
+  v,
+  fallback,
+  onChange,
+}: {
+  title: string;
+  v: CoordLabelStyle | undefined;
+  fallback: string;
+  onChange: (patch: CoordLabelStyle) => void;
+}) {
+  return (
+    <>
+      <div className="row2">
+        <label className="field">
+          <span>{title} font</span>
+          <select
+            value={v?.family ?? "Arial"}
+            onChange={(e) => onChange({ family: e.target.value })}
+          >
+            {FONT_FAMILIES.map((f) => (
+              <option key={f}>{f}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Colour</span>
+          <ColourBox
+            value={v?.color ?? fallback}
+            onChange={(c) => onChange({ color: c })}
+          />
+        </label>
+      </div>
+      <div className="row2">
+        <Field
+          label="Size (0 = auto)"
+          type="number"
+          step={0.1}
+          suffix="mm"
+          value={v?.size ?? 0}
+          onCommit={(x) => num(x) >= 0 && onChange({ size: num(x) })}
+        />
+        <div className="checks">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={v?.bold !== false}
+              onChange={(e) => onChange({ bold: e.target.checked })}
+            />{" "}
+            Bold
+          </label>
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={!!v?.italic}
+              onChange={(e) => onChange({ italic: e.target.checked })}
+            />{" "}
+            Italic
+          </label>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function KeyplanCoordLabels({
+  st,
+  set,
+}: {
+  st: KeyplanStyle;
+  set: (patch: Partial<KeyplanStyle>) => void;
+}) {
+  return (
+    <>
+      <h4>Easting and northing labels</h4>
+      <CoordLabelFields
+        title="Easting"
+        v={st.eastingLabels}
+        fallback={st.gridColor}
+        onChange={(patch) =>
+          set({ eastingLabels: { ...st.eastingLabels, ...patch } })
+        }
+      />
+      <CoordLabelFields
+        title="Northing"
+        v={st.northingLabels}
+        fallback={st.gridColor}
+        onChange={(patch) =>
+          set({ northingLabels: { ...st.northingLabels, ...patch } })
+        }
+      />
+    </>
+  );
+}
+
 function KeyplanThisChart({
   st,
   set,
@@ -2461,6 +2557,7 @@ function KeyplanEditor({ p }: { p: Panel }) {
         </button>
       </div>
       <KeyplanThisChart st={st} set={set} />
+      <KeyplanCoordLabels st={st} set={set} />
       <div className="row2">{colour("Background", "background")}</div>
       <div className="row2">
         {colour("Survey line", "routeColor")}
@@ -2581,6 +2678,39 @@ function KeyplanMatchTools({ p }: { p: Panel }) {
   );
 }
 
+/** Tick boxes for the KP panels that also draw the matchlines. */
+function MatchPanelTicks({
+  st,
+  onChange,
+}: {
+  st: MatchlineStyle;
+  onChange(p: Partial<MatchlineStyle>): void;
+}) {
+  const t = useEditor((s) => s.template);
+  const list = (t?.panels ?? []).filter(
+    (q) => q.type === "longProfile" || q.type === "events" || q.type === "cp",
+  );
+  if (!list.length) return null;
+  return (
+    <div className="checks" data-match-panels>
+      <span className="hint">Also show the matchlines in these panels:</span>
+      {list.map((q) => (
+        <label className="check" key={q.id}>
+          <input
+            type="checkbox"
+            data-match-panel={q.id}
+            checked={!!st.panels?.[q.id]}
+            onChange={(e) =>
+              onChange({ panels: { ...st.panels, [q.id]: e.target.checked } })
+            }
+          />{" "}
+          {q.title || q.type}
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function MatchlineControls({
   st,
   onChange,
@@ -2631,6 +2761,7 @@ function MatchlineControls({
             {txt("Label suffix", "suffix")}
           </div>
           {txt("Extra text (other side)", "extra")}
+          <MatchPanelTicks st={st} onChange={onChange} />
           <label
             className="check"
             title="Turn the label text 180°. Single labels: right-click them"

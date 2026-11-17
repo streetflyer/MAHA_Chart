@@ -59,9 +59,21 @@ function pdfFont(family: string, bold: boolean, italic: boolean): string {
 }
 
 /** Text as a PDF string in WinAnsi; what it cannot show becomes "?". */
-function pdfString(s: string): string {
+export function pdfString(s: string): string {
   let out = "";
-  for (const ch of s.replace(/\s+/g, " ")) {
+  // Invisible characters (soft hyphen, zero-width, joiners) print as "-" or boxes in WinAnsi, so they go;
+  // super/subscripts and compatibility forms fall back to their plain letters when WinAnsi lacks them.
+  const clean = s
+    .replace(/[\u00ad\u200b-\u200f\u2028-\u202e\u2060-\u2064\ufeff]/g, "")
+    .replace(/[\u2010\u2011\u2012\u2212]/g, "-")
+    .replace(
+      /[^\u0000-\u00ff\u20ac\u2018-\u201d\u2022\u2013\u2014\u2122]/g,
+      (c) => {
+        const n = c.normalize("NFKC");
+        return n === c ? "?" : n;
+      },
+    );
+  for (const ch of clean.replace(/\s+/g, " ")) {
     const c = ch.codePointAt(0)!;
     const win: Record<number, number> = {
       0x20ac: 128,
@@ -85,6 +97,31 @@ function pdfString(s: string): string {
   return out;
 }
 
+const SUP = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+
+/** Show operators for a string. Superscript digits are drawn as small raised digits, so no font or viewer encoding can turn them into other marks. */
+export function pdfRuns(s: string, key: string, fs: number): string {
+  const out: string[] = [];
+  let run = "";
+  const flush = () => {
+    if (run) out.push(`(${pdfString(run)}) Tj`);
+    run = "";
+  };
+  for (const ch of s) {
+    const i = SUP.indexOf(ch);
+    const d =
+      ch === "\u00b2" ? 2 : ch === "\u00b3" ? 3 : ch === "\u00b9" ? 1 : i;
+    if (d >= 0 && (i >= 0 || "\u00b2\u00b3\u00b9".includes(ch))) {
+      flush();
+      out.push(
+        `/${key} ${num(fs * 0.62)} Tf ${num(fs * 0.38)} Ts (${d}) Tj 0 Ts /${key} ${num(fs)} Tf`,
+      );
+    } else run += ch;
+  }
+  flush();
+  return out.join(" ") || "() Tj";
+}
+
 async function deflate(data: Uint8Array): Promise<Uint8Array | null> {
   if (typeof CompressionStream === "undefined") return null;
   const stream = new Blob([data as BlobPart])
@@ -104,9 +141,16 @@ function concat(parts: Uint8Array[]): Uint8Array {
 }
 
 /** A logo as JPEG bytes on white, with its pixel size. */
-async function imageData(
-  src: string,
-): Promise<{ jpg: Uint8Array; w: number; h: number } | null> {
+interface PdfImage {
+  jpg: Uint8Array;
+  w: number;
+  h: number;
+  /** Raw RGB and alpha bytes, only for pictures with transparent parts. */
+  rgb?: Uint8Array;
+  alpha?: Uint8Array;
+}
+
+async function imageData(src: string): Promise<PdfImage | null> {
   try {
     const img = new Image();
     img.src = src;
@@ -117,7 +161,29 @@ async function imageData(
     const cv = document.createElement("canvas");
     cv.width = Math.max(1, Math.round(w * k));
     cv.height = Math.max(1, Math.round(h * k));
-    const cx = cv.getContext("2d")!;
+    const cx = cv.getContext("2d", { willReadFrequently: true })!;
+    cx.drawImage(img, 0, 0, cv.width, cv.height);
+    // A picture with see-through parts keeps its alpha as a soft mask, so lines behind it still show.
+    const px = cx.getImageData(0, 0, cv.width, cv.height).data;
+    let clear = false;
+    for (let i = 3; i < px.length; i += 4)
+      if (px[i] < 250) {
+        clear = true;
+        break;
+      }
+    if (clear && typeof CompressionStream !== "undefined") {
+      const n = px.length / 4;
+      const rgb = new Uint8Array(n * 3);
+      const alpha = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        alpha[i] = px[i * 4 + 3];
+        rgb[i * 3] = px[i * 4];
+        rgb[i * 3 + 1] = px[i * 4 + 1];
+        rgb[i * 3 + 2] = px[i * 4 + 2];
+      }
+      return { jpg: new Uint8Array(0), w: cv.width, h: cv.height, rgb, alpha };
+    }
+    cx.clearRect(0, 0, cv.width, cv.height);
     cx.fillStyle = "#fff";
     cx.fillRect(0, 0, cv.width, cv.height);
     cx.drawImage(img, 0, 0, cv.width, cv.height);
@@ -142,7 +208,7 @@ interface Page {
 async function drawSheet(
   svg: SVGSVGElement,
   pg: Page,
-  imgs: Map<string, { jpg: Uint8Array; w: number; h: number } | null>,
+  imgs: Map<string, PdfImage | null>,
 ) {
   const rootInv = svg.getScreenCTM()?.inverse();
   if (!rootInv) return;
@@ -294,7 +360,7 @@ async function drawSheet(
             sq = `${num(Math.min(150, Math.max(60, (adv / w) * 100)))} Tz `;
         }
         ops.push(
-          `q${clip ? " " + clip : ""} ${alpha(fill.a)} ${rgbOp(fill.rgb, "rg")} BT /${fontKey(font)} ${num(fs)} Tf ${sq}${num(cos)} ${num(sin)} ${num(sin)} ${num(-cos)} ${num(p.x)} ${num(p.y)} Tm (${pdfString(s)}) Tj ET Q`,
+          `q${clip ? " " + clip : ""} ${alpha(fill.a)} ${rgbOp(fill.rgb, "rg")} BT /${fontKey(font)} ${num(fs)} Tf ${sq}${num(cos)} ${num(sin)} ${num(sin)} ${num(-cos)} ${num(p.x)} ${num(p.y)} Tm ${pdfRuns(s, fontKey(font), fs)} ET Q`,
         );
       }
       out.push(...ops);
@@ -444,10 +510,7 @@ export async function chartsToPdf(
   draw: (i: number) => Promise<SVGSVGElement | null>,
 ): Promise<Uint8Array> {
   const pages: Page[] = [];
-  const imgs = new Map<
-    string,
-    { jpg: Uint8Array; w: number; h: number } | null
-  >();
+  const imgs = new Map<string, PdfImage | null>();
   for (const i of sheets) {
     const svg = await draw(i);
     if (!svg) continue;
@@ -510,15 +573,31 @@ export async function chartsToPdf(
         );
     for (const href of pg.images.keys()) {
       const im = imgs.get(href);
-      if (im && !imgObj.has(href))
-        imgObj.set(
-          href,
-          await stream(
-            `/Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode`,
-            im.jpg,
-            false,
-          ),
-        );
+      if (im && !imgObj.has(href)) {
+        if (im.rgb && im.alpha) {
+          const mask = await stream(
+            `/Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceGray /BitsPerComponent 8`,
+            im.alpha,
+            true,
+          );
+          imgObj.set(
+            href,
+            await stream(
+              `/Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /SMask ${mask} 0 R`,
+              im.rgb,
+              true,
+            ),
+          );
+        } else
+          imgObj.set(
+            href,
+            await stream(
+              `/Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode`,
+              im.jpg,
+              false,
+            ),
+          );
+      }
     }
   }
   for (const pg of pages) {

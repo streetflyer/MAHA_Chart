@@ -61,6 +61,7 @@ import { eventLabelMenu } from "./eventLabelEdit";
 import { codeDefMenu } from "./legendEdit";
 import { CodeDefsDialog } from "./CodeDefsDialog";
 import { SymbolDialog } from "./SymbolDialog";
+import { LegendAddDialog } from "./LegendAddDialog";
 import { useEventEdit } from "../state/eventEdit";
 import { EventEditBar } from "./EventEditBar";
 import { ModeBar } from "./ModeBar";
@@ -1114,6 +1115,7 @@ export function Editor({ onExit }: { onExit(): void }) {
           <HoverTip />
           <CodeDefsDialog />
           <SymbolDialog />
+          <LegendAddDialog />
           {showParams && (
             <ParametersDialog onClose={() => setShowParams(false)} />
           )}

@@ -25,6 +25,7 @@ import {
 import type {
   BoxHatch,
   ChartTemplate,
+  CoordLabelStyle,
   KeyplanStyle,
   Panel,
 } from "../model/types";
@@ -477,6 +478,8 @@ export function Keyplan({
           }
           color={st.gridColor}
           lw={lw}
+          eLabel={st.eastingLabels}
+          nLabel={st.northingLabels}
         />
       )}
       {st.showNorthArrow && (
@@ -761,7 +764,11 @@ function Grid({
   spacing,
   color,
   lw,
+  eLabel,
+  nLabel,
 }: {
+  eLabel?: CoordLabelStyle;
+  nLabel?: CoordLabelStyle;
   area: { x: number; y: number; w: number; h: number };
   view: Bounds;
   sx: (e: number) => number;
@@ -787,8 +794,25 @@ function Grid({
   const cap = Math.max(0.9, Math.min(area.w, area.h) / 45);
   const tick = cap * 1.4;
   const cross = cap * 0.9;
-  const fs = fontSize(cap);
   const label = (v: number) => Math.round(v).toString();
+  const look = (l: CoordLabelStyle | undefined) => ({
+    fs: fontSize(l?.size || cap),
+    fill: l?.color ?? color,
+    fontFamily: l?.family ? `${l.family}, Arial, sans-serif` : undefined,
+    fontWeight: l?.bold === false ? "normal" : "bold",
+    fontStyle: l?.italic ? "italic" : undefined,
+  });
+  const el = look(eLabel);
+  const nl = look(nLabel);
+  // Labels stay inside the box: the glyph height is kept clear of the left and right edges (eastings),
+  // and of the top and bottom edges (northings).
+  const exx = (x: number) =>
+    Math.min(
+      area.x + area.w - 0.3,
+      Math.max(area.x + el.fs * 0.8, x - el.fs * 0.2),
+    );
+  const nyy = (y: number) =>
+    Math.min(area.y + area.h - 0.3, Math.max(area.y + nl.fs * 0.85, y - 0.4));
   return (
     <g stroke={color} fill={color} strokeWidth={lw * 1.4}>
       <rect
@@ -812,18 +836,24 @@ function Grid({
             />
             <text
               stroke="none"
-              fontSize={fs}
-              fontWeight="bold"
+              fontSize={el.fs}
+              fill={el.fill}
+              fontFamily={el.fontFamily}
+              fontWeight={el.fontWeight}
+              fontStyle={el.fontStyle}
               textAnchor="end"
-              transform={`translate(${x - fs * 0.2} ${area.y + tick + 0.4}) rotate(-90)`}
+              transform={`translate(${exx(x)} ${area.y + tick + 0.4}) rotate(-90)`}
             >
               {label(e)}E
             </text>
             <text
               stroke="none"
-              fontSize={fs}
-              fontWeight="bold"
-              transform={`translate(${x - fs * 0.2} ${area.y + area.h - tick - 0.4}) rotate(-90)`}
+              fontSize={el.fs}
+              fill={el.fill}
+              fontFamily={el.fontFamily}
+              fontWeight={el.fontWeight}
+              fontStyle={el.fontStyle}
+              transform={`translate(${exx(x)} ${area.y + area.h - tick - 0.4}) rotate(-90)`}
             >
               {label(e)}E
             </text>
@@ -849,17 +879,25 @@ function Grid({
             />
             <text
               stroke="none"
-              fontSize={fs}
+              fontSize={nl.fs}
+              fill={nl.fill}
+              fontFamily={nl.fontFamily}
+              fontWeight={nl.fontWeight}
+              fontStyle={nl.fontStyle}
               x={area.x + tick + 0.4}
-              y={y - 0.4}
+              y={nyy(y)}
             >
               {label(n)}N
             </text>
             <text
               stroke="none"
-              fontSize={fs}
+              fontSize={nl.fs}
+              fill={nl.fill}
+              fontFamily={nl.fontFamily}
+              fontWeight={nl.fontWeight}
+              fontStyle={nl.fontStyle}
               x={area.x + area.w - tick - 0.4}
-              y={y - 0.4}
+              y={nyy(y)}
               textAnchor="end"
             >
               {label(n)}N

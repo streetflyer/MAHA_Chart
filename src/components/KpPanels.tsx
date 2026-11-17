@@ -57,7 +57,12 @@ import {
   type ChartGeometry,
   type Route,
 } from "../model/route";
-import { planPanel, sheetFrame, sheetRange } from "../model/scale";
+import { planPanel, sheetCount, sheetFrame, sheetRange } from "../model/scale";
+import {
+  DEFAULT_MATCHLINES,
+  matchLabel,
+  matchSpecs,
+} from "../model/matchlines";
 import type { ChartTemplate, Panel } from "../model/types";
 import { useSurvey } from "../state/surveyData";
 import { niceGrid } from "./Keyplan";
@@ -401,8 +406,59 @@ export function KpPanelData({
         .map((sg) => sg.rect.x)
         .filter((x) => x > x0 && x < p.x + p.w)
     : [];
+  // Matchlines, when the plan view's matchline settings tick this panel.
+  const plan = planPanel(t);
+  const ms = plan ? planStyle(plan).match : undefined;
+  const matchXs: { x: number; text: string }[] = [];
+  if (route && ms?.panels?.[p.id]) {
+    const mst = { ...DEFAULT_MATCHLINES, ...ms };
+    const ranges = Array.from({ length: sheetCount(t) }, (_, i) => {
+      const r = sheetRange(t, i);
+      return { start: r.start * 1000, end: r.end * 1000 };
+    });
+    const shownR = ranges.map((_, i) => {
+      const r = chartKpRange(t, i);
+      return { start: r.start * 1000, end: r.end * 1000 };
+    });
+    for (const m of matchSpecs(
+      ranges,
+      sheetIndex,
+      mst.mode,
+      shownR,
+      mst.pairs,
+    )) {
+      const x = toX(m.kp);
+      if (Number.isFinite(x) && x >= x0 - 0.01 && x <= p.x + p.w + 0.01)
+        matchXs.push({
+          x,
+          text: matchLabel(mst, m.chart, drawingNoOf(t, sheetIndex)),
+        });
+    }
+  }
+  const mdef = { ...DEFAULT_MATCHLINES, ...ms };
   return (
     <g pointerEvents="none">
+      {matchXs.map((m, i) => (
+        <g key={`ml${i}`} className="panel-matchline">
+          <line
+            x1={m.x}
+            y1={p.y}
+            x2={m.x}
+            y2={p.y + p.h}
+            stroke={mdef.color}
+            strokeWidth={mdef.width}
+            strokeDasharray={mdef.dash.trim() || undefined}
+          />
+          <text
+            fontSize={fontSize(Math.min(mdef.textSize, p.h / 6))}
+            fontFamily={`${mdef.family}, Arial, sans-serif`}
+            fill={mdef.color}
+            transform={`translate(${m.x - 0.8} ${p.y + p.h - 1.5}) rotate(-90)`}
+          >
+            {m.text}
+          </text>
+        </g>
+      ))}
       {joins.map((x) => (
         <line
           key={`join${x}`}
