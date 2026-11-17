@@ -601,6 +601,16 @@ export function Editor({ onExit }: { onExit(): void }) {
                 action: () => insertRow(p.id, target.rowId!, 1),
               },
               {
+                label: "Move row up",
+                disabled: p.rows[0]?.id === target.rowId,
+                action: () => moveRow(p.id, target.rowId!, -1),
+              },
+              {
+                label: "Move row down",
+                disabled: p.rows[p.rows.length - 1]?.id === target.rowId,
+                action: () => moveRow(p.id, target.rowId!, 1),
+              },
+              {
                 label: "Delete row",
                 action: () =>
                   st.updatePanel(p.id, {
@@ -610,8 +620,25 @@ export function Editor({ onExit }: { onExit(): void }) {
               "separator",
             ]
           : [];
+      const sideItems: MenuItem[] =
+        p.type === "events"
+          ? [
+              {
+                label: "Description column on the left",
+                checked: p.labelSide !== "right",
+                action: () => st.updatePanel(p.id, { labelSide: "left" }),
+              },
+              {
+                label: "Description column on the right",
+                checked: p.labelSide === "right",
+                action: () => st.updatePanel(p.id, { labelSide: "right" }),
+              },
+              "separator",
+            ]
+          : [];
       items = [
         ...rowItems,
+        ...sideItems,
         ...(p.type === "longProfile" || p.type === "transProfile"
           ? [...gridLineMenu(p, at.x), "separator" as const]
           : []),
@@ -746,6 +773,16 @@ export function Editor({ onExit }: { onExit(): void }) {
     rows.splice(i + offset, 0, { id, label: "NEW ROW" });
     s().updatePanel(panelId, { rows });
     s().startEdit({ kind: "row", id: panelId, rowId: id });
+  }
+
+  function moveRow(panelId: string, rowId: string, by: -1 | 1) {
+    const p = s().template!.panels.find((x) => x.id === panelId)!;
+    const rows = [...(p.rows ?? [])];
+    const i = rows.findIndex((r) => r.id === rowId);
+    const j = i + by;
+    if (i < 0 || j < 0 || j >= rows.length) return;
+    [rows[i], rows[j]] = [rows[j], rows[i]];
+    s().updatePanel(panelId, { rows });
   }
 
   function focusProps() {

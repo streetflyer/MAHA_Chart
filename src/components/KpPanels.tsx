@@ -377,7 +377,7 @@ function cutToPlan(
 
 /** Data drawn in the longitudinal, transverse, events and CP panels for the current chart. */
 export function KpPanelData({
-  p,
+  p: panel,
   t,
   sheetIndex,
 }: {
@@ -385,6 +385,11 @@ export function KpPanelData({
   t: ChartTemplate;
   sheetIndex: number;
 }) {
+  // An events panel with its description column on the right: the data area is the panel less that column.
+  const p: Panel =
+    panel.type === "events" && panel.labelSide === "right"
+      ? { ...panel, w: panel.w - (panel.labelWidth ?? 30), labelWidth: 0 }
+      : panel;
   const toX = useKpToX(t, sheetIndex);
   const datasets = useSurvey((s) => s.datasets);
   const route = useSurvey((s) => s.route);

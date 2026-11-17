@@ -187,6 +187,8 @@ export interface Panel {
   rows?: EventRow[];
   /** Width of the row label column for row-based panels. */
   labelWidth?: number;
+  /** Events panel: the description column on the left (default) or the right. */
+  labelSide?: "left" | "right";
   /** Events panel: text look of every row's title and of the text along the rows. */
   rowTitleFont?: Partial<RowFont>;
   rowFont?: Partial<RowFont>;

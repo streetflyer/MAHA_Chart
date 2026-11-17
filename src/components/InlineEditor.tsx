@@ -85,7 +85,10 @@ function targetFor(e: InlineEdit, t: ChartTemplate): Target | null {
     const rh = p.h / rows.length;
     return {
       rect: {
-        x: p.x,
+        x:
+          p.labelSide === "right"
+            ? p.x + p.w - Math.max(p.labelWidth ?? 30, 60)
+            : p.x,
         y: p.y + i * rh,
         w: Math.max(p.labelWidth ?? 30, 60),
         h: Math.max(rh, 6),

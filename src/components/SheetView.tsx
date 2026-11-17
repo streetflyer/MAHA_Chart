@@ -1833,6 +1833,30 @@ export function SheetView({
         rowId: rowEl.getAttribute("data-row")!,
       });
     }
+    // A cell of an events row (not just its description) opens the row menu.
+    const evRow = template.panels.find(
+      (q) =>
+        q.type === "events" &&
+        q.rows?.length &&
+        at.x >= q.x &&
+        at.x <= q.x + q.w &&
+        at.y >= q.y &&
+        at.y <= q.y + q.h,
+    );
+    if (evRow) {
+      const rows = evRow.rows!;
+      const i = Math.min(
+        rows.length - 1,
+        Math.max(0, Math.floor((at.y - evRow.y) / (evRow.h / rows.length))),
+      );
+      if (!selectedPanelIds.has(evRow.id))
+        store().select({ kind: "panel", id: evRow.id });
+      return onContextMenu(e.clientX, e.clientY, at, {
+        kind: "row",
+        id: evRow.id,
+        rowId: rows[i].id,
+      });
+    }
     if (itemEl) {
       const kind = itemEl.getAttribute("data-kind") as Selection["kind"];
       const id = itemEl.getAttribute("data-item")!;

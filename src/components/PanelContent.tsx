@@ -285,13 +285,17 @@ function EventRows({
   const rh = p.h / rows.length;
   const lw = p.labelWidth ?? 30;
   const has = hasEvents;
+  // The description column sits on the left, or on the right when the panel says so.
+  const lx = p.labelSide === "right" ? p.x + p.w - lw : p.x;
+  const dataX0 = p.labelSide === "right" ? p.x : p.x + lw;
+  const dataX1 = p.labelSide === "right" ? p.x + p.w - lw : p.x + p.w;
   return (
     <g>
       <line
         className="frame-line"
-        x1={p.x + lw}
+        x1={p.labelSide === "right" ? lx : p.x + lw}
         y1={p.y}
-        x2={p.x + lw}
+        x2={p.labelSide === "right" ? lx : p.x + lw}
         y2={p.y + p.h}
       />
       {rows.map((r, i) => {
@@ -310,7 +314,7 @@ function EventRows({
               onRowDoubleClick?.(p.id, r.id);
             }}
           >
-            <rect className="row-hit" x={p.x} y={y} width={lw} height={rh} />
+            <rect className="row-hit" x={lx} y={y} width={lw} height={rh} />
             {i > 0 && (
               <line
                 className="frame-line"
@@ -323,14 +327,14 @@ function EventRows({
             {!has && (
               <line
                 className="row-axis"
-                x1={p.x + lw + 2}
+                x1={dataX0 + 2}
                 y1={y + rh / 2}
-                x2={p.x + p.w - 2}
+                x2={dataX1 - 2}
                 y2={y + rh / 2}
               />
             )}
             <text
-              x={p.x + lw / 2}
+              x={lx + lw / 2}
               y={y + rh / 2 - ((lines.length - 1) * lh) / 2}
               fontSize={fontSize(cap)}
               textAnchor="middle"
@@ -345,7 +349,7 @@ function EventRows({
               style={tf.color ? { fill: tf.color } : undefined}
             >
               {lines.map((l, j) => (
-                <tspan key={j} x={p.x + lw / 2} dy={j === 0 ? 0 : lh}>
+                <tspan key={j} x={lx + lw / 2} dy={j === 0 ? 0 : lh}>
                   {l}
                 </tspan>
               ))}
