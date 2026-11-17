@@ -9,6 +9,7 @@ import { useSmoothTool } from "../state/smoothTool";
 import { kpFinder } from "./CpPanel";
 import { hoverSources } from "../state/hoverInfo";
 import { rulerSources } from "../state/ruler";
+import { useKpShift } from "../state/kpShift";
 import { longSections } from "../state/longSections";
 import { kpPanelLines } from "./hoverText";
 import { extraGridKps } from "../model/kpGrid";
@@ -71,6 +72,44 @@ import { niceGrid } from "./Keyplan";
 import { fontSize, measureText } from "./svgText";
 
 /**
+ * Where the true-scale KP panels of a chart start (before any sideways move): the chart's first KP at the left of
+ * the plan view, or, when asked, at the plan view's start of the line (first chart) or with the end KP at the end
+ * of the runline (last chart). Spacing stays at true scale.
+ */
+export function kpBase(
+  t: ChartTemplate,
+  route: Route | null,
+  sheetIndex: number,
+  plan: { x: number; y: number; w: number; h: number },
+) {
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+  const mm = 1000 / t.scale.horizontal;
+  const { start, end } = sheetRange(t, sheetIndex);
+  let x0 = plan.x;
+  let kp0 = start * 1000;
+  const aStart = !!t.scale.kpAlign?.[sheetIndex];
+  const aEnd = !!t.scale.kpAlignEnd?.[sheetIndex];
+  const g = route ? chartGeometry(t, route, sheetIndex) : null;
+  const proj = route && g ? kpProjector(t, route, sheetIndex, g, plan) : null;
+  const kpS = Math.max(start * 1000, k0);
+  const kpE = Math.min(end * 1000, k0 + (route?.length ?? Infinity));
+  if (proj && aStart) {
+    kp0 = kpS;
+    x0 = proj(kp0)[0];
+  } else if (proj && aEnd) x0 = proj(kpE)[0] - (kpE - kp0) * mm;
+  return {
+    x0,
+    kp0,
+    mm,
+    kpS,
+    kpE,
+    /** Where the plan view draws the line's start and the end KP, to snap to. */
+    startX: proj ? proj(kpS)[0] : null,
+    endX: proj ? proj(kpE)[0] : null,
+  };
+}
+
+/**
  * Paper x of a KP (metres) for one chart. With a route loaded it is where that KP
  * falls in the plan view, so every KP-aligned panel lines up under the plan view;
  * without one it runs evenly across the chart's KP range.
@@ -79,6 +118,8 @@ export function kpToX(
   t: ChartTemplate,
   route: Route | null,
   sheetIndex: number,
+  /** False: without the sideways move of Shift+drag (the plan view's stretch of line does not move with it). */
+  withShift = true,
 ): ((kp: number) => number) | null {
   const plan = planPanel(t);
   if (!plan) return null;
@@ -86,19 +127,16 @@ export function kpToX(
   // True scale: a KP is its distance along the line at the chart's horizontal scale, so the scale bar
   // measures the same in every panel (the plan view's own x shortens a slanting line).
   if (t.scale.trueKpScale !== false) {
-    const { start } = sheetRange(t, sheetIndex);
     const mm = 1000 / t.scale.horizontal;
-    let x0 = plan.x;
-    let kp0 = start * 1000;
-    // Aligned to the plan view: the chart's first KP of the line stands at the x the plan view draws it.
-    // The spacing stays at true scale, so the end KP falls where the distance puts it.
-    if (t.scale.kpAlign?.[sheetIndex] && route) {
-      const g = chartGeometry(t, route, sheetIndex);
-      if (g) {
-        kp0 = Math.max(kp0, k0);
-        x0 = kpProjector(t, route, sheetIndex, g, plan)(kp0)[0];
-      }
-    }
+    const base = kpBase(t, route, sheetIndex, plan);
+    const ks = useKpShift.getState();
+    const shift = !withShift
+      ? 0
+      : ks.chart === sheetIndex
+        ? ks.shift
+        : (t.scale.kpShift?.[sheetIndex] ?? 0);
+    const x0 = base.x0 + shift;
+    const kp0 = base.kp0;
     return (kp) => x0 + (kp - kp0) * mm;
   }
   if (route) {
@@ -202,10 +240,11 @@ export function planKpRange(
   t: ChartTemplate,
   route: Route | null,
   sheetIndex: number,
-  toX: (kp: number) => number,
+  toX1: (kp: number) => number,
 ): [number, number] | null {
   const plan = planPanel(t);
   if (!plan || !route) return null;
+  const toX = kpToX(t, route, sheetIndex, false) ?? toX1;
   const g = chartGeometry(t, route, sheetIndex);
   if (!g) return null;
   const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
@@ -294,7 +333,13 @@ function kpProjector(
 
 export function useKpToX(t: ChartTemplate, sheetIndex: number) {
   const route = useSurvey((s) => s.route);
-  return useMemo(() => kpToX(t, route, sheetIndex), [t, route, sheetIndex]);
+  // A profile move in progress changes the mapping of its chart without touching the template.
+  const live = useKpShift((k) => (k.chart === sheetIndex ? k.shift : null));
+  return useMemo(
+    () => kpToX(t, route, sheetIndex),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t, route, sheetIndex, live],
+  );
 }
 
 /** Visible KP span of a panel, found by stepping the mapping (it may be non-linear on a turned chart). */

@@ -2288,3 +2288,10 @@ fieldset.plain {
   outline-offset: 2px;
   transition: outline-color 0.4s;
 }
+
+button.measure-on,
+button.measure-on:hover {
+  background: #1d6fe0;
+  border-color: #1d6fe0;
+  color: #fff;
+}

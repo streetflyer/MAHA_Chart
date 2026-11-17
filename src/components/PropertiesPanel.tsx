@@ -393,29 +393,52 @@ export function ScaleFields({ t }: { t: ChartTemplate }) {
         />{" "}
         Profiles at true scale (distance along the line)
       </label>
-      <label
-        className="check"
-        title="Move the KP 0 of every panel to the plan view's KP 0 (the x where the line starts in the plan view). Applies to the chart in view only."
-      >
-        <input
-          type="checkbox"
-          data-kp-align
-          checked={!!t.scale.kpAlign?.[sheetIndex]}
-          onChange={(e) =>
-            s.setScale({
-              kpAlign: {
-                ...t.scale.kpAlign,
-                [sheetIndex]: e.target.checked,
-              },
-            })
-          }
-        />{" "}
-        Match all panels' start/end KP grid line to KP 0 in the plan view (this
-        chart)
-      </label>
+      {sheetIndex === 0 && (
+        <label
+          className="check"
+          title="Move the start of every panel's profile to where the plan view draws KP 0 (the start of the runline). The spacing stays at true scale."
+        >
+          <input
+            type="checkbox"
+            data-kp-align
+            checked={!!t.scale.kpAlign?.[sheetIndex]}
+            onChange={(e) =>
+              s.setScale({
+                kpAlign: {
+                  ...t.scale.kpAlign,
+                  [sheetIndex]: e.target.checked,
+                },
+              })
+            }
+          />{" "}
+          Match all panels' start KP grid line to KP 0 in the plan view
+        </label>
+      )}
+      {sheetIndex === sheetCount(t) - 1 && (
+        <label
+          className="check"
+          title="Move every panel's profile so its end KP grid line is where the plan view draws the end KP (the end of the runline). The spacing stays at true scale."
+        >
+          <input
+            type="checkbox"
+            data-kp-align-end
+            checked={!!t.scale.kpAlignEnd?.[sheetIndex]}
+            onChange={(e) =>
+              s.setScale({
+                kpAlignEnd: {
+                  ...t.scale.kpAlignEnd,
+                  [sheetIndex]: e.target.checked,
+                },
+              })
+            }
+          />{" "}
+          Match all panels' end KP grid line to End KP in the plan view (this
+          chart)
+        </label>
+      )}
       <p className="muted">
-        The spacing stays at true scale; only the start of the profiles moves to
-        where the plan view's line starts.
+        The spacing stays at true scale. To place a profile by hand, hold Shift
+        and drag it: it snaps to the start and end of the plan view's line.
       </p>
       <div className="row2">
         <Field
@@ -2734,7 +2757,11 @@ function MatchPanelTicks({
 }) {
   const t = useEditor((s) => s.template);
   const list = (t?.panels ?? []).filter(
-    (q) => q.type === "longProfile" || q.type === "events" || q.type === "cp",
+    (q) =>
+      q.type === "longProfile" ||
+      q.type === "transProfile" ||
+      q.type === "events" ||
+      q.type === "cp",
   );
   if (!list.length) return null;
   return (

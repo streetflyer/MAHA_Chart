@@ -599,6 +599,10 @@ export interface ScaleSettings {
   trueKpScale?: boolean;
   /** Charts (by index) whose KP panels start at the plan view's KP 0: the x where the line starts in the plan view. */
   kpAlign?: Record<string, boolean>;
+  /** Charts (by index) whose KP panels end at the plan view's end KP (the end of the runline): only the last chart. */
+  kpAlignEnd?: Record<string, boolean>;
+  /** Sideways move of every KP panel's profile on a chart, mm (Shift+drag on a profile). */
+  kpShift?: Record<string, number>;
   /** Route length covered by one sheet, in metres. Always plan view width x scale; panels never resize for it. */
   kpPerSheet: number;
   /** Total survey line length in metres. Comes from the route file once loaded; typed in until then. */

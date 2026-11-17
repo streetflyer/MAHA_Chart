@@ -89,6 +89,12 @@ interface Menu {
 
 const isTyping = (e: KeyboardEvent) => {
   const el = e.target as HTMLElement;
+  // A ticked box or a button does not take typing: shortcuts keep working after clicking one.
+  if (
+    el instanceof HTMLInputElement &&
+    ["checkbox", "radio", "button"].includes(el.type)
+  )
+    return false;
   return (
     el instanceof HTMLInputElement ||
     el instanceof HTMLTextAreaElement ||
@@ -308,12 +314,18 @@ export function Editor({ onExit }: { onExit(): void }) {
       if (shortcutOf(e) === usePrefs.getState().measureKey) {
         e.preventDefault();
         const m = useMeasure.getState();
-        m.setArmed(!m.armed);
+        // Leaving the arrow mode takes the arrow away.
+        if (m.armed) m.reset();
+        else m.setArmed(true);
         return;
       }
       if (shortcutOf(e) === usePrefs.getState().hoverKey) {
         e.preventDefault();
         toggleHoverInfo();
+        return;
+      }
+      if (e.key === "Escape" && useMeasure.getState().armed) {
+        useMeasure.getState().reset();
         return;
       }
       if (e.key === "Escape" && useMatchPick.getState().active) {
@@ -1300,17 +1312,36 @@ function ChartTabs({ onNotice }: { onNotice(m: string): void }) {
               label: "Add chart after this one",
               action: () => st().commit((t) => insertSheet(t, menu.i)),
             },
-            {
-              label: "Match panels' KP 0 to the plan view",
-              checked: !!template.scale.kpAlign?.[menu.i],
-              action: () =>
-                st().setScale({
-                  kpAlign: {
-                    ...template.scale.kpAlign,
-                    [menu.i]: !template.scale.kpAlign?.[menu.i],
+            ...(menu.i === 0
+              ? [
+                  {
+                    label: "Match panels' start KP to KP 0 in the plan view",
+                    checked: !!template.scale.kpAlign?.[menu.i],
+                    action: () =>
+                      st().setScale({
+                        kpAlign: {
+                          ...template.scale.kpAlign,
+                          [menu.i]: !template.scale.kpAlign?.[menu.i],
+                        },
+                      }),
                   },
-                }),
-            },
+                ]
+              : []),
+            ...(menu.i === n - 1
+              ? [
+                  {
+                    label: "Match panels' end KP to End KP in the plan view",
+                    checked: !!template.scale.kpAlignEnd?.[menu.i],
+                    action: () =>
+                      st().setScale({
+                        kpAlignEnd: {
+                          ...template.scale.kpAlignEnd,
+                          [menu.i]: !template.scale.kpAlignEnd?.[menu.i],
+                        },
+                      }),
+                  },
+                ]
+              : []),
             {
               label: "Delete this chart",
               disabled: n <= 1,
@@ -1766,10 +1797,14 @@ function MeasureButton() {
   return (
     <span className="btn-pair">
       <button
-        className={armed ? "active" : ""}
+        className={armed ? "active measure-on" : ""}
         aria-pressed={armed}
         data-measure={armed ? "on" : "off"}
-        onClick={() => useMeasure.getState().setArmed(!armed)}
+        onClick={() => {
+          const m = useMeasure.getState();
+          if (m.armed) m.reset();
+          else m.setArmed(true);
+        }}
         title={`Draw an arrow on the sheet to measure a distance at the chart's horizontal scale: drag to draw it, drag it to move it, hold Shift to keep it straight (${key})`}
       >
         Arrow ({key})

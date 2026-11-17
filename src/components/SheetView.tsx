@@ -59,7 +59,11 @@ import {
 } from "../state/bodyBox";
 import { rulerTo, useRuler } from "../state/ruler";
 import { RulerLines } from "./RulerLines";
+import { currentMode } from "../state/mode";
 import { MeasureArrow } from "./MeasureArrow";
+import { KpShiftGuides, KP_TYPES } from "./KpShiftGuides";
+import { kpBase } from "./KpPanels";
+import { snapShift, useKpShift } from "../state/kpShift";
 import { useLinkFocus } from "../state/linkFocus";
 import {
   measureDown,
@@ -280,6 +284,12 @@ export function SheetView({
     h: template.paper.height + 20,
   });
   const [drag, setDrag] = useState<Drag | null>(null);
+  const kpDrag = useRef<{
+    startX: number;
+    shift0: number;
+    chart: number;
+    stops: { shift: number; x: number }[];
+  } | null>(null);
   useEffect(() => {
     useSmoothTool.getState().setView({ x: view.x, w: view.w });
   }, [view.x, view.w]);
@@ -475,6 +485,12 @@ export function SheetView({
     const lk = (e.target as Element).closest?.("[data-link-id]");
     if (lk && !useMeasure.getState().armed)
       useLinkFocus.getState().focus(lk.getAttribute("data-link-id")!);
+    // Shift+drag on a profile: all the profiles of the chart move sideways and stop at the plan view's start and end KP.
+    if (e.shiftKey && currentMode() === "idle" && startKpShift(at)) {
+      e.preventDefault();
+      svgRef.current!.setPointerCapture(e.pointerId);
+      return;
+    }
     // The measuring arrow: drawn, or moved by its body or ends.
     if (measureDown(at, 3 / pxPerMm())) {
       e.preventDefault();
@@ -926,6 +942,10 @@ export function SheetView({
       measureMove(at, e.shiftKey);
       return;
     }
+    if (kpDrag.current) {
+      moveKpShift(at, pxPerMm());
+      return;
+    }
     onCursor(at);
     if (useRuler.getState().on) rulerTo(at.x, at.y);
     const mp = useMatchPick.getState();
@@ -1333,7 +1353,64 @@ export function SheetView({
     }
   }
 
+  /** The KP panel under a paper point starts a profile move; false when there is none or no line to snap to. */
+  function startKpShift(at: Pt): boolean {
+    const route = useSurvey.getState().route;
+    const t = template;
+    const plan = planPanel(t);
+    if (!route || !plan || t.scale.trueKpScale === false) return false;
+    const hit = t.panels.some(
+      (p) =>
+        KP_TYPES.includes(p.type) &&
+        at.x >= p.x &&
+        at.x <= p.x + p.w &&
+        at.y >= p.y &&
+        at.y <= p.y + p.h,
+    );
+    if (!hit) return false;
+    const chart = useEditor.getState().sheetIndex;
+    const b = kpBase(t, route, chart, plan);
+    const shift0 = t.scale.kpShift?.[chart] ?? 0;
+    // Stops: the shift that puts the profile's start (or end) KP on the plan view's start (or end) of the line.
+    const stops: { shift: number; x: number }[] = [];
+    if (b.startX !== null)
+      stops.push({
+        shift: b.startX - (b.x0 + (b.kpS - b.kp0) * b.mm),
+        x: b.startX,
+      });
+    if (b.endX !== null)
+      stops.push({
+        shift: b.endX - (b.x0 + (b.kpE - b.kp0) * b.mm),
+        x: b.endX,
+      });
+    kpDrag.current = { startX: at.x, shift0, chart, stops };
+    useKpShift.getState().set(chart, shift0);
+    return true;
+  }
+
+  function moveKpShift(at: Pt, k: number) {
+    const d = kpDrag.current;
+    if (!d) return;
+    const r = snapShift(d.shift0 + (at.x - d.startX), d.stops, 2.5 / k);
+    useKpShift.getState().set(d.chart, r.shift, r.guides);
+  }
+
   function onPointerUp(e: React.PointerEvent) {
+    if (kpDrag.current) {
+      const d = kpDrag.current;
+      kpDrag.current = null;
+      svgRef.current!.releasePointerCapture?.(e.pointerId);
+      const k = useKpShift.getState();
+      useKpShift.getState().set(null, 0);
+      if (Math.abs(k.shift - d.shift0) > 1e-6)
+        useEditor.getState().setScale({
+          kpShift: {
+            ...useEditor.getState().template?.scale.kpShift,
+            [d.chart]: Math.round(k.shift * 1000) / 1000,
+          },
+        });
+      return;
+    }
     if (useMeasure.getState().drag) {
       svgRef.current!.releasePointerCapture?.(e.pointerId);
       measureUp();
@@ -1865,6 +1942,7 @@ export function SheetView({
           />
         ))}
         <RulerLines />
+        <KpShiftGuides />
         <MeasureArrow />
         {guides.x !== undefined && (
           <line

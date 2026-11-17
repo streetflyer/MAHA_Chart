@@ -22,6 +22,8 @@ interface Measure {
   setArmed(on: boolean): void;
   set(a: Pt | null, b: Pt | null): void;
   setDrag(d: MeasureDrag | null): void;
+  /** Leave the arrow mode and take the arrow away. */
+  reset(): void;
 }
 
 export const useMeasure = create<Measure>((set) => ({
@@ -32,6 +34,7 @@ export const useMeasure = create<Measure>((set) => ({
   setArmed: (armed) => set({ armed }),
   set: (a, b) => set({ a, b }),
   setDrag: (drag) => set({ drag }),
+  reset: () => set({ armed: false, a: null, b: null, drag: null }),
 }));
 
 const distToSeg = (p: Pt, a: Pt, b: Pt) => {
