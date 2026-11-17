@@ -698,9 +698,11 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
         data: [] as DataLegendItem[],
         codes: p.eventCodes ?? "",
       };
+    const evp = eventPanels?.find((q) => q.rows?.length);
     const data = dataLegend(
       datasets,
       plan ? planStyle(plan).kpColor : "#e00000",
+      evp ? evp.h / evp.rows!.length : 8,
     )
       .map((d) => ({
         ...d,
@@ -1092,7 +1094,7 @@ function SymbolBody({
       const xb = cx + 1.2;
       const top = cy - 1.3;
       const bot = cy + 1.9;
-      const bold = 0.7;
+      const bold = Math.max(0.15, (it.boldFrac ?? 0.22) * (bot - top));
       const pos = it.boldPos ?? (it.symbol === "burial" ? "bottom" : "top");
       // The light bar is as the linked event's setting: full height between the end lines, or a fraction grown from the middle.
       const mid = (top + bot) / 2;

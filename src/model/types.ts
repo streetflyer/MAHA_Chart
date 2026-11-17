@@ -476,6 +476,8 @@ export interface LegendItem {
   lineColor?: string;
   hatchFrac?: number;
   boldShift?: number;
+  /** Bold bar thickness as a fraction of the end lines. */
+  boldFrac?: number;
   /** A symbol taken from a drawing object (symbol "drawing"): its lines, size (mm) and turn (degrees). */
   shape?: LegendShape;
   size?: number;

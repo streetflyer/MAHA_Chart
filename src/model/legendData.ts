@@ -40,6 +40,8 @@ const plainName = (file: string) =>
 export function dataLegend(
   datasets: Dataset[],
   kpColor: string,
+  /** Height of a row in the engineering events panel, mm: linked event symbols are drawn in the same proportions. */
+  rowH = 8,
 ): DataLegendItem[] {
   const out: DataLegendItem[] = [];
   const add = (it: Omit<DataLegendItem, "id">) =>
@@ -162,12 +164,20 @@ export function dataLegend(
                 boldPos: k.boldPos,
                 boldColor: k.boldColor,
                 boldDash: k.dashed,
-                lineColor: l.lineColor,
-                hatchFrac:
-                  l.hatchSize === undefined
-                    ? undefined
-                    : Math.min(1, Math.max(0, l.hatchSize / 5)),
-                boldShift: l.boldOffset ? l.boldOffset / 5 : undefined,
+                lineColor: l.lineColor ?? d.font?.color,
+                ...(() => {
+                  // The symbol keeps the proportions the row gives it: bars and light bar as fractions of the end lines.
+                  const lineH = Math.max(0.5, rowH * (l.lineExtent ?? 0.8));
+                  const bh = l.barHeight ?? Math.min(rowH * 0.28, 2.2);
+                  return {
+                    hatchFrac:
+                      l.hatchSize === undefined
+                        ? undefined
+                        : Math.min(1, Math.max(0, l.hatchSize / lineH)),
+                    boldShift: l.boldOffset ? l.boldOffset / lineH : undefined,
+                    boldFrac: Math.min(1, bh / lineH),
+                  };
+                })(),
               };
             })(),
           });
