@@ -170,7 +170,18 @@ export async function addToLegend() {
     const g = new Set(de.selected[d.id] ?? []);
     if (!g.size) return [];
     name ||= d.lw.texts.find((t) => g.has(t.group))?.text.split("\n")[0] ?? "";
-    return [{ lw: d.lw, groups: g, colourOf: (i: number) => lineColour(d, i) }];
+    return [
+      {
+        lw: d.lw,
+        groups: g,
+        colourOf: (i: number) => lineColour(d, i),
+        // As the plan view draws it: the drawing's own weight when used, else the data's width.
+        widthOf: (i: number) => {
+          const w = d.ownWeights ? d.lw.weights?.[i] : undefined;
+          return w !== undefined && w >= 0 ? w : d.width;
+        },
+      },
+    ];
   });
   const shape = shapeFrom(sources, ctx.project);
   if (!shape) return;

@@ -3,6 +3,7 @@ import type { Dataset } from "../model/datasets";
 import { useCpEdit } from "./cpEdit";
 import { useDrawingEdit } from "./drawingEdit";
 import { useEventEdit } from "./eventEdit";
+import { useBodyBox } from "./bodyBox";
 import { useKeyplanView } from "./keyplanView";
 import { useMatchPick } from "./matchPick";
 import { useSmoothTool } from "./smoothTool";
@@ -35,7 +36,8 @@ export type Mode =
   | "events"
   | "smooth"
   | "matchline"
-  | "keyview";
+  | "keyview"
+  | "textbox";
 
 export const MODES: Mode[] = [
   "idle",
@@ -45,6 +47,7 @@ export const MODES: Mode[] = [
   "smooth",
   "matchline",
   "keyview",
+  "textbox",
 ];
 const ON = [
   "drawing",
@@ -53,6 +56,7 @@ const ON = [
   "smooth",
   "matchline",
   "keyview",
+  "textbox",
 ] as const;
 
 /** What the user is told while a mode is on. */
@@ -80,6 +84,10 @@ export const MODE_INFO: Record<
     label: "Choosing matchlines",
     hint: "Pick: click a green overlap in the key plan. Draw: click two points across the line. Esc or Done finishes.",
   },
+  textbox: {
+    label: "Text box",
+    hint: "Drag the box to move the text, drag a handle to resize it. Double-click the text to edit it. Esc or a click outside finishes.",
+  },
   keyview: {
     label: "Key plan view",
     hint: "Scroll to zoom, drag the map to move it. Esc or Done finishes.",
@@ -93,6 +101,7 @@ export interface ModeFlags {
   smooth: boolean;
   matchline: boolean;
   keyview: boolean;
+  textbox: boolean;
 }
 
 /** The mode a set of store flags stands for. More than one on is never left standing: see `conflicts`. */
@@ -103,6 +112,7 @@ export function modeOf(f: ModeFlags): Mode {
   if (f.smooth) return "smooth";
   if (f.matchline) return "matchline";
   if (f.keyview) return "keyview";
+  if (f.textbox) return "textbox";
   return "idle";
 }
 
@@ -129,6 +139,7 @@ export interface ModeTargets {
   smoothDataset: string | null;
   matchPanel: string | null;
   keyviewPanel: string | null;
+  textboxPanel: string | null;
 }
 
 /** Is the thing a mode works on still there? */
@@ -158,6 +169,8 @@ export function modeStillValid(
       return panel(t.matchPanel) && w.datasets.some((d) => d.kind === "route");
     case "keyview":
       return panel(t.keyviewPanel);
+    case "textbox":
+      return panel(t.textboxPanel);
   }
 }
 
@@ -168,6 +181,7 @@ const flags = (): ModeFlags => ({
   smooth: useSmoothTool.getState().active,
   matchline: useMatchPick.getState().active,
   keyview: useKeyplanView.getState().active,
+  textbox: useBodyBox.getState().active,
 });
 
 export const currentMode = (): Mode => modeOf(flags());
@@ -179,6 +193,7 @@ const leave: Record<Exclude<Mode, "idle">, () => void> = {
   smooth: () => useSmoothTool.getState().stop(),
   matchline: () => useMatchPick.getState().exit(),
   keyview: () => useKeyplanView.getState().exit(),
+  textbox: () => useBodyBox.getState().exit(),
 };
 
 /** Back to idle, whatever is on. */
@@ -206,6 +221,7 @@ export function enterMode(
   else if (m === "matchline" && panelId)
     useMatchPick.getState().enter(panelId, target.tool ?? "pick");
   else if (m === "keyview" && panelId) useKeyplanView.getState().enter(panelId);
+  else if (m === "textbox" && panelId) useBodyBox.getState().enter(panelId);
 }
 
 function validate() {
@@ -223,6 +239,7 @@ function validate() {
     smoothDataset: useSmoothTool.getState().datasetId,
     matchPanel: useMatchPick.getState().panelId,
     keyviewPanel: useKeyplanView.getState().panelId,
+    textboxPanel: useBodyBox.getState().panelId,
   };
   for (const m of ON)
     if (f[m] && !modeStillValid(m, targets, world)) leave[m]();
@@ -255,6 +272,7 @@ export function installModeMachine() {
   watch("smooth", useSmoothTool);
   watch("matchline", useMatchPick);
   watch("keyview", useKeyplanView);
+  watch("textbox", useBodyBox);
   // A mode never outlives what it edits.
   useSurvey.subscribe((s, p) => s.datasets !== p.datasets && validate());
   useEditor.subscribe((s, p) => s.template !== p.template && validate());

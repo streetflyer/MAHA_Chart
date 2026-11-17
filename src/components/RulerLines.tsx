@@ -1,15 +1,15 @@
 import { rulerSources, useRuler } from "../state/ruler";
 
-/** The ruler: a red line at the ruler's KP in every panel that shows that KP, and its KP above the first. */
+/** The ruler: a red line at the ruler's KP in every panel that shows that KP, and its KP beside the pointer. */
 export function RulerLines() {
   const on = useRuler((r) => r.on);
   const kp = useRuler((r) => r.kp);
+  const pointer = useRuler((r) => r.at);
   if (!on || kp === null) return null;
   const lines = [...rulerSources.entries()].flatMap(([id, s]) => {
     const l = s.at(kp);
     return l ? [{ id, l, rect: s.rect }] : [];
   });
-  const top = lines.find((x) => Math.abs(x.l.x1 - x.l.x2) < 0.01) ?? lines[0];
   return (
     <g pointerEvents="none" data-ruler-lines={lines.length}>
       <defs>
@@ -31,15 +31,22 @@ export function RulerLines() {
           strokeWidth={0.5}
         />
       ))}
-      <text
-        x={top ? top.l.x1 + 1 : 0}
-        y={top ? top.rect.y + 3 : 0}
-        fontSize={2.4}
-        fill="#e00000"
-        fontWeight={700}
-      >
-        {`KP ${(kp / 1000).toFixed(3)}`}
-      </text>
+      {pointer && (
+        <text
+          data-ruler-kp
+          x={pointer.x + (pointer.x > pointer.right - 24 ? -2 : 2)}
+          y={pointer.y - 2}
+          textAnchor={pointer.x > pointer.right - 24 ? "end" : "start"}
+          fontSize={3}
+          fontWeight={700}
+          fill="#e00000"
+          stroke="#fff"
+          strokeWidth={0.8}
+          paintOrder="stroke"
+        >
+          {`KP ${(kp / 1000).toFixed(3)}`}
+        </text>
+      )}
     </g>
   );
 }

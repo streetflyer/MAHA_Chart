@@ -160,6 +160,8 @@ export interface Panel {
   y: number;
   w: number;
   h: number;
+  /** Where a text panel's text sits inside the panel: mm from its top-left corner; unset: all of it. */
+  bodyBox?: { x: number; y: number; w: number; h: number };
   /** Section panels (legend, notes, ...) belong to a container such as Chart Information. */
   parentId?: string;
   /** Font for this panel's text; unset: the sheet's font. */
@@ -424,6 +426,8 @@ export interface LegendShape {
   lines: number[][];
   /** The colour each line has in the drawing. */
   colors: string[];
+  /** The width each line is drawn with in the plan view, mm. */
+  widths?: number[];
 }
 
 export interface LegendItem {
@@ -454,6 +458,8 @@ export interface LegendItem {
   rot?: number;
   /** Draw it in the colours it has in the drawing instead of the item's colour. */
   keepColours?: boolean;
+  /** Line width of a drawing symbol, mm; unset: as in the plan view. */
+  lineWidth?: number;
 }
 
 /**

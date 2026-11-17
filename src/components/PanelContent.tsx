@@ -1,3 +1,4 @@
+import { useBodyBox, type BoxHandle } from "../state/bodyBox";
 import { placeShape } from "../model/legendShape";
 import { codeMatcher, isKpRow, isVideoRow, rowCodes } from "../model/events";
 import { useMemo } from "react";
@@ -443,6 +444,74 @@ function TextColumn({
   );
 }
 
+const HANDLES: [BoxHandle, number, number][] = [
+  ["nw", 0, 0],
+  ["n", 0.5, 0],
+  ["ne", 1, 0],
+  ["e", 1, 0.5],
+  ["se", 1, 1],
+  ["s", 0.5, 1],
+  ["sw", 0, 1],
+  ["w", 0, 0.5],
+];
+
+/** The frame round a text panel's text while its box is being moved or resized. */
+function BodyBoxFrame({
+  p,
+  box,
+}: {
+  p: Panel;
+  box: { x: number; y: number; w: number; h: number };
+}) {
+  const x = p.x + box.x;
+  const y = p.y + box.y;
+  const g = 1.4;
+  return (
+    <g
+      data-tbox={p.id}
+      data-tbox-origin={`${box.x},${box.y},${box.w},${box.h}`}
+    >
+      <rect
+        x={x}
+        y={y}
+        width={box.w}
+        height={box.h}
+        fill="rgba(10,132,255,0.06)"
+        stroke="#0a84ff"
+        strokeWidth={0.3}
+        strokeDasharray="1.2 0.8"
+        data-tbox-handle="move"
+        pointerEvents="all"
+        style={{ cursor: "move" }}
+      />
+      {HANDLES.map(([h, fx, fy]) => (
+        <rect
+          key={h}
+          x={x + box.w * fx - g / 2}
+          y={y + box.h * fy - g / 2}
+          width={g}
+          height={g}
+          fill="#fff"
+          stroke="#0a84ff"
+          strokeWidth={0.3}
+          data-tbox-handle={h}
+          pointerEvents="all"
+          style={{
+            cursor:
+              h === "n" || h === "s"
+                ? "ns-resize"
+                : h === "e" || h === "w"
+                  ? "ew-resize"
+                  : h === "nw" || h === "se"
+                    ? "nwse-resize"
+                    : "nesw-resize",
+          }}
+        />
+      ))}
+    </g>
+  );
+}
+
 function BodyText({
   p,
   top,
@@ -459,19 +528,28 @@ function BodyText({
   const pad = 2;
   const colW = text2 !== undefined ? (p.w - 3 * pad) / 2 : p.w - 2 * pad;
   const h = p.y + p.h - top - 0.5;
+  // The text can be given its own box inside the panel (one column only).
+  const own = text2 === undefined ? p.bodyBox : undefined;
+  const bx = own ? p.x + own.x : p.x + pad;
+  const by = own ? p.y + own.y : top;
+  const bw = own ? own.w : colW;
+  const bh = own ? own.h : h;
+  const editBox = useBodyBox((b) => b.active && b.panelId === p.id);
+  const frame = own ?? { x: pad, y: top - p.y, w: colW, h };
   return (
     <g>
       {text && (
         <TextColumn
           text={text}
-          x={p.x + pad}
-          y={top}
-          w={colW}
-          h={h}
+          x={bx}
+          y={by}
+          w={bw}
+          h={bh}
           style={style}
           color={p.textColor}
         />
       )}
+      {editBox && text2 === undefined && <BodyBoxFrame p={p} box={frame} />}
       {text2 !== undefined && (
         <g data-body2="1">
           <rect
@@ -1050,7 +1128,8 @@ function LegendSymbolView({
               points={pts.map((v) => v.toFixed(2)).join(" ")}
               style={{
                 stroke: it.keepColours !== false ? it.shape!.colors[i] || c : c,
-                strokeWidth: 0.2,
+                // Hairline like the plan view: the drawn width, never thinner than a pixel.
+                strokeWidth: `max(${it.lineWidth ?? it.shape!.widths?.[i] ?? 0.03}px, var(--px, 0px))`,
                 fill: "none",
               }}
             />

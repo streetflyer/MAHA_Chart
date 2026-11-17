@@ -21,15 +21,18 @@ interface Ruler {
   on: boolean;
   /** KP (m) the ruler stands at. */
   kp: number | null;
+  /** The pointer (paper mm) and the right edge of the panel it is over, to place the KP label. */
+  at: { x: number; y: number; right: number } | null;
   setOn(on: boolean): void;
-  setKp(kp: number | null): void;
+  setKp(kp: number | null, at?: { x: number; y: number; right: number }): void;
 }
 
 export const useRuler = create<Ruler>((set) => ({
   on: false,
   kp: null,
-  setOn: (on) => set(on ? { on } : { on, kp: null }),
-  setKp: (kp) => set((s) => (s.kp === kp ? s : { kp })),
+  at: null,
+  setOn: (on) => set(on ? { on } : { on, kp: null, at: null }),
+  setKp: (kp, at) => set({ kp, at: at ?? null }),
 }));
 
 /** Move the ruler to the KP under a paper point; points outside every KP panel leave it where it is. */
@@ -39,7 +42,7 @@ export function rulerTo(x: number, y: number) {
     if (x < r.x || x > r.x + r.w || y < r.y || y > r.y + r.h) continue;
     const kp = s.kpAt(x, y);
     if (kp !== null && Number.isFinite(kp)) {
-      useRuler.getState().setKp(kp);
+      useRuler.getState().setKp(kp, { x, y, right: r.x + r.w });
       return;
     }
   }

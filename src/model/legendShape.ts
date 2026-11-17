@@ -15,13 +15,15 @@ export function shapeFrom(
     lw: Linework;
     groups: ReadonlySet<number>;
     colourOf: (i: number) => string;
+    widthOf?: (i: number) => number;
   }[],
   project: Project,
 ): LegendShape | null {
   const lines: number[][] = [];
   const colors: string[] = [];
+  const widths: number[] = [];
   let total = 0;
-  for (const { lw, groups, colourOf } of sources)
+  for (const { lw, groups, colourOf, widthOf } of sources)
     lw.lines.forEach((l, i) => {
       if (!groups.has(lw.groups[i]) || l.length < 4) return;
       const pts: number[] = [];
@@ -29,6 +31,7 @@ export function shapeFrom(
         pts.push(...project(l[k], l[k + 1]));
       lines.push(pts);
       colors.push(colourOf(i));
+      widths.push(widthOf ? widthOf(i) : 0.03);
       total += pts.length / 2;
     });
   if (!lines.length) return null;
@@ -63,6 +66,7 @@ export function shapeFrom(
       ),
     ),
     colors,
+    widths,
   };
 }
 

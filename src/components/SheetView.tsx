@@ -51,6 +51,12 @@ import { planStyle } from "./PlanView";
 import { useSurvey } from "../state/surveyData";
 import { useImport } from "./ImportDialog";
 import { askText } from "./Dialog";
+import {
+  dragBox,
+  useBodyBox,
+  type Box,
+  type BoxHandle,
+} from "../state/bodyBox";
 import { rulerTo, useRuler } from "../state/ruler";
 import { RulerLines } from "./RulerLines";
 import { editPlanItemText, matchLabelOf } from "./planItems";
@@ -174,6 +180,13 @@ type Drag =
       hit?: Selection;
     }
   | { type: "north"; panelId: string }
+  | {
+      type: "tbox";
+      panelId: string;
+      handle: BoxHandle;
+      start: Pt;
+      box: Box;
+    }
   | { type: "kview"; panelId: string; start: Pt; view: KeyView; k: number }
   | {
       type: "callout";
@@ -649,6 +662,31 @@ export function SheetView({
       });
       return;
     }
+    // Moving or resizing a text panel's text box; a click outside finishes.
+    const tb = useBodyBox.getState();
+    if (tb.active) {
+      const hit = document
+        .elementsFromPoint(e.clientX, e.clientY)
+        .find((x) => x.closest("[data-tbox-handle]"))
+        ?.closest("[data-tbox-handle]");
+      const frameG = hit?.closest("[data-tbox]");
+      if (hit && frameG) {
+        const [bx, by, bw, bh] = frameG
+          .getAttribute("data-tbox-origin")!
+          .split(",")
+          .map(Number);
+        store().beginGesture();
+        setDrag({
+          type: "tbox",
+          panelId: frameG.getAttribute("data-tbox")!,
+          handle: hit.getAttribute("data-tbox-handle") as BoxHandle,
+          start: at,
+          box: { x: bx, y: by, w: bw, h: bh },
+        });
+        return;
+      }
+      tb.exit();
+    }
     // Adjusting the key plan view: a drag on the map moves it; a click outside finishes.
     const kvs = useKeyplanView.getState();
     if (kvs.active && !frameEl) {
@@ -1122,6 +1160,24 @@ export function SheetView({
       }));
       return;
     }
+    if (drag.type === "tbox") {
+      const panel = template.panels.find((q) => q.id === drag.panelId);
+      if (!panel) return;
+      const bodyBox = dragBox(
+        drag.box,
+        drag.handle,
+        at.x - drag.start.x,
+        at.y - drag.start.y,
+        { w: panel.w, h: panel.h },
+      );
+      store().updateGesture((t) => ({
+        ...t,
+        panels: t.panels.map((q) =>
+          q.id === drag.panelId ? { ...q, bodyBox } : q,
+        ),
+      }));
+      return;
+    }
     if (drag.type === "kview") {
       const view = panView(
         drag.view,
@@ -1307,7 +1363,7 @@ export function SheetView({
             );
           }, SLOW_CLICK_MS);
       }
-    } else if (drag.type === "kview") {
+    } else if (drag.type === "kview" || drag.type === "tbox") {
       store().endGesture();
     } else if (drag.type === "mapPan") {
       store().endGesture();
@@ -1518,8 +1574,17 @@ export function SheetView({
     if (el.closest("[data-body2]"))
       return store().startEdit({ kind: "panelBody2", id });
     const p = template.panels.find((x) => x.id === id);
-    if (p && p.body !== undefined)
+    if (p && p.body !== undefined) {
+      // First double-click puts a box round the text to move and resize it; a second one edits the words.
+      if (
+        p.body2 === undefined &&
+        p.type === "text" &&
+        !el.closest("[data-tbox]")
+      )
+        return enterMode("textbox", { panelId: id });
+      useBodyBox.getState().exit();
       return store().startEdit({ kind: "panelBody", id });
+    }
     fit();
   }
 

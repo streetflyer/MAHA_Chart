@@ -26,6 +26,7 @@ const off = {
   smooth: false,
   matchline: false,
   keyview: false,
+  textbox: false,
 };
 const none: ModeTargets = {
   drawingPanel: null,
@@ -35,6 +36,7 @@ const none: ModeTargets = {
   smoothDataset: null,
   matchPanel: null,
   keyviewPanel: null,
+  textboxPanel: null,
 };
 
 describe("mode machine: rules", () => {
@@ -62,6 +64,17 @@ describe("mode machine: rules", () => {
       modeStillValid("smooth", { ...none, smoothDataset: "d1" }, world),
     ).toBe(false);
   });
+  it("the text box needs its panel", () => {
+    const t = { ...none, textboxPanel: "s_title" };
+    expect(
+      modeStillValid("textbox", t, { panels: ["s_title"], datasets: [] }),
+    ).toBe(true);
+    expect(modeStillValid("textbox", t, { panels: [], datasets: [] })).toBe(
+      false,
+    );
+    expect(modeOf({ ...off, textbox: true })).toBe("textbox");
+  });
+
   it("the key plan view needs its panel", () => {
     const t = { ...none, keyviewPanel: "p_key" };
     expect(

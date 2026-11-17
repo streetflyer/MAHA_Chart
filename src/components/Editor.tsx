@@ -64,6 +64,7 @@ import { useEventEdit } from "../state/eventEdit";
 import { EventEditBar } from "./EventEditBar";
 import { ModeBar } from "./ModeBar";
 import { exitMode, useMode } from "../state/mode";
+import { useBodyBox } from "../state/bodyBox";
 import { useRuler } from "../state/ruler";
 import { useKeyplanView } from "../state/keyplanView";
 import { undoEventLabels } from "./eventLabelEdit";
@@ -319,6 +320,10 @@ export function Editor({ onExit }: { onExit(): void }) {
         undoEventLabels()
       ) {
         e.preventDefault();
+        return;
+      }
+      if (e.key === "Escape" && useBodyBox.getState().active) {
+        useBodyBox.getState().exit();
         return;
       }
       if (e.key === "Escape" && useKeyplanView.getState().active) {

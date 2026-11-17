@@ -2134,6 +2134,20 @@ function LegendEditor({ p }: { p: Panel }) {
                     }
                   />
                 </label>
+                <label className="field">
+                  <span>Line (mm, 0 = as plan)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.05}
+                    defaultValue={it.lineWidth ?? 0}
+                    key={`w${it.lineWidth}`}
+                    onBlur={(e) => {
+                      const v = Number(e.target.value);
+                      update(it.id, { lineWidth: v > 0 ? v : undefined });
+                    }}
+                  />
+                </label>
                 <label className="check">
                   <input
                     type="checkbox"
