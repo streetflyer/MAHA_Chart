@@ -189,6 +189,8 @@ export interface Panel {
   labelWidth?: number;
   /** Events panel: the description column on the left (default) or the right. */
   labelSide?: "left" | "right";
+  /** The side per chart (by index), over `labelSide`. */
+  labelSides?: Record<string, "left" | "right">;
   /** Events panel: text look of every row's title and of the text along the rows. */
   rowTitleFont?: Partial<RowFont>;
   rowFont?: Partial<RowFont>;

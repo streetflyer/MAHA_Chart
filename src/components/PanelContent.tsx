@@ -16,6 +16,7 @@ import type {
 import { scaleBarStyleOf } from "../model/types";
 import { BarShape } from "./scaleBars";
 import { Keyplan } from "./Keyplan";
+import { onChart } from "../model/labelSide";
 import { CpMark, KpPanelData, kpToX, planKpRange } from "./KpPanels";
 import {
   DEFAULT_LEGEND_STYLE,
@@ -95,7 +96,10 @@ export function PanelContent({
     case "events":
       return (
         <>
-          <EventRows p={p} onRowDoubleClick={onRowDoubleClick} />
+          <EventRows
+            p={onChart(p, sheetOf(tokens))}
+            onRowDoubleClick={onRowDoubleClick}
+          />
           <KpPanelData p={p} t={template} sheetIndex={sheetOf(tokens)} />
         </>
       );

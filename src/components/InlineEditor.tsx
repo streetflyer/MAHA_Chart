@@ -86,7 +86,8 @@ function targetFor(e: InlineEdit, t: ChartTemplate): Target | null {
     return {
       rect: {
         x:
-          p.labelSide === "right"
+          (p.labelSides?.[useEditor.getState().sheetIndex] ?? p.labelSide) ===
+          "right"
             ? p.x + p.w - Math.max(p.labelWidth ?? 30, 60)
             : p.x,
         y: p.y + i * rh,

@@ -624,14 +624,22 @@ export function Editor({ onExit }: { onExit(): void }) {
         p.type === "events"
           ? [
               {
-                label: "Description column on the left",
-                checked: p.labelSide !== "right",
-                action: () => st.updatePanel(p.id, { labelSide: "left" }),
+                label: "Description column on the left (this chart)",
+                checked:
+                  (p.labelSides?.[st.sheetIndex] ?? p.labelSide) !== "right",
+                action: () =>
+                  st.updatePanel(p.id, {
+                    labelSides: { ...p.labelSides, [st.sheetIndex]: "left" },
+                  }),
               },
               {
-                label: "Description column on the right",
-                checked: p.labelSide === "right",
-                action: () => st.updatePanel(p.id, { labelSide: "right" }),
+                label: "Description column on the right (this chart)",
+                checked:
+                  (p.labelSides?.[st.sheetIndex] ?? p.labelSide) === "right",
+                action: () =>
+                  st.updatePanel(p.id, {
+                    labelSides: { ...p.labelSides, [st.sheetIndex]: "right" },
+                  }),
               },
               "separator",
             ]

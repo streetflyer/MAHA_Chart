@@ -8,6 +8,7 @@ import { useEventEdit } from "../state/eventEdit";
 import { useSmoothTool } from "../state/smoothTool";
 import { kpFinder } from "./CpPanel";
 import { hoverSources } from "../state/hoverInfo";
+import { onChart } from "../model/labelSide";
 import { rulerSources } from "../state/ruler";
 import { useKpShift } from "../state/kpShift";
 import { longSections } from "../state/longSections";
@@ -377,7 +378,7 @@ function cutToPlan(
 
 /** Data drawn in the longitudinal, transverse, events and CP panels for the current chart. */
 export function KpPanelData({
-  p: panel,
+  p: panelIn,
   t,
   sheetIndex,
 }: {
@@ -385,6 +386,7 @@ export function KpPanelData({
   t: ChartTemplate;
   sheetIndex: number;
 }) {
+  const panel = onChart(panelIn, sheetIndex);
   // An events panel with its description column on the right: the data area is the panel less that column.
   const p: Panel =
     panel.type === "events" && panel.labelSide === "right"
