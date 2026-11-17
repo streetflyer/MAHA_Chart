@@ -855,6 +855,12 @@ export function SheetView({
       });
       return;
     }
+    // Ctrl+drag always draws the choosing box, even over objects: a drawing made of several
+    // blocks has no empty spot to start from.
+    if (e.ctrlKey || e.metaKey) {
+      setDrag({ type: "drawBox", start: at, shift: e.shiftKey });
+      return;
+    }
     const pick = pickObject(ctx, at.x, at.y, 6 / pxPerMm());
     if (pick) {
       const cur = de.selected[pick.id] ?? [];

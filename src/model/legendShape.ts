@@ -3,7 +3,8 @@ import type { LegendShape } from "./types";
 
 type Project = (e: number, n: number) => [number, number];
 
-const MAX_POINTS = 3000;
+// Only a drawing of an absurd size is thinned: circles and arcs keep every point they have.
+const MAX_POINTS = 400000;
 
 /**
  * The chosen objects of a drawing as a legend symbol: their lines as they look in the plan

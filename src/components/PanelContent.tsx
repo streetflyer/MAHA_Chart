@@ -696,6 +696,7 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
     )
       .map((d) => ({
         ...d,
+        ...ld.overrides[d.key],
         label: ld.overrides[d.key]?.label ?? d.label,
         hidden: ld.overrides[d.key]?.hidden,
       }))
@@ -817,7 +818,9 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
         );
         const lh = fontSize(labelCap) * 1.15;
         const rowH = Math.max(
-          it.symbol === "drawing" ? (it.size ?? 6) + 1 : 0,
+          it.symbol === "drawing"
+            ? (it.size ?? 6) + 1
+            : 4 * (it.scale ?? 1) * (it.rot ? 1.2 : 1),
           it.symbol === "kpMarker" || it.symbol === "assetBlob"
             ? 7
             : it.symbol === "burial" || it.symbol === "freespan"
@@ -828,7 +831,9 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
         const cy = y + rowH / 2;
         out.push(
           <g key={it.id} data-legend={it.id}>
-            <LegendSymbolView it={it} x={x} cy={cy} w={sw} tokens={tokens} />
+            <g data-lsym={it.id}>
+              <LegendSymbolView it={it} x={x} cy={cy} w={sw} tokens={tokens} />
+            </g>
             <text
               x={x + sw + 2}
               y={cy - ((lines.length - 1) * lh) / 2}
@@ -899,7 +904,29 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
   );
 }
 
-function LegendSymbolView({
+/** A legend symbol; its size and turn (set in the symbol window) apply about its middle. */
+export function LegendSymbolView(props: {
+  it: LegendItem;
+  x: number;
+  cy: number;
+  w: number;
+  tokens: Record<string, string>;
+}) {
+  const { it, x, cy, w } = props;
+  const k = it.symbol === "drawing" ? 1 : (it.scale ?? 1);
+  const r = it.symbol === "drawing" ? 0 : (it.rot ?? 0);
+  if (k === 1 && !r) return <SymbolBody {...props} />;
+  const cx = x + w / 2;
+  return (
+    <g
+      transform={`translate(${cx} ${cy}) rotate(${r}) scale(${k}) translate(${-cx} ${-cy})`}
+    >
+      <SymbolBody {...props} />
+    </g>
+  );
+}
+
+function SymbolBody({
   it,
   x,
   cy,
@@ -915,8 +942,8 @@ function LegendSymbolView({
   const c = it.color;
   const st = (sw: number, dash?: string) => ({
     stroke: c,
-    strokeWidth: sw,
-    strokeDasharray: dash,
+    strokeWidth: it.lineWidth ?? sw,
+    strokeDasharray: it.dash !== undefined ? it.dash || undefined : dash,
     fill: "none",
   });
   switch (it.symbol) {

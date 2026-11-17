@@ -216,8 +216,9 @@ export function DrawingEditOverlay({
         strokeDasharray="2.5 1.5"
       />
       <text x={p.x + 2} y={p.y + p.h - 2} fontSize={fontSize(1.6)} fill={BLUE}>
-        Editing the drawing: click or drag a box to choose, drag to move, drag
-        the round handle to turn, Delete removes. Esc or Done to finish.
+        Editing the drawing: click or drag a box to choose (Ctrl+drag draws the
+        box over objects), drag to move, drag the round handle to turn, Delete
+        removes. Esc or Done to finish.
       </text>
     </g>
   );

@@ -460,7 +460,29 @@ export interface LegendItem {
   keepColours?: boolean;
   /** Line width of a drawing symbol, mm; unset: as in the plan view. */
   lineWidth?: number;
+  /** Symbol size as a factor of the standard one (symbols other than drawing objects). */
+  scale?: number;
+  /** Dash pattern of a line symbol in mm ("" = solid); unset: the symbol's own. */
+  dash?: string;
 }
+
+/** What the user can change about a legend symbol (kept per item; for data lines under their key). */
+export type SymbolLook = Pick<
+  LegendItem,
+  | "symbol"
+  | "color"
+  | "fill"
+  | "outline"
+  | "size"
+  | "rot"
+  | "scale"
+  | "lineWidth"
+  | "dash"
+  | "boldPos"
+  | "boldColor"
+  | "boldDash"
+  | "keepColours"
+>;
 
 /**
  * How an event code's definition is written from the imported events: columns of the file
@@ -508,7 +530,10 @@ export interface LegendStyle {
 export interface LegendData {
   on: boolean;
   /** Keyed by the item's data key: new wording, or hidden. */
-  overrides: Record<string, { label?: string; hidden?: boolean }>;
+  overrides: Record<
+    string,
+    { label?: string; hidden?: boolean } & Partial<SymbolLook>
+  >;
 }
 
 export interface RevisionRow {

@@ -188,11 +188,21 @@ export function definitionSources(
     return "";
   };
   const width = Math.max(0, ...evs.map((d) => d.columns?.length ?? 0));
+  const cols: { id: string; name: string; sample: string }[] = [];
   for (let i = 0; i < width; i++) {
     const name =
       evs.map((d) => d.columns?.[i]).find(Boolean) ?? `Column ${i + 1}`;
-    out.push({ id: `c:${i}`, name, sample: first((r) => r.cells?.[i] ?? "") });
+    cols.push({ id: `c:${i}`, name, sample: first((r) => r.cells?.[i] ?? "") });
   }
+  // The listing's EventGroup and EventSubGroup columns come first, under their own names.
+  const key = (n: string) => n.toLowerCase().replace(/[^a-z]/g, "");
+  const named = (...names: string[]) =>
+    cols.find((c) => names.includes(key(c.name)));
+  const grp = named("eventgroup", "group");
+  const sub = named("eventsubgroup", "subgroup");
+  for (const c of [grp, sub])
+    if (c) out.push({ ...c, name: `${c.name} (from the file)` });
+  out.push(...cols.filter((c) => c !== grp && c !== sub));
   out.push(
     { id: "code", name: "Event code", sample: first((r) => r.code) },
     {

@@ -60,6 +60,7 @@ import { useSmoothTool } from "../state/smoothTool";
 import { eventLabelMenu } from "./eventLabelEdit";
 import { codeDefMenu } from "./legendEdit";
 import { CodeDefsDialog } from "./CodeDefsDialog";
+import { SymbolDialog } from "./SymbolDialog";
 import { useEventEdit } from "../state/eventEdit";
 import { EventEditBar } from "./EventEditBar";
 import { ModeBar } from "./ModeBar";
@@ -1112,6 +1113,7 @@ export function Editor({ onExit }: { onExit(): void }) {
           <ModeBar />
           <HoverTip />
           <CodeDefsDialog />
+          <SymbolDialog />
           {showParams && (
             <ParametersDialog onClose={() => setShowParams(false)} />
           )}

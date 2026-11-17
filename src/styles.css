@@ -2246,3 +2246,12 @@ fieldset.plain {
   min-height: 3em;
   white-space: pre-wrap;
 }
+
+.symbol-dialog {
+  width: min(380px, 94vw);
+}
+.sym-preview {
+  display: block;
+  margin: 0 auto 6px;
+  border: 1px solid #8884;
+}

@@ -363,9 +363,9 @@ export function DrawingEditPanel({
       <h4>Editing the drawing</h4>
       <p className="hint">
         Click an object or drag a box (left to right: inside; right to left:
-        touching). Shift+click adds. Drag a chosen object to move it, the round
-        handle to turn it (Shift: 15° steps), arrow keys to nudge, Delete to
-        remove.
+        touching; Ctrl+drag draws the box even over objects). Shift+click adds.
+        Drag a chosen object to move it, the round handle to turn it (Shift: 15°
+        steps), arrow keys to nudge, Delete to remove.
       </p>
       <div className="project-actions">
         <button type="button" className="primary" onClick={() => de.exit()}>

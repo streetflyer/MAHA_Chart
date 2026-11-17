@@ -83,6 +83,13 @@ function Inner({ panelId }: { panelId: string }) {
           Tick the columns of the events file to write each definition from. The
           order ticked is the order written.
         </p>
+        {!sources.some((s) => s.id.startsWith("c:")) && (
+          <p className="hint" data-cd-reimport>
+            This events file was imported before its other columns were kept.
+            Import it again (Check imported data, tick Replace) to tick its
+            EventGroup, EventSubGroup and other columns here.
+          </p>
+        )}
         <div className="cd-cols">
           {sources.map((s) => (
             <label key={s.id} className="check" data-cdcol={s.id}>

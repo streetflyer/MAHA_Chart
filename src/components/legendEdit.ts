@@ -2,6 +2,7 @@ import { useEditor } from "../state/store";
 import { useSurvey } from "../state/surveyData";
 import { askText } from "./Dialog";
 import { useCodeDefs } from "../state/codeDefs";
+import { useSymbolEdit } from "../state/symbolEdit";
 import type { MenuItem } from "./ContextMenu";
 import { LEGEND_GROUPS } from "../model/presets";
 import type { LegendGroup, Panel } from "../model/types";
@@ -38,6 +39,16 @@ export function editLegendAt(
         clientY <= r.bottom + 1
       );
     });
+  // A double-click on a symbol opens the symbol window; on the words it edits them.
+  const symEl = under("[data-lsym]");
+  if (symEl) {
+    const panel = legendOf(symEl);
+    const id = symEl.getAttribute("data-lsym");
+    if (panel && id) {
+      useSymbolEdit.getState().open(panel.id, id);
+      return true;
+    }
+  }
   const headEl = under("[data-lhead]");
   const itemEl = headEl ? undefined : under("[data-legend]");
   const lineEl =

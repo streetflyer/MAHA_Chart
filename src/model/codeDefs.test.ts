@@ -64,8 +64,8 @@ describe("event code definitions from columns", () => {
     expect(lines).toContain("E97\tE97 - Engin.Feature - Touchdown Point");
     expect(dataEventCodes([ds]).split("\n")).toContain("AN.OK\tAnode OK");
   });
-  it("lists the file's columns first, then code, group, subgroup, value", () => {
+  it("lists the file's EventGroup first, then its other columns, then code, group, subgroup, value", () => {
     const ids = definitionSources([ds]).map((x) => x.id);
-    expect(ids).toEqual(["c:0", "c:1", "c:2", "code", "group", "sub", "value"]);
+    expect(ids).toEqual(["c:1", "c:0", "c:2", "code", "group", "sub", "value"]);
   });
 });
