@@ -2295,3 +2295,15 @@ button.measure-on:hover {
   border-color: #1d6fe0;
   color: #fff;
 }
+
+.cb-hex {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+.cb-hex input {
+  width: 80px;
+  font-family: monospace;
+}

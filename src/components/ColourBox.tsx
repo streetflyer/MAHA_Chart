@@ -99,6 +99,15 @@ function saveRecent(c: string) {
   }
 }
 
+/** The browser's screen eyedropper (Chrome, Edge); absent elsewhere. */
+interface EyeDropperApi {
+  open(): Promise<{ sRGBHex: string }>;
+}
+const eyeDropper = (): EyeDropperApi | null => {
+  const E = (globalThis as { EyeDropper?: new () => EyeDropperApi }).EyeDropper;
+  return E ? new E() : null;
+};
+
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 /**
@@ -181,6 +190,20 @@ export function ColourBox({
     />
   );
   const recent = open ? loadRecent() : [];
+  const [hexText, setHexText] = useState<string | null>(null);
+  const canPick =
+    typeof globalThis !== "undefined" && "EyeDropper" in globalThis;
+  async function pick() {
+    const d = eyeDropper();
+    if (!d) return;
+    // The box hides while the pointer is over the screen, then the picked colour is used.
+    try {
+      const r = await d.open();
+      choose(r.sRGBHex);
+    } catch {
+      /* Esc: nothing picked */
+    }
+  }
 
   return (
     <>
@@ -241,6 +264,35 @@ export function ColourBox({
                 <div className="cb-row">{recent.map(swatch)}</div>
               </>
             )}
+            {canPick && (
+              <button
+                type="button"
+                className="cb-more"
+                data-eyedropper
+                onClick={() => void pick()}
+                title="Click any colour on the screen to use it"
+              >
+                <span className="cb-wheel" /> Pick colour from screen
+              </button>
+            )}
+            <div className="cb-hex">
+              <span>Hex</span>
+              <input
+                data-cb-hex
+                value={hexText ?? value.toUpperCase()}
+                onChange={(e) => setHexText(e.target.value)}
+                onBlur={() => setHexText(null)}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter") {
+                    const v = (hexText ?? "").trim();
+                    const m = /^#?([0-9a-f]{6})$/i.exec(v);
+                    if (m) choose("#" + m[1]);
+                  }
+                }}
+                spellCheck={false}
+              />
+            </div>
             <button
               type="button"
               className="cb-more"
