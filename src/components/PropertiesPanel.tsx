@@ -15,7 +15,9 @@ import { ColourBox } from "./ColourBox";
 import { useEffect, useRef, useState } from "react";
 import { newId } from "../model/ids";
 import { PAPER_SIZES } from "../model/paper";
-import { formatScale, planPanel, sheetCount } from "../model/scale";
+import { formatScale, planPanel, sheetCount, sheetRange } from "../model/scale";
+import { chartKpRange } from "../model/tokens";
+import { matchSpecs } from "../model/matchlines";
 import type {
   ChartTemplate,
   EventRow,
@@ -2747,6 +2749,68 @@ function KeyplanMatchTools({ p }: { p: Panel }) {
   );
 }
 
+/** The matchlines of the chart in view, each with its KP to adjust (chosen lines keep the KP typed; Auto goes back to the automatic one). */
+function MatchlineList({ st }: { st: MatchlineStyle }) {
+  const t = useEditor((s) => s.template);
+  const chart = useEditor((s) => s.sheetIndex);
+  if (!t) return null;
+  const n = sheetCount(t);
+  const ranges = Array.from({ length: n }, (_, i) => {
+    const r = sheetRange(t, i);
+    return { start: r.start * 1000, end: r.end * 1000 };
+  });
+  const shown = ranges.map((_, i) => {
+    const r = chartKpRange(t, i);
+    return { start: r.start * 1000, end: r.end * 1000 };
+  });
+  const specs = matchSpecs(ranges, chart, st.mode, shown, st.pairs);
+  if (!specs.length) return null;
+  const set = (b: number, kp: number | null) =>
+    useEditor
+      .getState()
+      .commit((tt) =>
+        withMatchPair(
+          tt,
+          b,
+          kp === null ? null : { kp: Math.round(kp * 1000) / 1000 },
+        ),
+      );
+  return (
+    <div className="match-list" data-match-list>
+      <h4>Matchlines on this chart</h4>
+      {specs.map((m) => {
+        const b = m.side < 0 ? chart - 1 : chart;
+        const chosen = !!st.pairs?.[String(b)];
+        return (
+          <div className="row2" key={b} data-match-row={b}>
+            <label className="field">
+              <span>
+                To chart {m.chart} ({m.side < 0 ? "before" : "after"})
+              </span>
+              <span className="with-suffix">
+                <DraftNumber
+                  step={0.001}
+                  value={Math.round(m.kp) / 1000}
+                  onCommit={(v) => set(b, v * 1000)}
+                />
+                <span className="suffix">km</span>
+              </span>
+            </label>
+            <button
+              type="button"
+              disabled={!chosen}
+              onClick={() => set(b, null)}
+              title="Go back to the automatic matchline"
+            >
+              Auto
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /** Tick boxes for the KP panels that also draw the matchlines. */
 function MatchPanelTicks({
   st,
@@ -2834,6 +2898,7 @@ function MatchlineControls({
             {txt("Label suffix", "suffix")}
           </div>
           {txt("Extra text (other side)", "extra")}
+          <MatchlineList st={st} />
           <MatchPanelTicks st={st} onChange={onChange} />
           <label
             className="check"
