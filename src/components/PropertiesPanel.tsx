@@ -357,6 +357,7 @@ function TemplateProps({ t }: { t: ChartTemplate }) {
 
 export function ScaleFields({ t }: { t: ChartTemplate }) {
   const s = useEditor.getState();
+  const sheetIndex = useEditor((st) => st.sheetIndex);
   return (
     <>
       <h4>Scale</h4>
@@ -399,12 +400,12 @@ export function ScaleFields({ t }: { t: ChartTemplate }) {
         <input
           type="checkbox"
           data-kp-align
-          checked={!!t.scale.kpAlign?.[s.sheetIndex]}
+          checked={!!t.scale.kpAlign?.[sheetIndex]}
           onChange={(e) =>
             s.setScale({
               kpAlign: {
                 ...t.scale.kpAlign,
-                [s.sheetIndex]: e.target.checked,
+                [sheetIndex]: e.target.checked,
               },
             })
           }
@@ -412,6 +413,11 @@ export function ScaleFields({ t }: { t: ChartTemplate }) {
         Match all panels' start/end KP grid line to KP 0 in the plan view (this
         chart)
       </label>
+      <p className="muted">
+        With this on, the start and end KP lines (the end of the runline on the
+        last chart) stand where the plan view draws them, so the KP spacing is
+        stretched to the plan view's. Off: true scale.
+      </p>
       <div className="row2">
         <Field
           label="Route length"

@@ -90,15 +90,24 @@ export function kpToX(
     const mm = 1000 / t.scale.horizontal;
     let x0 = plan.x;
     let kp0 = start * 1000;
-    // Aligned to the plan view's KP 0: the chart's first KP of the line stands at the x the plan view draws it.
+    let rate = mm;
+    // Aligned to the plan view: the chart's first KP of the line stands at the x the plan view draws it, and its
+    // last KP (the end of the runline on the last chart) at the x the plan view draws that, so both ends match.
     if (t.scale.kpAlign?.[sheetIndex] && route) {
       const g = chartGeometry(t, route, sheetIndex);
       if (g) {
+        const proj = kpProjector(t, route, sheetIndex, g, plan);
         kp0 = Math.max(kp0, k0);
-        x0 = kpProjector(t, route, sheetIndex, g, plan)(kp0)[0];
+        x0 = proj(kp0)[0];
+        const kp1 = Math.min(
+          sheetRange(t, sheetIndex).end * 1000,
+          k0 + route.length,
+        );
+        const x1 = proj(kp1)[0];
+        if (kp1 > kp0 + 1e-6 && x1 > x0 + 1e-6) rate = (x1 - x0) / (kp1 - kp0);
       }
     }
-    return (kp) => x0 + (kp - kp0) * mm;
+    return (kp) => x0 + (kp - kp0) * rate;
   }
   if (route) {
     const g = chartGeometry(t, route, sheetIndex);
