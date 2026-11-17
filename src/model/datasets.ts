@@ -409,6 +409,8 @@ export interface LongOpts {
   omitEndLabels: boolean;
   /** Divide the profile where it would leave the panel, each part with its own depth window. */
   cut: boolean;
+  /** Where each cut section shows its depth values (by section number from 0); unset: the axis side above. */
+  sectionSides?: Record<string, "left" | "right" | "both">;
   /** Depth step the windows move by when cut, metres. */
   cutStep: number;
 }

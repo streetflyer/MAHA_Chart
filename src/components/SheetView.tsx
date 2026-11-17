@@ -59,6 +59,13 @@ import {
 } from "../state/bodyBox";
 import { rulerTo, useRuler } from "../state/ruler";
 import { RulerLines } from "./RulerLines";
+import { MeasureArrow } from "./MeasureArrow";
+import {
+  measureDown,
+  measureMove,
+  measureUp,
+  useMeasure,
+} from "../state/measure";
 import { editPlanItemText, matchLabelOf } from "./planItems";
 import {
   calloutsOf,
@@ -70,6 +77,7 @@ import {
 import { planProjection } from "./Callouts";
 import { useMatchPick } from "../state/matchPick";
 import { chartField } from "../model/chartText";
+import { longSectionAt } from "../state/longSections";
 import { usePrefs } from "../state/prefs";
 import { infoAt, useHoverTip } from "../state/hoverInfo";
 import { keyplanToGrid, matchClick } from "./matchPicking";
@@ -121,7 +129,8 @@ export interface ContextTarget {
     | "planitem"
     | "callout"
     | "evlabel"
-    | "codedef";
+    | "codedef"
+    | "longsection";
   id?: string;
   code?: string;
   rowId?: string;
@@ -461,6 +470,12 @@ export function SheetView({
       return;
     }
     if (e.button !== 0) return;
+    // The measuring arrow: drawn, or moved by its body or ends.
+    if (measureDown(at, 3 / pxPerMm())) {
+      e.preventDefault();
+      svgRef.current!.setPointerCapture(e.pointerId);
+      return;
+    }
     // Choosing matchlines: clicks in the key plan pick or draw them; a click elsewhere finishes.
     const mp = useMatchPick.getState();
     if (mp.active) {
@@ -902,6 +917,10 @@ export function SheetView({
 
   function onPointerMove(e: React.PointerEvent) {
     const at = toMm(e.clientX, e.clientY);
+    if (useMeasure.getState().drag) {
+      measureMove(at, e.shiftKey);
+      return;
+    }
     onCursor(at);
     if (useRuler.getState().on) rulerTo(at.x, at.y);
     const mp = useMatchPick.getState();
@@ -1310,6 +1329,11 @@ export function SheetView({
   }
 
   function onPointerUp(e: React.PointerEvent) {
+    if (useMeasure.getState().drag) {
+      svgRef.current!.releasePointerCapture?.(e.pointerId);
+      measureUp();
+      return;
+    }
     if (!drag) return;
     svgRef.current!.releasePointerCapture?.(e.pointerId);
     if (drag.type === "cpMove" || drag.type === "cpBox") {
@@ -1656,6 +1680,13 @@ export function SheetView({
         kind: "evlabel",
         id: evEl.getAttribute("data-evlabel")!,
       });
+    const ls = longSectionAt(at.x, at.y);
+    if (ls && !useDrawingEdit.getState().active)
+      return onContextMenu(e.clientX, e.clientY, at, {
+        kind: "longsection",
+        id: ls.panelId,
+        code: `${ls.datasetId}|${ls.n}`,
+      });
     const cd = codeDefAt(e.clientX, e.clientY);
     if (cd)
       return onContextMenu(e.clientX, e.clientY, at, {
@@ -1829,6 +1860,7 @@ export function SheetView({
           />
         ))}
         <RulerLines />
+        <MeasureArrow />
         {guides.x !== undefined && (
           <line
             className="guide"

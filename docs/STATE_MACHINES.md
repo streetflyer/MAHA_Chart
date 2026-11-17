@@ -12,16 +12,16 @@ without guessing from pixels.
 
 Which edit mode the sheet is in. One at a time.
 
-| State       | Entered by                                                       | Data lives in                                                       |
-| ----------- | ---------------------------------------------------------------- | ------------------------------------------------------------------- |
-| `idle`      | Esc, Done, a click outside the panel                             |                                                                     |
-| `drawing`   | double-click the plan view                                       | `useDrawingEdit`                                                    |
-| `cp`        | double-click the CP panel                                        | `useCpEdit`                                                         |
-| `events`    | double-click an Engineering Events panel                         | `useEventEdit`                                                      |
-| `smooth`    | "Smooth tool" in the profile properties                          | `useSmoothTool`                                                     |
-| `textbox` | Double-click the text of a text panel (e.g. the title) | `useBodyBox` (panel; the box is kept on the panel as `bodyBox`) |
-| `keyview` | Double-click the key plan, or "Zoom and move the map" in the key plan properties | `useKeyplanView` (panel; `rotating` keeps a chart's rotation grip on screen while dragged) |
-| `matchline` | "Pick matchline" / "Draw a matchline" in the key plan properties | `useMatchPick` (tool `pick` or `draw`, first point of a drawn line) |
+| State       | Entered by                                                                       | Data lives in                                                                              |
+| ----------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `idle`      | Esc, Done, a click outside the panel                                             |                                                                                            |
+| `drawing`   | double-click the plan view                                                       | `useDrawingEdit`                                                                           |
+| `cp`        | double-click the CP panel                                                        | `useCpEdit`                                                                                |
+| `events`    | double-click an Engineering Events panel                                         | `useEventEdit`                                                                             |
+| `smooth`    | "Smooth tool" in the profile properties                                          | `useSmoothTool`                                                                            |
+| `textbox`   | Double-click the text of a text panel (e.g. the title)                           | `useBodyBox` (panel; the box is kept on the panel as `bodyBox`)                            |
+| `keyview`   | Double-click the key plan, or "Zoom and move the map" in the key plan properties | `useKeyplanView` (panel; `rotating` keeps a chart's rotation grip on screen while dragged) |
+| `matchline` | "Pick matchline" / "Draw a matchline" in the key plan properties                 | `useMatchPick` (tool `pick` or `draw`, first point of a drawn line)                        |
 
 - Read: `currentMode()`, `useMode()`, or `[data-mode]` on `.editor`.
 - Change: `enterMode(mode, { panelId, datasetId })`, `exitMode()`.
@@ -116,3 +116,7 @@ also forgets the file's import recipe and settings (`FolderState.off` keeps it f
 offered as new). "Check imported data" offers only files that are not on the chart and
 were not taken off on purpose. A folder's chart is kept when you leave it even if empty,
 so emptied data does not come back when the folder is opened again.
+
+## Measuring arrow (toolbar "Arrow")
+
+A toggle, not a mode (like the ruler): `useMeasure.armed` lets a drag on the sheet draw an arrow; an existing arrow is always draggable by its body or ends. `useMeasure.drag` is the one drag in progress. The arrow is a view aid: never saved, never printed. Tested in state/measure.test.ts.

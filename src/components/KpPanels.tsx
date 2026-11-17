@@ -9,6 +9,7 @@ import { useSmoothTool } from "../state/smoothTool";
 import { kpFinder } from "./CpPanel";
 import { hoverSources } from "../state/hoverInfo";
 import { rulerSources } from "../state/ruler";
+import { longSections } from "../state/longSections";
 import { kpPanelLines } from "./hoverText";
 import { extraGridKps } from "../model/kpGrid";
 import { autoVideoText } from "../model/video";
@@ -81,6 +82,13 @@ export function kpToX(
   const plan = planPanel(t);
   if (!plan) return null;
   const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+  // True scale: a KP is its distance along the line at the chart's horizontal scale, so the scale bar
+  // measures the same in every panel (the plan view's own x shortens a slanting line).
+  if (t.scale.trueKpScale !== false) {
+    const { start } = sheetRange(t, sheetIndex);
+    const mm = 1000 / t.scale.horizontal;
+    return (kp) => plan.x + (kp - start * 1000) * mm;
+  }
   if (route) {
     const g = chartGeometry(t, route, sheetIndex);
     if (!g) return null;
@@ -487,6 +495,7 @@ export function KpPanelData({
             <line
               key={`${kp}-${i}`}
               className="kp-line"
+              style={p.kpGridColor ? { stroke: p.kpGridColor } : undefined}
               x1={x}
               y1={p.y}
               x2={x}
@@ -893,6 +902,9 @@ function LongProfile({
   };
   const [uMin, uMax] = uRange(a, b);
   if (!Number.isFinite(uMin)) return null;
+  // The depth values sit at the line where the profile starts and ends, not at the panel's edge (the plan view may start further in).
+  const startX = Math.min(p.x + p.w, Math.max(p.x, toX(span[0])));
+  const endX = Math.max(startX, Math.min(p.x + p.w, toX(span[1])));
   const k = 1000 / Math.max(1, t.scale.verticalLong);
   const inner = p.h - 4;
   const stride = Math.max(1, Math.floor((b - a) / 4000));
@@ -905,6 +917,7 @@ function LongProfile({
     xa: number,
     xb: number,
     clipId?: string,
+    n = 0,
   ) => {
     const yU = (u: number) => p.y + (u - u0) * k;
     const y = (v: number) => yU(sgn * v);
@@ -982,7 +995,7 @@ function LongProfile({
             minor: o.minorTick,
             tickLen: o.tickLen,
             suffix: o.suffix,
-            side: o.axisSide,
+            side: o.sectionSides?.[n] ?? o.axisSide,
             omitEnds: o.omitEndLabels,
             grid: {
               show: o.gridShow,
@@ -1058,7 +1071,7 @@ function LongProfile({
               minor: o.minorTick,
               tickLen: o.tickLen,
               suffix: o.suffix,
-              side: o.axisSide,
+              side: o.sectionSides?.[n] ?? o.axisSide,
               omitEnds: o.omitEndLabels,
               grid: {
                 show: o.gridShow,
@@ -1074,6 +1087,7 @@ function LongProfile({
   };
 
   if (!o.cut) {
+    longSections.delete(`${p.id}|${d.id}`);
     const dataH = (uMax - uMin) * k;
     let yTop: number;
     if (o.forceTop !== null && Number.isFinite(o.forceTop))
@@ -1081,7 +1095,11 @@ function LongProfile({
     else if (o.placement === "upper") yTop = p.y + inner * 0.1;
     else if (o.placement === "lower") yTop = p.y + inner * 0.9 - dataH;
     else yTop = p.y + (inner - dataH) / 2;
-    return <g>{section(a, b, uMin - (yTop - p.y) / k, p.x, p.x + p.w)}</g>;
+    return (
+      <g>
+        {section(a, b, uMin - (yTop - p.y) / k, startX, endX, undefined, 0)}
+      </g>
+    );
   }
 
   // Cut and divide: windows as tall as the panel, moved by whole depth steps.
@@ -1150,9 +1168,16 @@ function LongProfile({
     i = to + 1;
   }
   const xs = pieces.map((q, n) => ({
-    xa: n === 0 ? p.x : toX(d.kp[q.from]),
-    xb: n === pieces.length - 1 ? p.x + p.w : toX(d.kp[pieces[n + 1].from]),
+    xa: n === 0 ? startX : toX(d.kp[q.from]),
+    xb: n === pieces.length - 1 ? endX : toX(d.kp[pieces[n + 1].from]),
   }));
+  longSections.set(`${p.id}|${d.id}`, {
+    panelId: p.id,
+    datasetId: d.id,
+    y: p.y,
+    h: p.h,
+    parts: xs,
+  });
   return (
     <g>
       {pieces.map((q, n) =>
@@ -1163,6 +1188,7 @@ function LongProfile({
           xs[n].xa,
           xs[n].xb,
           `lp-${p.id}-${d.id}-${n}`,
+          n,
         ),
       )}
       {xs.slice(1).map((c, n) => (
@@ -1229,11 +1255,14 @@ function TransProfiles({
     Math.abs(toX(span[0] + every) - toX(span[0])) * 0.45,
   );
   const maxLat = (p.h - labelRoom - 4) / 2 / kL;
+  // The offset values sit at the line where the profile starts and ends.
+  const axisA = Math.min(p.x + p.w, Math.max(p.x, toX(span[0])));
+  const axisB = Math.max(axisA, Math.min(p.x + p.w, toX(span[1])));
   const cap = 1.8;
   return (
     <g>
       <DepthAxis
-        p={p}
+        p={{ ...p, x: axisA, w: Math.max(0, axisB - axisA) }}
         y={(v) => cy - v * kL}
         lo={-maxLat}
         hi={maxLat}

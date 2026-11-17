@@ -380,6 +380,18 @@ export function ScaleFields({ t }: { t: ChartTemplate }) {
         The plan view keeps its size on paper; the scale sets how much route
         fits in it.
       </p>
+      <label
+        className="check"
+        title="On: a KP in the profile, event and CP panels is placed by its distance along the line, so the scale bar measures the same in every panel. Off: it follows the plan view's x, which shortens a slanting line."
+      >
+        <input
+          type="checkbox"
+          data-true-kp-scale
+          checked={t.scale.trueKpScale !== false}
+          onChange={(e) => s.setScale({ trueKpScale: e.target.checked })}
+        />{" "}
+        Profiles at true scale (distance along the line)
+      </label>
       <div className="row2">
         <Field
           label="Route length"
@@ -541,6 +553,15 @@ function PanelProps({ p }: { p: Panel }) {
             />{" "}
             Show the KP lines
           </label>
+          {p.kpLines !== false && (
+            <label className="field">
+              <span>KP line colour</span>
+              <ColourBox
+                value={p.kpGridColor ?? "#000000"}
+                onChange={(c) => set({ kpGridColor: c })}
+              />
+            </label>
+          )}
           <label className="check">
             <input
               type="checkbox"

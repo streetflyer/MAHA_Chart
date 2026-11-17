@@ -20,6 +20,7 @@ const SKIP = [
   "guide",
   "marquee",
   "hint",
+  "measure-arrow",
 ];
 
 const enc = new TextEncoder();

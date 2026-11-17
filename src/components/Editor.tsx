@@ -59,6 +59,7 @@ import {
 import { useSmoothTool } from "../state/smoothTool";
 import { eventLabelMenu } from "./eventLabelEdit";
 import { codeDefMenu } from "./legendEdit";
+import { longSectionMenu } from "./longSectionMenu";
 import { CodeDefsDialog } from "./CodeDefsDialog";
 import { SymbolDialog } from "./SymbolDialog";
 import { LegendAddDialog } from "./LegendAddDialog";
@@ -68,6 +69,7 @@ import { ModeBar } from "./ModeBar";
 import { exitMode, useMode } from "../state/mode";
 import { useBodyBox } from "../state/bodyBox";
 import { useRuler } from "../state/ruler";
+import { useMeasure } from "../state/measure";
 import { useKeyplanView } from "../state/keyplanView";
 import { undoEventLabels } from "./eventLabelEdit";
 import { planItemMenu } from "./planItems";
@@ -424,6 +426,14 @@ export function Editor({ onExit }: { onExit(): void }) {
   ) {
     if (target.kind === "cp") {
       setMenu({ x: clientX, y: clientY, items: cpMenu(at) });
+      return;
+    }
+    if (target.kind === "longsection") {
+      setMenu({
+        x: clientX,
+        y: clientY,
+        items: longSectionMenu(target.code ?? ""),
+      });
       return;
     }
     if (target.kind === "codedef") {
@@ -998,6 +1008,7 @@ export function Editor({ onExit }: { onExit(): void }) {
           </button>
           <HoverInfoButtons />
           <RulerButtons />
+          <MeasureButton />
         </div>
         <div className="group">
           <button
@@ -1715,6 +1726,34 @@ function HoverInfoButtons() {
       >
         ⌨
       </button>
+    </span>
+  );
+}
+
+function MeasureButton() {
+  const armed = useMeasure((m) => m.armed);
+  const has = useMeasure((m) => !!m.a);
+  return (
+    <span className="btn-pair">
+      <button
+        className={armed ? "active" : ""}
+        aria-pressed={armed}
+        data-measure={armed ? "on" : "off"}
+        onClick={() => useMeasure.getState().setArmed(!armed)}
+        title="Draw an arrow on the sheet to measure a distance at the chart's horizontal scale: drag to draw it, drag it to move it, hold Shift to keep it straight. Lay it on the scale bar, then move it over a panel to compare."
+      >
+        Arrow
+      </button>
+      {has && (
+        <button
+          className="hover-key"
+          onClick={() => useMeasure.getState().set(null, null)}
+          title="Remove the measuring arrow"
+          aria-label="Remove the measuring arrow"
+        >
+          ✕
+        </button>
+      )}
     </span>
   );
 }

@@ -172,6 +172,8 @@ export interface Panel {
   kpAligned?: boolean;
   /** Vertical KP lines in the profile and CP panels (default on). */
   kpLines?: boolean;
+  /** Colour of the KP lines in the profile and CP panels; unset: the sheet's ink. */
+  kpGridColor?: string;
   /** KP values along the foot of the profile and CP panels (default on). */
   kpLabels?: boolean;
   /** Longitudinal and transverse profiles: a grid line with its KP label at the left edge, where the plan view's line starts (default on). */
@@ -593,6 +595,8 @@ export interface TextItem {
 export interface ScaleSettings {
   /** Horizontal (plan and KP) scale denominator, e.g. 5000 for 1:5,000. */
   horizontal: number;
+  /** KP panels draw a KP at its distance along the line at the horizontal scale (default); false: at the x it has in the plan view. */
+  trueKpScale?: boolean;
   /** Route length covered by one sheet, in metres. Always plan view width x scale; panels never resize for it. */
   kpPerSheet: number;
   /** Total survey line length in metres. Comes from the route file once loaded; typed in until then. */
