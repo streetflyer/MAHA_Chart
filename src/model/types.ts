@@ -597,6 +597,8 @@ export interface ScaleSettings {
   horizontal: number;
   /** KP panels draw a KP at its distance along the line at the horizontal scale (default); false: at the x it has in the plan view. */
   trueKpScale?: boolean;
+  /** Charts (by index) whose KP panels start at the plan view's KP 0: the x where the line starts in the plan view. */
+  kpAlign?: Record<string, boolean>;
   /** Route length covered by one sheet, in metres. Always plan view width x scale; panels never resize for it. */
   kpPerSheet: number;
   /** Total survey line length in metres. Comes from the route file once loaded; typed in until then. */

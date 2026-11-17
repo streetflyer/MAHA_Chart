@@ -10,6 +10,12 @@ interface Prefs {
   hoverKey: string;
   /** Shortcut that turns the ruler on and off. */
   rulerKey: string;
+  /** Shortcut that turns the measuring arrow on and off. */
+  measureKey: string;
+  setMeasureKey(k: string): void;
+  /** The section list at the top of the properties panel. */
+  propsNav: boolean;
+  setPropsNav(on: boolean): void;
   setRulerKey(k: string): void;
   setHoverInfo(on: boolean): void;
   setHoverKey(k: string): void;
@@ -33,6 +39,8 @@ function keep(p: Prefs) {
         hoverInfo: p.hoverInfo,
         hoverKey: p.hoverKey,
         rulerKey: p.rulerKey,
+        measureKey: p.measureKey,
+        propsNav: p.propsNav,
       }),
     );
   } catch {
@@ -46,6 +54,16 @@ export const usePrefs = create<Prefs>((set, get) => ({
   hoverInfo: saved.hoverInfo ?? false,
   hoverKey: saved.hoverKey || "F3",
   rulerKey: saved.rulerKey || "F4",
+  propsNav: saved.propsNav ?? true,
+  setPropsNav: (propsNav) => {
+    set({ propsNav });
+    keep(get());
+  },
+  measureKey: saved.measureKey || "F5",
+  setMeasureKey: (measureKey) => {
+    set({ measureKey });
+    keep(get());
+  },
   setRulerKey: (rulerKey) => {
     set({ rulerKey });
     keep(get());

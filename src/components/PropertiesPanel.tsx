@@ -392,6 +392,26 @@ export function ScaleFields({ t }: { t: ChartTemplate }) {
         />{" "}
         Profiles at true scale (distance along the line)
       </label>
+      <label
+        className="check"
+        title="Move the KP 0 of every panel to the plan view's KP 0 (the x where the line starts in the plan view). Applies to the chart in view only."
+      >
+        <input
+          type="checkbox"
+          data-kp-align
+          checked={!!t.scale.kpAlign?.[s.sheetIndex]}
+          onChange={(e) =>
+            s.setScale({
+              kpAlign: {
+                ...t.scale.kpAlign,
+                [s.sheetIndex]: e.target.checked,
+              },
+            })
+          }
+        />{" "}
+        Match all panels' start/end KP grid line to KP 0 in the plan view (this
+        chart)
+      </label>
       <div className="row2">
         <Field
           label="Route length"
@@ -3533,6 +3553,7 @@ function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
             {d.kind === "events" && (
               <>
                 <LinksEditor
+                  datasetId={d.id}
                   links={d.links}
                   onChange={(links) => sv.updateDataset(d.id, { links })}
                   codes={[

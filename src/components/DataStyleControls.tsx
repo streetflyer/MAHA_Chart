@@ -32,6 +32,7 @@ import { DEFAULT_COLOURS } from "../model/importers";
 import { formatScale } from "../model/scale";
 import type { ScaleSettings } from "../model/types";
 import { useEditor } from "../state/store";
+import { useLinkFocus } from "../state/linkFocus";
 
 /** Look of a new dataset before it is imported. */
 export function defaultStyle(target: ImportTarget): DataStyle {
@@ -1299,7 +1300,9 @@ export function LinksEditor({
   links,
   onChange,
   codes,
+  datasetId,
 }: {
+  datasetId?: string;
   links: EventLink[];
   onChange(l: EventLink[]): void;
   codes?: string[];
@@ -1319,6 +1322,16 @@ export function LinksEditor({
       ))}
     </select>
   );
+  const focus = useLinkFocus();
+  useEffect(() => {
+    if (!datasetId || !focus.id?.startsWith(datasetId + "|")) return;
+    const row = document.querySelector(`[data-link-row="${focus.id}"]`);
+    if (!row) return;
+    row.scrollIntoView({ block: "center", behavior: "smooth" });
+    row.classList.add("link-flash");
+    const t = setTimeout(() => row.classList.remove("link-flash"), 1600);
+    return () => clearTimeout(t);
+  }, [focus.id, focus.n, datasetId]);
   return (
     <div className="links-editor">
       <h4>Linked events</h4>
@@ -1330,7 +1343,11 @@ export function LinksEditor({
           : " Pick the event code column to list its codes."}
       </p>
       {links.map((l, i) => (
-        <div key={i} className="link-row">
+        <div
+          key={i}
+          className="link-row"
+          data-link-row={datasetId ? `${datasetId}|${i}` : undefined}
+        >
           <label className="field">
             <span>Start code</span>
             {codeSelect(l.start, (start) => set(i, { start }))}
@@ -1416,6 +1433,33 @@ export function LinksEditor({
             min={0}
             suffix="mm (0 = auto)"
             onChange={(v) => set(i, { barHeight: v > 0 ? v : undefined })}
+          />
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={l.hatchSize === undefined}
+              onChange={(e) =>
+                set(i, { hatchSize: e.target.checked ? undefined : 2 })
+              }
+            />{" "}
+            Light bar fills between the end lines
+          </label>
+          {l.hatchSize !== undefined && (
+            <Any
+              label="Light bar (hatch) size"
+              value={l.hatchSize}
+              step={0.1}
+              min={0}
+              suffix="mm tall, grown from the middle (0 = none)"
+              onChange={(v) => set(i, { hatchSize: v })}
+            />
+          )}
+          <Any
+            label="Bold bar offset"
+            value={l.boldOffset ?? 0}
+            step={0.1}
+            suffix="mm down (+) or up (-)"
+            onChange={(v) => set(i, { boldOffset: v || undefined })}
           />
           <label className="field">
             <span>Bold bar position</span>

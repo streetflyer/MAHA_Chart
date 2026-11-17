@@ -2255,3 +2255,36 @@ fieldset.plain {
   margin: 0 auto 6px;
   border: 1px solid #8884;
 }
+
+.props-nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  padding: 4px 8px;
+}
+.props-nav-toggle {
+  font-size: 12px;
+}
+.props-nav-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+.props-nav-list button {
+  font-size: 11px;
+  padding: 1px 6px;
+}
+.props h3,
+.props h4 {
+  scroll-margin-top: 44px;
+}
+.link-flash {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+  transition: outline-color 0.4s;
+}

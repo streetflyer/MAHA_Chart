@@ -24,6 +24,7 @@ import {
   type DataFont,
   type Dataset,
   type EventLayout,
+  type EventLink,
   type EventLabelEdit,
   eventKeys,
   type LabelPos,
@@ -87,7 +88,17 @@ export function kpToX(
   if (t.scale.trueKpScale !== false) {
     const { start } = sheetRange(t, sheetIndex);
     const mm = 1000 / t.scale.horizontal;
-    return (kp) => plan.x + (kp - start * 1000) * mm;
+    let x0 = plan.x;
+    let kp0 = start * 1000;
+    // Aligned to the plan view's KP 0: the chart's first KP of the line stands at the x the plan view draws it.
+    if (t.scale.kpAlign?.[sheetIndex] && route) {
+      const g = chartGeometry(t, route, sheetIndex);
+      if (g) {
+        kp0 = Math.max(kp0, k0);
+        x0 = kpProjector(t, route, sheetIndex, g, plan)(kp0)[0];
+      }
+    }
+    return (kp) => x0 + (kp - kp0) * mm;
   }
   if (route) {
     const g = chartGeometry(t, route, sheetIndex);
@@ -1576,6 +1587,8 @@ function EventsPanel({
             toX={toX}
             font={rf(d.font)}
             labels={d.labels}
+            datasetId={d.id}
+            links={d.links}
           />,
         );
       const ps = points.filter(
@@ -2011,7 +2024,11 @@ function LinkedEvents({
   toX,
   font,
   labels,
+  datasetId,
+  links,
 }: {
+  datasetId: string;
+  links: EventLink[];
   list: LinkedEvent[];
   y0: number;
   rh: number;
@@ -2021,6 +2038,11 @@ function LinkedEvents({
 }) {
   const cap = Math.min(font.size, rh / 6);
   const fs = fontSize(cap);
+  const linkNo = (e: LinkedEvent) =>
+    Math.max(
+      0,
+      links.findIndex((x) => x.start === e.link.start && x.end === e.link.end),
+    );
   return (
     <g>
       {list.map((e, i) => {
@@ -2040,12 +2062,24 @@ function LinkedEvents({
         // The type sets the bold bar: freespan along the top, burial along the bottom, intermittent broken; a light tint fills between the end lines.
         const look = linkLook(l);
         const bold = Math.min(bh, lineBot - lineTop);
-        const barTop =
+        // The light bar (hatch) is as tall as the end lines, or the size set, grown from the middle; the bold bar sits on it.
+        const midY = (lineTop + lineBot) / 2;
+        const hh =
+          l.hatchSize === undefined
+            ? lineBot - lineTop
+            : Math.min(lineBot - lineTop, Math.max(0, l.hatchSize));
+        const hTop = midY - hh / 2;
+        const hBot = midY + hh / 2;
+        const rawTop =
           look.boldPos === "bottom"
-            ? lineBot - bold
+            ? hBot - bold
             : look.boldPos === "middle"
-              ? (lineTop + lineBot - bold) / 2
-              : lineTop;
+              ? (hTop + hBot - bold) / 2
+              : hTop;
+        const barTop = Math.min(
+          lineBot - bold,
+          Math.max(lineTop, rawTop + (l.boldOffset ?? 0)),
+        );
         const barBot = barTop + bold;
         // Texts keep their gap from the symbol and stay clear of the row's own lines.
         const lengthY = Math.max(y0 + gap + cap, lineTop - gap);
@@ -2053,15 +2087,21 @@ function LinkedEvents({
         const textY = (p: LabelPos) => (p === "top" ? lengthY : heightY);
         const lines = `M${xa.toFixed(2)} ${lineTop.toFixed(2)}V${lineBot.toFixed(2)}M${xb.toFixed(2)} ${lineTop.toFixed(2)}V${lineBot.toFixed(2)}`;
         return (
-          <g key={i}>
-            <rect
-              x={xa}
-              y={lineTop}
-              width={Math.max(0.1, xb - xa)}
-              height={Math.max(0.1, lineBot - lineTop)}
-              fill={c}
-              fillOpacity={0.45}
-            />
+          <g
+            key={i}
+            data-link-id={`${datasetId}|${linkNo(e)}`}
+            pointerEvents="all"
+          >
+            {hh > 0 && (
+              <rect
+                x={xa}
+                y={hTop}
+                width={Math.max(0.1, xb - xa)}
+                height={Math.max(0.1, hh)}
+                fill={c}
+                fillOpacity={0.45}
+              />
+            )}
             {look.dashed ? (
               <path
                 d={`M${xa.toFixed(2)} ${((barTop + barBot) / 2).toFixed(2)}H${xb.toFixed(2)}`}

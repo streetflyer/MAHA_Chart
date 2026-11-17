@@ -189,6 +189,10 @@ export interface EventLink {
   boldColor?: string;
   /** A broken (dashed) bold bar; unset follows the type (intermittent = broken). */
   boldDash?: boolean;
+  /** Height of the light bar (hatch) between the end lines, mm, grown from the middle; 0 is none. Unset: fills between the end lines. */
+  hatchSize?: number;
+  /** Moves the bold bar down (+) or up (-) from its place on the light bar, mm. */
+  boldOffset?: number;
 }
 
 /** What the user changed about one event's code text. */

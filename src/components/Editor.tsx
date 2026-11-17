@@ -49,6 +49,7 @@ import { chartsToPdf } from "../model/pdfExport";
 import { ThemeButton } from "./ThemeButton";
 import { ImportDialog, useImport } from "./ImportDialog";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { PropsNav } from "./PropsNav";
 import { ProjectPanel } from "./ProjectPanel";
 import {
   type SaveMode,
@@ -302,6 +303,12 @@ export function Editor({ onExit }: { onExit(): void }) {
         e.preventDefault();
         const r = useRuler.getState();
         r.setOn(!r.on);
+        return;
+      }
+      if (shortcutOf(e) === usePrefs.getState().measureKey) {
+        e.preventDefault();
+        const m = useMeasure.getState();
+        m.setArmed(!m.armed);
         return;
       }
       if (shortcutOf(e) === usePrefs.getState().hoverKey) {
@@ -1148,6 +1155,7 @@ export function Editor({ onExit }: { onExit(): void }) {
         </div>
         <PaneResizer side="right" panes={panes} setPanes={setPanes} />
         <div ref={propsRef} className="props-wrap">
+          <PropsNav />
           <PropertiesPanel />
         </div>
       </div>
@@ -1291,6 +1299,17 @@ function ChartTabs({ onNotice }: { onNotice(m: string): void }) {
             {
               label: "Add chart after this one",
               action: () => st().commit((t) => insertSheet(t, menu.i)),
+            },
+            {
+              label: "Match panels' KP 0 to the plan view",
+              checked: !!template.scale.kpAlign?.[menu.i],
+              action: () =>
+                st().setScale({
+                  kpAlign: {
+                    ...template.scale.kpAlign,
+                    [menu.i]: !template.scale.kpAlign?.[menu.i],
+                  },
+                }),
             },
             {
               label: "Delete this chart",
@@ -1733,6 +1752,17 @@ function HoverInfoButtons() {
 function MeasureButton() {
   const armed = useMeasure((m) => m.armed);
   const has = useMeasure((m) => !!m.a);
+  const key = usePrefs((p) => p.measureKey);
+  async function change() {
+    const v = await askText(
+      "Shortcut for the measuring arrow (e.g. F5, Ctrl+M, Alt+A)",
+      key,
+      "Set",
+    );
+    if (v === null) return;
+    const k = normaliseShortcut(v);
+    if (k) usePrefs.getState().setMeasureKey(k);
+  }
   return (
     <span className="btn-pair">
       <button
@@ -1740,9 +1770,17 @@ function MeasureButton() {
         aria-pressed={armed}
         data-measure={armed ? "on" : "off"}
         onClick={() => useMeasure.getState().setArmed(!armed)}
-        title="Draw an arrow on the sheet to measure a distance at the chart's horizontal scale: drag to draw it, drag it to move it, hold Shift to keep it straight. Lay it on the scale bar, then move it over a panel to compare."
+        title={`Draw an arrow on the sheet to measure a distance at the chart's horizontal scale: drag to draw it, drag it to move it, hold Shift to keep it straight (${key})`}
       >
-        Arrow
+        Arrow ({key})
+      </button>
+      <button
+        className="hover-key"
+        onClick={() => void change()}
+        title="Change the arrow shortcut"
+        aria-label="Change the arrow shortcut"
+      >
+        ⌨
       </button>
       {has && (
         <button

@@ -60,6 +60,7 @@ import {
 import { rulerTo, useRuler } from "../state/ruler";
 import { RulerLines } from "./RulerLines";
 import { MeasureArrow } from "./MeasureArrow";
+import { useLinkFocus } from "../state/linkFocus";
 import {
   measureDown,
   measureMove,
@@ -470,6 +471,10 @@ export function SheetView({
       return;
     }
     if (e.button !== 0) return;
+    // A linked event symbol: the properties panel scrolls to its settings.
+    const lk = (e.target as Element).closest?.("[data-link-id]");
+    if (lk && !useMeasure.getState().armed)
+      useLinkFocus.getState().focus(lk.getAttribute("data-link-id")!);
     // The measuring arrow: drawn, or moved by its body or ends.
     if (measureDown(at, 3 / pxPerMm())) {
       e.preventDefault();
