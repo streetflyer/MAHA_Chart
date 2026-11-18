@@ -21,6 +21,7 @@ Which edit mode the sheet is in. One at a time.
 | `smooth`    | "Smooth tool" in the profile properties                                          | `useSmoothTool`                                                                            |
 | `textbox`   | Double-click the text of a text panel (e.g. the title)                           | `useBodyBox` (panel; the box is kept on the panel as `bodyBox`)                            |
 | `keyview`   | Double-click the key plan, or "Zoom and move the map" in the key plan properties | `useKeyplanView` (panel; `rotating` keeps a chart's rotation grip on screen while dragged) |
+| `legend`    | Double-click Chart information (not on Notes / Geodetic / Equipment text)        | `useLegendEdit` (legend panel)                                                             |
 | `matchline` | "Pick matchline" / "Draw a matchline" in the key plan properties                 | `useMatchPick` (tool `pick` or `draw`, first point of a drawn line)                        |
 
 - Read: `currentMode()`, `useMode()`, or `[data-mode]` on `.editor`.
@@ -34,6 +35,7 @@ Which edit mode the sheet is in. One at a time.
 - The user sees the mode in the bar at the top of the sheet (`ModeBar`, and
   `EventEditBar` for `events`).
 - `textbox` needs its panel; drag the box to move, drag a handle to resize, double-click the text to edit it, a click outside ends it.
+- `legend` needs its legend panel; a click on a symbol opens the symbol window, a click on words edits them, right-click a symbol for Edit / Duplicate / Remove, a click outside the legend ends it.
 - `keyview` needs its key plan panel; wheel zooms, a drag on the map moves it, a click outside the key plan ends it. The view stays on the panel (`keyplan.view`) after the mode ends; "Fit line and charts" clears it.
 - `matchline` needs its key plan panel and a route; a click outside the key plan ends it,
   Esc drops a half-drawn line first. Chosen lines are saved in the plan view's

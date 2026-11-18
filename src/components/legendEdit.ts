@@ -5,7 +5,10 @@ import { useCodeDefs } from "../state/codeDefs";
 import { useSymbolEdit } from "../state/symbolEdit";
 import type { MenuItem } from "./ContextMenu";
 import { LEGEND_GROUPS } from "../model/presets";
-import type { LegendGroup, Panel } from "../model/types";
+import type { LegendGroup, LegendItem, Panel } from "../model/types";
+import { dataLegend } from "../model/legendData";
+import { planStyle } from "../model/planStyle";
+import { newId } from "../model/ids";
 
 /** The legend panel an element on the sheet belongs to. */
 function legendOf(el: Element): Panel | undefined {
@@ -219,4 +222,96 @@ export function codeDefMenu(panelId: string, code?: string): MenuItem[] {
       });
   }
   return items;
+}
+
+/** The legend symbol under a screen point (sheet text takes no pointer events). */
+export function legendSymAt(
+  clientX: number,
+  clientY: number,
+): { panelId: string; itemId: string } | null {
+  const el = [...document.querySelectorAll("svg.sheet [data-lsym]")].find(
+    (t) => {
+      const r = t.getBoundingClientRect();
+      return (
+        clientX >= r.left - 1 &&
+        clientX <= r.right + 1 &&
+        clientY >= r.top - 1 &&
+        clientY <= r.bottom + 1
+      );
+    },
+  );
+  const panel = el && legendOf(el);
+  const itemId = el?.getAttribute("data-lsym");
+  return panel && itemId ? { panelId: panel.id, itemId } : null;
+}
+
+/** The item as drawn: a data item with the user's changes, or one of the legend's own. */
+function resolvedItem(p: Panel, itemId: string): LegendItem | undefined {
+  if (!itemId.startsWith("data:"))
+    return (p.legend ?? []).find((x) => x.id === itemId);
+  const t = useEditor.getState().template;
+  const plan = t?.panels.find((q) => q.type === "plan");
+  const evp = t?.panels.find((q) => q.type === "events" && q.rows?.length);
+  const d = dataLegend(
+    useSurvey.getState().datasets,
+    plan ? planStyle(plan).kpColor : "#e00000",
+    evp ? evp.h / evp.rows!.length : 8,
+  ).find((x) => x.id === itemId);
+  if (!d) return undefined;
+  const o = p.legendData?.overrides[d.key];
+  return { ...d, ...o, label: o?.label ?? d.label };
+}
+
+/** Right-click menu of a legend symbol: edit, duplicate (drawn right below), remove. */
+export function legendSymMenu(panelId: string, itemId: string): MenuItem[] {
+  const ed = useEditor.getState();
+  const p = ed.template?.panels.find((q) => q.id === panelId);
+  if (!p) return [];
+  const dup = () => {
+    const it = resolvedItem(p, itemId);
+    if (!it) return;
+    const copy = { ...it } as LegendItem & Record<string, unknown>;
+    for (const k of ["key", "datasetId", "colorOf", "hidden", "linked"])
+      delete copy[k];
+    const own: LegendItem = {
+      ...copy,
+      id: newId(),
+      custom: true,
+      after: itemId,
+    };
+    const list = [...(p.legend ?? [])];
+    const at = list.findIndex((x) => x.id === itemId);
+    list.splice(at < 0 ? list.length : at + 1, 0, own);
+    ed.updatePanel(p.id, { legend: list });
+  };
+  const remove = () => {
+    if (itemId.startsWith("data:")) {
+      const key = itemId.slice(5);
+      const ld = p.legendData ?? { on: true, overrides: {} };
+      ed.updatePanel(p.id, {
+        legendData: {
+          ...ld,
+          overrides: {
+            ...ld.overrides,
+            [key]: { ...ld.overrides[key], hidden: true },
+          },
+        },
+      });
+    } else
+      ed.updatePanel(p.id, {
+        legend: (p.legend ?? [])
+          .filter((x) => x.id !== itemId)
+          // Copies of a removed item stay where it was.
+          .map((x) => (x.after === itemId ? { ...x, after: undefined } : x)),
+      });
+  };
+  return [
+    {
+      label: "Edit…",
+      action: () => useSymbolEdit.getState().open(panelId, itemId),
+    },
+    { label: "Duplicate", action: dup },
+    "separator",
+    { label: "Remove", action: remove },
+  ];
 }

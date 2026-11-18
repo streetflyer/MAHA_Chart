@@ -27,6 +27,7 @@ const off = {
   matchline: false,
   keyview: false,
   textbox: false,
+  legend: false,
 };
 const none: ModeTargets = {
   drawingPanel: null,
@@ -37,9 +38,21 @@ const none: ModeTargets = {
   matchPanel: null,
   keyviewPanel: null,
   textboxPanel: null,
+  legendPanel: null,
 };
 
 describe("mode machine: rules", () => {
+  it("keeps the legend mode only while its legend exists", () => {
+    const t = { ...none, legendPanel: "lg" };
+    expect(modeStillValid("legend", t, { panels: ["lg"], datasets: [] })).toBe(
+      true,
+    );
+    expect(modeStillValid("legend", t, { panels: [], datasets: [] })).toBe(
+      false,
+    );
+    expect(modeOf({ ...off, legend: true })).toBe("legend");
+  });
+
   it("reads the mode from the flags", () => {
     expect(modeOf(off)).toBe("idle");
     expect(modeOf({ ...off, cp: true })).toBe("cp");

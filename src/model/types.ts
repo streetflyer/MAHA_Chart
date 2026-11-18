@@ -465,6 +465,8 @@ export interface LegendItem {
   linked?: boolean;
   /** Added by the user (kept beside the items built from imported data). */
   custom?: boolean;
+  /** Drawn right below this item (a duplicate made from the right-click menu). */
+  after?: string;
   /** Extra look for data-built symbols: band / pipe fill, outline, CP symbol. */
   fill?: string;
   outline?: string;

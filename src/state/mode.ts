@@ -5,6 +5,7 @@ import { useDrawingEdit } from "./drawingEdit";
 import { useEventEdit } from "./eventEdit";
 import { useBodyBox } from "./bodyBox";
 import { useKeyplanView } from "./keyplanView";
+import { useLegendEdit } from "./legendEdit";
 import { useMatchPick } from "./matchPick";
 import { useSmoothTool } from "./smoothTool";
 import { useEditor } from "./store";
@@ -19,6 +20,7 @@ import { useSurvey } from "./surveyData";
  *   idle ──"Smooth tool" in the properties─▶ smooth    (useSmoothTool)
  *   idle ──"Pick / Draw matchline" (key plan)▶ matchline (useMatchPick)
  *   idle ──double-click the key plan─────────▶ keyview   (useKeyplanView: wheel zooms, drag moves the map)
+ *   idle ──double-click Chart information────▶ legend    (useLegendEdit: click a symbol or words to edit)
  *   any  ──Esc / Done / click outside──────▶ idle
  *   any  ──enter another mode──────────────▶ that mode (the old one is left first)
  *   any  ──its panel or data disappears────▶ idle      (folder switch, file removed, template closed)
@@ -37,7 +39,8 @@ export type Mode =
   | "smooth"
   | "matchline"
   | "keyview"
-  | "textbox";
+  | "textbox"
+  | "legend";
 
 export const MODES: Mode[] = [
   "idle",
@@ -48,6 +51,7 @@ export const MODES: Mode[] = [
   "matchline",
   "keyview",
   "textbox",
+  "legend",
 ];
 const ON = [
   "drawing",
@@ -57,6 +61,7 @@ const ON = [
   "matchline",
   "keyview",
   "textbox",
+  "legend",
 ] as const;
 
 /** What the user is told while a mode is on. */
@@ -88,6 +93,10 @@ export const MODE_INFO: Record<
     label: "Text box",
     hint: "Drag the box to move the text, drag a handle to resize it. Double-click the text to edit it. Esc or a click outside finishes.",
   },
+  legend: {
+    label: "Editing the legend",
+    hint: "Click a symbol to change it, click words to edit them, right-click a symbol to duplicate or remove it. Esc or a click outside the legend finishes.",
+  },
   keyview: {
     label: "Key plan view",
     hint: "Scroll to zoom, drag the map to move it. Esc or Done finishes.",
@@ -102,6 +111,7 @@ export interface ModeFlags {
   matchline: boolean;
   keyview: boolean;
   textbox: boolean;
+  legend: boolean;
 }
 
 /** The mode a set of store flags stands for. More than one on is never left standing: see `conflicts`. */
@@ -113,6 +123,7 @@ export function modeOf(f: ModeFlags): Mode {
   if (f.matchline) return "matchline";
   if (f.keyview) return "keyview";
   if (f.textbox) return "textbox";
+  if (f.legend) return "legend";
   return "idle";
 }
 
@@ -140,6 +151,7 @@ export interface ModeTargets {
   matchPanel: string | null;
   keyviewPanel: string | null;
   textboxPanel: string | null;
+  legendPanel: string | null;
 }
 
 /** Is the thing a mode works on still there? */
@@ -171,6 +183,8 @@ export function modeStillValid(
       return panel(t.keyviewPanel);
     case "textbox":
       return panel(t.textboxPanel);
+    case "legend":
+      return panel(t.legendPanel);
   }
 }
 
@@ -182,6 +196,7 @@ const flags = (): ModeFlags => ({
   matchline: useMatchPick.getState().active,
   keyview: useKeyplanView.getState().active,
   textbox: useBodyBox.getState().active,
+  legend: useLegendEdit.getState().active,
 });
 
 export const currentMode = (): Mode => modeOf(flags());
@@ -194,6 +209,7 @@ const leave: Record<Exclude<Mode, "idle">, () => void> = {
   matchline: () => useMatchPick.getState().exit(),
   keyview: () => useKeyplanView.getState().exit(),
   textbox: () => useBodyBox.getState().exit(),
+  legend: () => useLegendEdit.getState().exit(),
 };
 
 /** Back to idle, whatever is on. */
@@ -222,6 +238,7 @@ export function enterMode(
     useMatchPick.getState().enter(panelId, target.tool ?? "pick");
   else if (m === "keyview" && panelId) useKeyplanView.getState().enter(panelId);
   else if (m === "textbox" && panelId) useBodyBox.getState().enter(panelId);
+  else if (m === "legend" && panelId) useLegendEdit.getState().enter(panelId);
 }
 
 function validate() {
@@ -240,6 +257,7 @@ function validate() {
     matchPanel: useMatchPick.getState().panelId,
     keyviewPanel: useKeyplanView.getState().panelId,
     textboxPanel: useBodyBox.getState().panelId,
+    legendPanel: useLegendEdit.getState().panelId,
   };
   for (const m of ON)
     if (f[m] && !modeStillValid(m, targets, world)) leave[m]();
@@ -273,6 +291,7 @@ export function installModeMachine() {
   watch("matchline", useMatchPick);
   watch("keyview", useKeyplanView);
   watch("textbox", useBodyBox);
+  watch("legend", useLegendEdit);
   // A mode never outlives what it edits.
   useSurvey.subscribe((s, p) => s.datasets !== p.datasets && validate());
   useEditor.subscribe((s, p) => s.template !== p.template && validate());

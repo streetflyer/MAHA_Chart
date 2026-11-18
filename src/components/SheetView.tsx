@@ -1,7 +1,7 @@
 import { editSessionAt } from "./KpPanels";
 import { keyplanStyle } from "./Keyplan";
 import { enterMode } from "../state/mode";
-import { codeDefAt, editLegendAt } from "./legendEdit";
+import { codeDefAt, editLegendAt, legendSymAt } from "./legendEdit";
 import {
   panView,
   useKeyplanView,
@@ -104,6 +104,7 @@ import { approxTextWidth, fontSize } from "./svgText";
 import { useDrawingEdit } from "../state/drawingEdit";
 import { useCpEdit } from "../state/cpEdit";
 import { useSmoothTool } from "../state/smoothTool";
+import { useLegendEdit } from "../state/legendEdit";
 import {
   cpDatasetFor,
   pickCp,
@@ -135,7 +136,8 @@ export interface ContextTarget {
     | "callout"
     | "evlabel"
     | "codedef"
-    | "longsection";
+    | "longsection"
+    | "legendsym";
   id?: string;
   code?: string;
   rowId?: string;
@@ -257,7 +259,6 @@ interface Pt {
 
 const SNAP_PX = 6;
 const EDGE_HIT_PX = 6;
-const SLOW_CLICK_MS = 550;
 
 export function SheetView({
   onContextMenu,
@@ -496,6 +497,23 @@ export function SheetView({
       e.preventDefault();
       svgRef.current!.setPointerCapture(e.pointerId);
       return;
+    }
+    // Editing the legend: a click on a symbol or on words edits it; a click outside finishes.
+    const lg = useLegendEdit.getState();
+    if (lg.active) {
+      const lp = template.panels.find((q) => q.id === lg.panelId);
+      if (
+        lp &&
+        at.x >= lp.x &&
+        at.x <= lp.x + lp.w &&
+        at.y >= lp.y &&
+        at.y <= lp.y + lp.h
+      ) {
+        e.preventDefault();
+        editLegendAt(e.target as Element, e.clientX, e.clientY);
+        return;
+      }
+      lg.exit();
     }
     // Choosing matchlines: clicks in the key plan pick or draw them; a click elsewhere finishes.
     const mp = useMatchPick.getState();
@@ -1461,20 +1479,6 @@ export function SheetView({
         setDrag(null);
         return;
       }
-      // Windows-style slow click: clicking an already-selected item again starts a rename.
-      if (!drag.moved && drag.wasSelected && store().selection.length === 1) {
-        clearRenameTimer();
-        const hit = drag.hit;
-        if (hit.kind !== "image")
-          renameTimer.current = window.setTimeout(() => {
-            renameTimer.current = null;
-            store().startEdit(
-              hit.kind === "text"
-                ? { kind: "text", id: hit.id }
-                : { kind: "panelTitle", id: hit.id },
-            );
-          }, SLOW_CLICK_MS);
-      }
     } else if (drag.type === "kview" || drag.type === "tbox") {
       store().endGesture();
     } else if (drag.type === "mapPan") {
@@ -1538,6 +1542,24 @@ export function SheetView({
         .find((x) => !x.closest("[data-edge],[data-img-handle]")) ??
       (e.target as Element);
     const itemEl = el.closest("[data-item]");
+    // A double-click on a panel's title edits the title (a slow click never does).
+    // Sheet text takes no pointer events, so find the title by where it is drawn.
+    const ttl = [...document.querySelectorAll("svg.sheet [data-ptitle]")].find(
+      (t) => {
+        const r = t.getBoundingClientRect();
+        return (
+          e.clientX >= r.left - 1 &&
+          e.clientX <= r.right + 1 &&
+          e.clientY >= r.top - 1 &&
+          e.clientY <= r.bottom + 1
+        );
+      },
+    );
+    if (ttl && !useDrawingEdit.getState().active)
+      return store().startEdit({
+        kind: "panelTitle",
+        id: ttl.getAttribute("data-ptitle")!,
+      });
     const pDbl = planItemUnder(e);
     const coDbl = pDbl?.getAttribute("data-callout");
     if (coDbl) {
@@ -1660,8 +1682,44 @@ export function SheetView({
     }
     // Legend headings, wording and code definitions edit in place.
     if (editLegendAt(el, e.clientX, e.clientY)) return;
+    // Notes, geodetic parameters and equipment: the first double-click puts a box round the
+    // text to move and resize it (as for the title and project boxes); the next one edits.
+    const bp =
+      itemEl &&
+      template.panels.find((x) => x.id === itemEl.getAttribute("data-item"));
+    const bb = useBodyBox.getState();
+    if (
+      bp &&
+      (bp.type === "notes" ||
+        bp.type === "geodetic" ||
+        bp.type === "equipment") &&
+      bp.body !== undefined &&
+      !(bb.active && bb.panelId === bp.id)
+    )
+      return enterMode("textbox", { panelId: bp.id });
     // "Label : value" lines (equipment, geodetic) edit as two boxes.
     if (editPairAt(e.clientX, e.clientY)) return;
+    // Double-click on Chart information (or its legend) edits the legend's words and symbols.
+    const ip =
+      itemEl &&
+      template.panels.find((x) => x.id === itemEl.getAttribute("data-item"));
+    if (ip && (ip.type === "legend" || ip.type === "chartInfo")) {
+      const inside = (q: Panel) =>
+        q.x >= ip.x - 0.01 &&
+        q.y >= ip.y - 0.01 &&
+        q.x + q.w <= ip.x + ip.w + 0.01 &&
+        q.y + q.h <= ip.y + ip.h + 0.01;
+      const lg =
+        ip.type === "legend"
+          ? ip
+          : (template.panels.find((q) => q.type === "legend" && inside(q)) ??
+            template.panels.find((q) => q.type === "legend"));
+      if (lg) {
+        enterMode("legend", { panelId: lg.id });
+        store().select({ kind: "panel", id: lg.id });
+        return;
+      }
+    }
     // Double-click anywhere without text to edit zooms to fit, like a CAD viewport.
     if (!itemEl) return fit();
     const kind = itemEl.getAttribute("data-kind");
@@ -1689,9 +1747,9 @@ export function SheetView({
     if (p && p.body !== undefined) {
       // First double-click puts a box round the text to move and resize it; a second one edits the words.
       if (
-        p.body2 === undefined &&
         p.type === "text" &&
-        !el.closest("[data-tbox]")
+        !el.closest("[data-tbox]") &&
+        !(bb.active && bb.panelId === id)
       )
         return enterMode("textbox", { panelId: id });
       useBodyBox.getState().exit();
@@ -1761,6 +1819,15 @@ export function SheetView({
       return onContextMenu(e.clientX, e.clientY, at, {
         kind: "evlabel",
         id: evEl.getAttribute("data-evlabel")!,
+      });
+    const sym = !useDrawingEdit.getState().active
+      ? legendSymAt(e.clientX, e.clientY)
+      : null;
+    if (sym)
+      return onContextMenu(e.clientX, e.clientY, at, {
+        kind: "legendsym",
+        id: sym.panelId,
+        code: sym.itemId,
       });
     const ls = longSectionAt(at.x, at.y);
     if (ls && !useDrawingEdit.getState().active)
@@ -1967,6 +2034,7 @@ export function SheetView({
         ))}
         <RulerLines />
         <KpShiftGuides />
+        <LegendEditFrame />
         <MeasureArrow />
         {guides.x !== undefined && (
           <line
@@ -2177,6 +2245,7 @@ function PanelView({
             y={p.titlePosition === "above" ? p.y - 2 : p.y + 3.4}
             fontSize={fontSize(p.titlePosition === "above" ? 2.5 : TITLE_CAP)}
             textAnchor={p.titlePosition === "above" ? "middle" : "start"}
+            data-ptitle={p.id}
             onDoubleClick={(e) => {
               e.stopPropagation();
               startEdit({ kind: "panelTitle", id: p.id });
@@ -2313,5 +2382,26 @@ function TextView({
         />
       )}
     </g>
+  );
+}
+
+/** The dashed frame round the legend while its words and symbols are being edited. */
+function LegendEditFrame() {
+  const id = useLegendEdit((s) => s.panelId);
+  const p = useEditor((s) => s.template?.panels.find((q) => q.id === id));
+  if (!p) return null;
+  return (
+    <rect
+      data-legend-edit={p.id}
+      x={p.x - 0.6}
+      y={p.y - 0.6}
+      width={p.w + 1.2}
+      height={p.h + 1.2}
+      fill="none"
+      stroke="#1a73e8"
+      strokeWidth={0.35}
+      strokeDasharray="2 1"
+      pointerEvents="none"
+    />
   );
 }

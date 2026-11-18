@@ -41,6 +41,20 @@ export function PropsNav() {
       cancelAnimationFrame(raf);
     };
   }, []);
+  // The strip stays on top while scrolling: headings scrolled to stop just below it.
+  useEffect(() => {
+    const el = me.current;
+    const wrap = el?.parentElement;
+    if (!el || !wrap) return;
+    const ro = new ResizeObserver(() =>
+      wrap.style.setProperty(
+        "--props-nav-h",
+        `${Math.ceil(el.getBoundingClientRect().height) + 6}px`,
+      ),
+    );
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   return (
     <div ref={me} className="props-nav" data-props-nav={on ? "on" : "off"}>
       <button

@@ -2280,8 +2280,9 @@ fieldset.plain {
   padding: 1px 6px;
 }
 .props h3,
-.props h4 {
-  scroll-margin-top: 44px;
+.props h4,
+.link-flash {
+  scroll-margin-top: var(--props-nav-h, 44px);
 }
 .link-flash {
   outline: 2px solid #f59e0b;

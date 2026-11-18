@@ -534,16 +534,18 @@ function BodyText({
   const text2 =
     p.body2 !== undefined ? resolveTokens(p.body2, tokens) : undefined;
   const pad = 2;
-  const colW = text2 !== undefined ? (p.w - 3 * pad) / 2 : p.w - 2 * pad;
   const h = p.y + p.h - top - 0.5;
-  // The text can be given its own box inside the panel (one column only).
-  const own = text2 === undefined ? p.bodyBox : undefined;
+  // The text can be given its own box inside the panel; two columns share it.
+  const own = p.bodyBox;
   const bx = own ? p.x + own.x : p.x + pad;
   const by = own ? p.y + own.y : top;
-  const bw = own ? own.w : colW;
+  const boxW = own ? own.w : p.w - 2 * pad;
   const bh = own ? own.h : h;
+  const colW = text2 !== undefined ? (boxW - pad) / 2 : boxW;
+  const bw = colW;
+  const x2 = bx + colW + pad;
   const editBox = useBodyBox((b) => b.active && b.panelId === p.id);
-  const frame = own ?? { x: pad, y: top - p.y, w: colW, h };
+  const frame = own ?? { x: pad, y: top - p.y, w: p.w - 2 * pad, h };
   return (
     <g>
       {text && (
@@ -557,31 +559,25 @@ function BodyText({
           color={p.textColor}
         />
       )}
-      {editBox && text2 === undefined && <BodyBoxFrame p={p} box={frame} />}
+      {editBox && <BodyBoxFrame p={p} box={frame} />}
       {text2 !== undefined && (
         <g data-body2="1">
-          <rect
-            className="row-hit"
-            x={p.x + p.w / 2}
-            y={top}
-            width={p.w / 2}
-            height={h}
-          />
+          <rect className="row-hit" x={x2} y={by} width={colW} height={bh} />
           {text2 ? (
             <TextColumn
               text={text2}
-              x={p.x + 2 * pad + colW}
-              y={top}
+              x={x2}
+              y={by}
               w={colW}
-              h={h}
+              h={bh}
               style={style}
               color={p.textColor}
             />
           ) : (
             <text
               className="hint"
-              x={p.x + p.w * 0.75}
-              y={top + h / 2}
+              x={x2 + colW / 2}
+              y={by + bh / 2}
               fontSize={fontSize(1.6)}
               textAnchor="middle"
             >
@@ -712,10 +708,10 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
       }))
       .filter((d) => !d.hidden);
     const groups = groupsWithData(dataLegend(datasets, "#000"));
-    const items = [
+    const items = placeAfter([
       ...data,
       ...manual.filter((i) => !groups.has(i.group) || i.custom),
-    ];
+    ]);
     const fromEvents = datasets.some((d) => d.kind === "events" && d.visible);
     const ls = p.legendStyle;
     // "This chart": codes of the events on this chart that an engineering events row shows.
@@ -755,6 +751,25 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
     kpRange?.[0],
     kpRange?.[1],
   ]);
+}
+
+/** Items with `after` move right below the item they were duplicated from. */
+function placeAfter<T extends LegendItem>(list: T[]): T[] {
+  const out = list.filter(
+    (i) => !i.after || !list.some((j) => j.id === i.after),
+  );
+  for (const i of list) {
+    if (!i.after || out.includes(i)) continue;
+    let at = out.findIndex((j) => j.id === i.after);
+    if (at < 0) {
+      out.push(i);
+      continue;
+    }
+    // Several copies of one item: each new one goes below the earlier ones.
+    while (at + 1 < out.length && out[at + 1].after === i.after) at++;
+    out.splice(at + 1, 0, i);
+  }
+  return out;
 }
 
 function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {

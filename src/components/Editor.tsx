@@ -64,7 +64,8 @@ import {
 } from "../state/workspace";
 import { useSmoothTool } from "../state/smoothTool";
 import { eventLabelMenu } from "./eventLabelEdit";
-import { codeDefMenu } from "./legendEdit";
+import { codeDefMenu, legendSymMenu } from "./legendEdit";
+import { useLegendEdit } from "../state/legendEdit";
 import { longSectionMenu } from "./longSectionMenu";
 import { CodeDefsDialog } from "./CodeDefsDialog";
 import { SymbolDialog } from "./SymbolDialog";
@@ -360,6 +361,10 @@ export function Editor({ onExit }: { onExit(): void }) {
         useBodyBox.getState().exit();
         return;
       }
+      if (e.key === "Escape" && useLegendEdit.getState().active) {
+        useLegendEdit.getState().exit();
+        return;
+      }
       if (e.key === "Escape" && useKeyplanView.getState().active) {
         useKeyplanView.getState().exit();
         return;
@@ -463,6 +468,14 @@ export function Editor({ onExit }: { onExit(): void }) {
         x: clientX,
         y: clientY,
         items: longSectionMenu(target.code ?? ""),
+      });
+      return;
+    }
+    if (target.kind === "legendsym") {
+      setMenu({
+        x: clientX,
+        y: clientY,
+        items: legendSymMenu(target.id ?? "", target.code ?? ""),
       });
       return;
     }
