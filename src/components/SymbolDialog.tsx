@@ -1,6 +1,10 @@
 import { LEGEND_SYMBOLS } from "../model/presets";
 import type { LegendItem, SymbolLook } from "../model/types";
 import { useSymbolEdit } from "../state/symbolEdit";
+import { useScope } from "../state/scope";
+import { writeLegendItem } from "./legendEdit";
+import { clearChartEdit } from "../model/legendScope";
+import type { LegendChartEdit } from "../model/types";
 import { useEditor } from "../state/store";
 import { ColourBox } from "./ColourBox";
 import { LegendSymbolView, useLegendItems } from "./PanelContent";
@@ -35,6 +39,7 @@ export function SymbolDialog() {
 
 function Inner({ panelId, itemId }: { panelId: string; itemId: string }) {
   const close = useSymbolEdit((s) => s.close);
+  const scope = useScope((x) => x.scope);
   const panel = useEditor((s) =>
     s.template?.panels.find((p) => p.id === panelId),
   );
@@ -43,25 +48,15 @@ function Inner({ panelId, itemId }: { panelId: string; itemId: string }) {
   if (!panel || !it) return null;
   const isData = itemId.startsWith("data:");
   const key = itemId.slice(5);
-  const patch = (look: Partial<SymbolLook>) => {
-    const ed = useEditor.getState();
-    if (isData) {
-      const ld = panel.legendData ?? { on: true, overrides: {} };
-      const next = { ...ld.overrides[key], ...look };
-      for (const k of Object.keys(next) as (keyof typeof next)[])
-        if (next[k] === undefined) delete next[k];
-      ed.updatePanel(panelId, {
-        legendData: { ...ld, overrides: { ...ld.overrides, [key]: next } },
-      });
-    } else
-      ed.updatePanel(panelId, {
-        legend: (panel.legend ?? []).map((x) =>
-          x.id === itemId ? ({ ...x, ...look } as LegendItem) : x,
-        ),
-      });
-  };
+  const patch = (look: Partial<SymbolLook>) =>
+    writeLegendItem(panelId, itemId, look as LegendChartEdit);
   const reset = () => {
     const ed = useEditor.getState();
+    if (useScope.getState().scope === "chart")
+      return ed.updatePanel(
+        panelId,
+        clearChartEdit(panel, ed.sheetIndex, itemId),
+      );
     if (!isData) return;
     const ld = panel.legendData ?? { on: true, overrides: {} };
     const { label, hidden } = ld.overrides[key] ?? {};
@@ -90,7 +85,12 @@ function Inner({ panelId, itemId }: { panelId: string; itemId: string }) {
           if (e.key === "Escape" || e.key === "Enter") close();
         }}
       >
-        <h3>Legend symbol</h3>
+        <h3>
+          Legend symbol{" "}
+          <span className="scope-tag" data-scope-tag={scope}>
+            {scope === "chart" ? "this chart only" : "all charts"}
+          </span>
+        </h3>
         <svg
           className="sym-preview"
           viewBox="-14 -9 28 18"

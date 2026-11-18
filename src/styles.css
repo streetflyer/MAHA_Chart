@@ -2308,3 +2308,34 @@ button.measure-on:hover {
   width: 80px;
   font-family: monospace;
 }
+
+.scope-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 6px;
+}
+.scope-switch button[aria-pressed="true"] {
+  background: #1a73e8;
+  color: #fff;
+  border-color: #1a73e8;
+}
+.mode-bar[data-scope="chart"] {
+  background: #fde68a;
+  color: #000;
+}
+.mode-bar[data-scope="chart"] .scope-switch button[aria-pressed="true"] {
+  background: #d97706;
+  border-color: #d97706;
+}
+.scope-tag {
+  font-size: 11px;
+  font-weight: normal;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: #e5e7eb;
+  color: #111;
+}
+.scope-tag[data-scope-tag="chart"] {
+  background: #fde68a;
+}

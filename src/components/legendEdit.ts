@@ -9,6 +9,55 @@ import type { LegendGroup, LegendItem, Panel } from "../model/types";
 import { dataLegend } from "../model/legendData";
 import { planStyle } from "../model/planStyle";
 import { newId } from "../model/ids";
+import {
+  chartEditPatch,
+  clearChartEdit,
+  hasChartEdit,
+} from "../model/legendScope";
+import type { LegendChartEdit } from "../model/types";
+import { useScope } from "../state/scope";
+import { scopeGate } from "./scopeGate";
+
+/**
+ * Change one legend item, on every chart or (switch "This chart only") on this chart only.
+ * `patch` values that are undefined clear what was set.
+ */
+export function writeLegendItem(
+  panelId: string,
+  itemId: string,
+  patch: LegendChartEdit,
+) {
+  const ed = useEditor.getState();
+  const p = ed.template?.panels.find((q) => q.id === panelId);
+  if (!p) return;
+  if (useScope.getState().scope === "chart")
+    return ed.updatePanel(
+      p.id,
+      chartEditPatch(p, ed.sheetIndex, itemId, patch),
+    );
+  if (itemId.startsWith("data:")) {
+    const key = itemId.slice(5);
+    const ld = p.legendData ?? { on: true, overrides: {} };
+    const next: Record<string, unknown> = { ...ld.overrides[key], ...patch };
+    for (const k of Object.keys(next))
+      if (next[k] === undefined) delete next[k];
+    return ed.updatePanel(p.id, {
+      legendData: { ...ld, overrides: { ...ld.overrides, [key]: next } },
+    });
+  }
+  ed.updatePanel(p.id, {
+    legend: (p.legend ?? []).map((x) =>
+      x.id === itemId ? ({ ...x, ...patch } as LegendItem) : x,
+    ),
+  });
+}
+
+/** Open the symbol window, after saying which charts the change is for. */
+export function openSymbol(panelId: string, itemId: string) {
+  void scopeGate().then(
+    (ok) => ok && useSymbolEdit.getState().open(panelId, itemId),
+  );
+}
 
 /** The legend panel an element on the sheet belongs to. */
 function legendOf(el: Element): Panel | undefined {
@@ -48,7 +97,7 @@ export function editLegendAt(
     const panel = legendOf(symEl);
     const id = symEl.getAttribute("data-lsym");
     if (panel && id) {
-      useSymbolEdit.getState().open(panel.id, id);
+      openSymbol(panel.id, id);
       return true;
     }
   }
@@ -78,37 +127,16 @@ export function editLegendAt(
       return;
     }
     if (item) {
-      const t = (
-        el.closest("[data-legend]") as SVGGElement | null
-      )?.querySelector("text:last-of-type")?.textContent;
-      const ld = p.legendData ?? { on: true, overrides: {} };
-      if (item.startsWith("data:")) {
-        const key = item.slice(5);
-        const v = await askText(
-          "Legend text",
-          ld.overrides[key]?.label ?? t ?? "",
-        );
-        if (v !== null)
-          ed.updatePanel(p.id, {
-            legendData: {
-              ...ld,
-              overrides: {
-                ...ld.overrides,
-                [key]: { ...ld.overrides[key], label: v },
-              },
-            },
-          });
-      } else {
-        const own = (p.legend ?? []).find((x) => x.id === item);
-        if (!own) return;
-        const v = await askText("Legend text", own.label);
-        if (v !== null)
-          ed.updatePanel(p.id, {
-            legend: (p.legend ?? []).map((x) =>
-              x.id === item ? { ...x, label: v } : x,
-            ),
-          });
-      }
+      if (!(await scopeGate())) return;
+      // The wording as drawn on this chart.
+      const cur = resolvedItem(p, item, true)?.label ?? "";
+      const v = await askText(
+        useScope.getState().scope === "chart"
+          ? "Legend text (this chart only)"
+          : "Legend text (all charts)",
+        cur,
+      );
+      if (v !== null) writeLegendItem(p.id, item, { label: v });
       return;
     }
     // A definition line: the one under the pointer.
@@ -245,8 +273,20 @@ export function legendSymAt(
   return panel && itemId ? { panelId: panel.id, itemId } : null;
 }
 
-/** The item as drawn: a data item with the user's changes, or one of the legend's own. */
-function resolvedItem(p: Panel, itemId: string): LegendItem | undefined {
+/** The item as drawn: a data item with the user's changes, or one of the legend's own (`onChart`: with this chart's changes too). */
+function resolvedItem(
+  p: Panel,
+  itemId: string,
+  onChart = false,
+): LegendItem | undefined {
+  const it = baseItem(p, itemId);
+  const e = onChart
+    ? p.legendChart?.[useEditor.getState().sheetIndex]?.[itemId]
+    : undefined;
+  return it && e ? ({ ...it, ...e } as LegendItem) : it;
+}
+
+function baseItem(p: Panel, itemId: string): LegendItem | undefined {
   if (!itemId.startsWith("data:"))
     return (p.legend ?? []).find((x) => x.id === itemId);
   const t = useEditor.getState().template;
@@ -267,9 +307,15 @@ export function legendSymMenu(panelId: string, itemId: string): MenuItem[] {
   const ed = useEditor.getState();
   const p = ed.template?.panels.find((q) => q.id === panelId);
   if (!p) return [];
-  const dup = () => {
-    const it = resolvedItem(p, itemId);
-    if (!it) return;
+  const chart = ed.sheetIndex;
+  const onlyHere = useScope.getState().scope === "chart";
+  const dup = async (thisChart: boolean) => {
+    if (!thisChart && !(await scopeGate())) return;
+    const q = useEditor
+      .getState()
+      .template?.panels.find((x) => x.id === panelId);
+    const it = q && resolvedItem(q, itemId, true);
+    if (!q || !it) return;
     const copy = { ...it } as LegendItem & Record<string, unknown>;
     for (const k of ["key", "datasetId", "colorOf", "hidden", "linked"])
       delete copy[k];
@@ -278,40 +324,50 @@ export function legendSymMenu(panelId: string, itemId: string): MenuItem[] {
       id: newId(),
       custom: true,
       after: itemId,
+      chart:
+        thisChart || useScope.getState().scope === "chart" ? chart : undefined,
     };
-    const list = [...(p.legend ?? [])];
+    const list = [...(q.legend ?? [])];
     const at = list.findIndex((x) => x.id === itemId);
     list.splice(at < 0 ? list.length : at + 1, 0, own);
-    ed.updatePanel(p.id, { legend: list });
+    useEditor.getState().updatePanel(q.id, { legend: list });
   };
-  const remove = () => {
-    if (itemId.startsWith("data:")) {
-      const key = itemId.slice(5);
-      const ld = p.legendData ?? { on: true, overrides: {} };
-      ed.updatePanel(p.id, {
-        legendData: {
-          ...ld,
-          overrides: {
-            ...ld.overrides,
-            [key]: { ...ld.overrides[key], hidden: true },
-          },
-        },
-      });
-    } else
-      ed.updatePanel(p.id, {
-        legend: (p.legend ?? [])
+  const remove = async () => {
+    if (!(await scopeGate())) return;
+    const q = useEditor
+      .getState()
+      .template?.panels.find((x) => x.id === panelId);
+    if (!q) return;
+    if (useScope.getState().scope === "chart")
+      return writeLegendItem(q.id, itemId, { hidden: true });
+    if (itemId.startsWith("data:"))
+      writeLegendItem(q.id, itemId, { hidden: true });
+    else
+      useEditor.getState().updatePanel(q.id, {
+        legend: (q.legend ?? [])
           .filter((x) => x.id !== itemId)
           // Copies of a removed item stay where it was.
           .map((x) => (x.after === itemId ? { ...x, after: undefined } : x)),
       });
   };
-  return [
-    {
-      label: "Edit…",
-      action: () => useSymbolEdit.getState().open(panelId, itemId),
-    },
-    { label: "Duplicate", action: dup },
-    "separator",
-    { label: "Remove", action: remove },
+  const where = onlyHere ? " (this chart only)" : "";
+  const items: MenuItem[] = [
+    { label: `Edit…${where}`, action: () => openSymbol(panelId, itemId) },
+    { label: `Duplicate${where}`, action: () => void dup(false) },
   ];
+  if (!onlyHere)
+    items.push({
+      label: "Duplicate (this chart only)",
+      action: () => void dup(true),
+    });
+  if (hasChartEdit(p, chart, itemId))
+    items.push({
+      label: "Use the all-charts version",
+      action: () => ed.updatePanel(p.id, clearChartEdit(p, chart, itemId)),
+    });
+  items.push("separator", {
+    label: `Remove${where}`,
+    action: () => void remove(),
+  });
+  return items;
 }

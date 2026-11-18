@@ -43,6 +43,11 @@ Which edit mode the sheet is in. One at a time.
 - "Hover info" (`usePrefs.hoverInfo`, shortcut `usePrefs.hoverKey`, F3 by default) is a
   browser setting, not a mode: the sheet asks `hoverSources` (`state/hoverInfo.ts`) what
   lies under the pointer; `[data-hover-info]` on its toolbar button shows it.
+- "Changes apply to: All charts | This chart only" (`useScope`, F8 / F9, `[data-scope]` on the
+  mode bar) is a setting, not a mode: All charts by default, back to All charts when the
+  edit mode ends. The first change of an edit session asks which (`scopeGate`) unless the
+  user ticked "don't remind me again" (`usePrefs.scopeRemind`). Legend changes for one
+  chart live in `Panel.legendChart[chart][itemId]`.
 - "Pan map" (`useEditor.panMap`) is a separate on/off toggle, not a mode: it only changes
   what a plain drag in the plan view does.
 

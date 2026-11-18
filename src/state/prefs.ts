@@ -16,6 +16,9 @@ interface Prefs {
   /** The section list at the top of the properties panel. */
   propsNav: boolean;
   setPropsNav(on: boolean): void;
+  /** Ask which charts a change is for, the first time something is changed in an edit mode. */
+  scopeRemind: boolean;
+  setScopeRemind(on: boolean): void;
   setRulerKey(k: string): void;
   setHoverInfo(on: boolean): void;
   setHoverKey(k: string): void;
@@ -41,6 +44,7 @@ function keep(p: Prefs) {
         rulerKey: p.rulerKey,
         measureKey: p.measureKey,
         propsNav: p.propsNav,
+        scopeRemind: p.scopeRemind,
       }),
     );
   } catch {
@@ -55,6 +59,11 @@ export const usePrefs = create<Prefs>((set, get) => ({
   hoverKey: saved.hoverKey || "F3",
   rulerKey: saved.rulerKey || "F4",
   propsNav: saved.propsNav ?? true,
+  scopeRemind: saved.scopeRemind ?? true,
+  setScopeRemind: (scopeRemind) => {
+    set({ scopeRemind });
+    keep(get());
+  },
   setPropsNav: (propsNav) => {
     set({ propsNav });
     keep(get());

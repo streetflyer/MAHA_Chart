@@ -28,6 +28,8 @@ import {
 } from "../model/legendData";
 import type { CpSymbol } from "../model/datasets";
 import { planStyle } from "../model/planStyle";
+import { applyChartEdits } from "../model/legendScope";
+import { useLegendEdit } from "../state/legendEdit";
 import { useEditor } from "../state/store";
 
 const sheetOf = (tokens: Record<string, string>) =>
@@ -690,7 +692,7 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
     const ld = p.legendData ?? { on: true, overrides: {} };
     if (!ld.on)
       return {
-        items: manual,
+        items: applyChartEdits(placeAfter(manual), p.legendChart?.[chartNo]),
         data: [] as DataLegendItem[],
         codes: p.eventCodes ?? "",
       };
@@ -708,10 +710,13 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
       }))
       .filter((d) => !d.hidden);
     const groups = groupsWithData(dataLegend(datasets, "#000"));
-    const items = placeAfter([
-      ...data,
-      ...manual.filter((i) => !groups.has(i.group) || i.custom),
-    ]);
+    const items = applyChartEdits(
+      placeAfter([
+        ...data,
+        ...manual.filter((i) => !groups.has(i.group) || i.custom),
+      ]),
+      p.legendChart?.[chartNo],
+    );
     const fromEvents = datasets.some((d) => d.kind === "events" && d.visible);
     const ls = p.legendStyle;
     // "This chart": codes of the events on this chart that an engineering events row shows.
@@ -741,6 +746,7 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
     };
   }, [
     p.legend,
+    p.legendChart,
     chartNo,
     p.legendData,
     p.eventCodes,
@@ -790,6 +796,9 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
       (Number.isFinite(k0) && Number.isFinite(k1) ? [k0, k1] : undefined),
   );
   const ls = { ...DEFAULT_LEGEND_STYLE, ...p.legendStyle };
+  // While the legend is edited, items changed for this chart only carry an amber dot.
+  const editing = useLegendEdit((s) => s.active && s.panelId === p.id);
+  const ownEdits = editing ? p.legendChart?.[sheetIndex] : undefined;
   const headText = (g: LegendGroup | "codes") =>
     ls.headings?.[g] ||
     (g === "codes" ? "EVENT CODE DEFINITIONS:" : LEGEND_GROUPS[g]);
@@ -859,6 +868,16 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
             <g data-lsym={it.id}>
               <LegendSymbolView it={it} x={x} cy={cy} w={sw} tokens={tokens} />
             </g>
+            {ownEdits?.[it.id] && (
+              <circle
+                data-chart-only={it.id}
+                cx={x - 0.9}
+                cy={cy}
+                r={0.55}
+                style={{ fill: "#f59e0b" }}
+                pointerEvents="none"
+              />
+            )}
             <text
               x={x + sw + 2}
               y={cy - ((lines.length - 1) * lh) / 2}

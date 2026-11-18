@@ -206,6 +206,8 @@ export interface Panel {
   legend?: LegendItem[];
   legendStyle?: LegendStyle;
   legendData?: LegendData;
+  /** Changes made for one chart only: chart index → item id → new wording, look or hidden. */
+  legendChart?: Record<string, Record<string, LegendChartEdit>>;
   /** Code + description lines shown as "EVENT CODE DEFINITIONS" in the legend. */
   eventCodes?: string;
   /** Revision history rows, newest first (title block). */
@@ -496,6 +498,11 @@ export interface LegendItem {
 }
 
 /** What the user can change about a legend symbol (kept per item; for data lines under their key). */
+/** A legend item's change on one chart ("This chart only"). */
+export type LegendChartEdit = Partial<Omit<LegendItem, "id">> & {
+  hidden?: boolean;
+};
+
 export type SymbolLook = Pick<
   LegendItem,
   | "symbol"

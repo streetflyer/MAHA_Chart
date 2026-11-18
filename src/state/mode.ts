@@ -6,6 +6,7 @@ import { useEventEdit } from "./eventEdit";
 import { useBodyBox } from "./bodyBox";
 import { useKeyplanView } from "./keyplanView";
 import { useLegendEdit } from "./legendEdit";
+import { useScope } from "./scope";
 import { useMatchPick } from "./matchPick";
 import { useSmoothTool } from "./smoothTool";
 import { useEditor } from "./store";
@@ -282,6 +283,8 @@ export function installModeMachine() {
       if (s.active === p.active) return;
       // One mode at a time: switching one on leaves the others.
       if (s.active) for (const other of conflicts(flags(), m)) leave[other]();
+      // "This chart only" lasts for one edit session.
+      if (currentMode() === "idle") useScope.getState().reset();
       listeners.forEach((l) => l());
     });
   watch("drawing", useDrawingEdit);

@@ -66,6 +66,7 @@ import { useSmoothTool } from "../state/smoothTool";
 import { eventLabelMenu } from "./eventLabelEdit";
 import { codeDefMenu, legendSymMenu } from "./legendEdit";
 import { useLegendEdit } from "../state/legendEdit";
+import { useScope } from "../state/scope";
 import { longSectionMenu } from "./longSectionMenu";
 import { CodeDefsDialog } from "./CodeDefsDialog";
 import { SymbolDialog } from "./SymbolDialog";
@@ -359,6 +360,18 @@ export function Editor({ onExit }: { onExit(): void }) {
       }
       if (e.key === "Escape" && useBodyBox.getState().active) {
         useBodyBox.getState().exit();
+        return;
+      }
+      // F8 / F9: changes apply to all charts / this chart only.
+      if (e.key === "F8" || e.key === "F9") {
+        e.preventDefault();
+        const chart = e.key === "F9";
+        useScope.getState().set(chart ? "chart" : "all");
+        flash(
+          chart
+            ? "Changes apply to this chart only (F8: all charts)"
+            : "Changes apply to all charts (F9: this chart only)",
+        );
         return;
       }
       if (e.key === "Escape" && useLegendEdit.getState().active) {
