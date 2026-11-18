@@ -226,6 +226,8 @@ export interface DividerStyle {
   color: string;
   width: number;
   dash: string;
+  /** Gap (mm) between the sections, each framed on its own; 0 = one line. */
+  gap?: number;
 }
 
 export interface PlanStyle {
@@ -328,6 +330,8 @@ export interface MatchLabel {
   hidden?: boolean;
   /** Text turned 180°. */
   flip?: boolean;
+  /** The line runs on to the edges of the chart box instead of being as long as the box is high. */
+  extend?: boolean;
 }
 
 /** A matchline the user picked or drew in the key plan, between chart i and chart i + 1. */

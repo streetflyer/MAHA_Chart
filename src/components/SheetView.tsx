@@ -802,7 +802,12 @@ export function SheetView({
       .map((x) => x.closest("[data-section],[data-sdiv],[data-pdiv]"))
       .find(Boolean);
     const secRoute = useSurvey.getState().route;
-    if (secEl && secRoute) {
+    // Outside the key plan view only Shift+drag (move a section freely) is taken here.
+    const secFree =
+      !!secEl?.hasAttribute("data-section") &&
+      !useKeyplanView.getState().active &&
+      !e.shiftKey;
+    if (secEl && secRoute && !secFree) {
       const pdiv = secEl.getAttribute("data-pdiv");
       const [iS, jS] = (
         secEl.getAttribute("data-section") ??
@@ -2082,6 +2087,16 @@ export function SheetView({
       return onContextMenu(e.clientX, e.clientY, at, {
         kind: "pointitem",
         id: ptsEl,
+      });
+    const mlineEl = planEl
+      ? null
+      : document
+          .elementsFromPoint(e.clientX, e.clientY)
+          .find((x) => x.hasAttribute("data-mline"));
+    if (mlineEl)
+      return onContextMenu(e.clientX, e.clientY, at, {
+        kind: "planitem",
+        id: mlineEl.getAttribute("data-mline")!,
       });
     if (planEl) {
       const ml = planEl.getAttribute("data-mlabel");

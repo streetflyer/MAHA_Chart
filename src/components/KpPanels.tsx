@@ -71,6 +71,7 @@ import {
 import type { ChartTemplate, Panel } from "../model/types";
 import { useSurvey } from "../state/surveyData";
 import { niceGrid } from "./Keyplan";
+import { SectionGap } from "./SectionGap";
 import { fontSize, measureText } from "./svgText";
 
 /**
@@ -533,19 +534,6 @@ export function KpPanelData({
           </text>
         </g>
       ))}
-      {joins.map((x) => (
-        <line
-          key={`join${x}`}
-          className="segment-join"
-          x1={x}
-          y1={p.y}
-          x2={x}
-          y2={p.y + p.h}
-          stroke={div.color}
-          strokeWidth={div.width}
-          strokeDasharray={div.dash.trim() || undefined}
-        />
-      ))}
       <defs>
         <clipPath id={clipId}>
           <rect x={x0} y={p.y} width={p.x + p.w - x0} height={p.h} />
@@ -646,6 +634,9 @@ export function KpPanelData({
             />
           )}
       </g>
+      {joins.map((x) => (
+        <SectionGap key={`join${x}`} x={x} y={p.y} h={p.h} div={div} />
+      ))}
     </g>
   );
 }

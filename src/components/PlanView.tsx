@@ -1,3 +1,4 @@
+import { SectionGap } from "./SectionGap";
 import { chartKpRange, drawingNoOf } from "../model/tokens";
 import { useEffect, useMemo, type ReactElement, type ReactNode } from "react";
 import {
@@ -219,6 +220,20 @@ export function PlanView({
   const clipId = `plan-clip-${p.id}`;
   const divSt = dividerStyle(p);
   const sectioned = !!sheetFrame(template, sheetIndex)?.sections;
+  // The divider runs from the plan view down to the foot of the lowest panel lined up with it.
+  const divBottom = Math.max(
+    p.y + p.h,
+    ...template.panels
+      .filter(
+        (q) =>
+          q.kpAligned &&
+          q.id !== p.id &&
+          q.x < p.x + p.w &&
+          q.x + q.w > p.x &&
+          q.y >= p.y,
+      )
+      .map((q) => q.y + q.h),
+  );
   return (
     <g pointerEvents="none">
       <defs>
@@ -302,16 +317,20 @@ export function PlanView({
       ))}
       {parts.slice(1).map((v, j) => (
         <g key={`sep${j}`}>
-          <line
-            className="segment-join"
-            x1={v.rect.x}
-            y1={v.rect.y}
-            x2={v.rect.x}
-            y2={v.rect.y + v.rect.h}
-            stroke={divSt.color}
-            strokeWidth={divSt.width}
-            strokeDasharray={divSt.dash.trim() || undefined}
-          />
+          <SectionGap x={v.rect.x} y={v.rect.y} h={v.rect.h} div={divSt} />
+          {divSt.gap > 0 && (
+            // With a gap, one divider line runs down through the gap of every panel below.
+            <line
+              className="segment-join"
+              x1={v.rect.x}
+              y1={v.rect.y}
+              x2={v.rect.x}
+              y2={divBottom}
+              stroke={divSt.color}
+              strokeWidth={divSt.width}
+              strokeDasharray={divSt.dash.trim() || undefined}
+            />
+          )}
           {sectioned && (
             // Drag the divider sideways to make the sections on either side longer or shorter.
             <rect
@@ -419,8 +438,13 @@ function Matchlines({
     }
     // As long as the chart box is high, centred on the line: the same segment in both
     // charts (and the key plan), never run on across an angled neighbour.
+    // Asked for in its menu: run on to the edges of the chart box.
+    const lkey = `${sheetIndex + 1}-${m.chart}`;
+    const ov = st.labels?.[lkey] ?? {};
     const plan = template.panels.find((q) => q.id === panelId);
-    const L = (plan?.h ?? rect.h) / 2;
+    const L = ov.extend
+      ? Math.hypot(rect.w, rect.h) + 1
+      : (plan?.h ?? rect.h) / 2;
     const seg = clip(
       [c[0] - lx * L, c[1] - ly * L],
       [c[0] + lx * L, c[1] + ly * L],
@@ -435,8 +459,6 @@ function Matchlines({
     // Text runs up the line (from B towards A); its glyph-up direction is (sinθ, -cosθ).
     const ang = Math.atan2(-dy, -dx);
     const up = [Math.sin(ang), -Math.cos(ang)];
-    const lkey = `${sheetIndex + 1}-${m.chart}`;
-    const ov = st.labels?.[lkey] ?? {};
     const label = (text: string, side: number, key: string, own = false) => {
       const lcap = own ? (ov.size ?? cap) : cap;
       const s = [tx * side, ty * side];
@@ -485,6 +507,18 @@ function Matchlines({
           stroke={st.color}
           strokeWidth={st.width}
           strokeDasharray={st.dash.trim() || undefined}
+        />
+        {/* Right-click target for the line's own menu (extend to the box edge). */}
+        <line
+          className="row-hit"
+          data-mline={`${panelId}|${lkey}`}
+          x1={A[0]}
+          y1={A[1]}
+          x2={B[0]}
+          y2={B[1]}
+          stroke="transparent"
+          strokeWidth={2}
+          pointerEvents="stroke"
         />
         {!ov.hidden &&
           label(

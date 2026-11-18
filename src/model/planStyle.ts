@@ -61,7 +61,12 @@ export function withLineEnd(
 export const kpMarkGap = (st: PlanStyle, scale: number) =>
   (st.kpBlockSize * 1.6 * scale) / 1000;
 
-export const DEFAULT_DIVIDER = { color: "#000000", width: 0.35, dash: "" };
+export const DEFAULT_DIVIDER = {
+  color: "#000000",
+  width: 0.35,
+  dash: "",
+  gap: 0,
+};
 
 /** The section divider look of a plan view (also used by the panels below it). */
 export const dividerStyle = (p: Panel | undefined) => ({

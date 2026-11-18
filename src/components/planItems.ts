@@ -127,6 +127,12 @@ export function planItemMenu(id: string): MenuItem[] {
   const size = cur.size ?? base.textSize;
   const colour = cur.color ?? base.color;
   return [
+    {
+      label: "Extend this matchline to the edge of the chart box",
+      checked: !!cur.extend,
+      action: () => patchMatchLabel(id, { extend: !cur.extend || undefined }),
+    },
+    "separator",
     { label: "Edit text…", action: () => void editPlanItemText(id) },
     {
       label: "Reset text",

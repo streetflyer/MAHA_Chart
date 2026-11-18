@@ -369,7 +369,7 @@ export function Keyplan({
                     strokeWidth={cur ? lw * 2.4 : lw * 1.6}
                   />
                 ))}
-                {boxes && cur && viewing && (
+                {boxes && cur && (
                   <g>
                     {boxes.map((b, j) => (
                       <polygon
@@ -382,28 +382,29 @@ export function Keyplan({
                         pointerEvents="all"
                         style={{ cursor: "grab" }}
                       >
-                        <title>{`Section ${j + 1}: drag to turn it about its start (the sections after it follow); Shift+drag to move it`}</title>
+                        <title>{`Section ${j + 1}: Shift+drag to move it freely; in the key plan view (double-click) a plain drag turns it about its start and the sections after it follow`}</title>
                       </polygon>
                     ))}
-                    {boxes.slice(1).map((b, j) => (
-                      <line
-                        key={`d${j}`}
-                        className="kp-sdiv-hit"
-                        data-sdiv={`${i}|${j}`}
-                        data-view={viewData}
-                        x1={sx(b[0][0])}
-                        y1={sy(b[0][1])}
-                        x2={sx(b[3][0])}
-                        y2={sy(b[3][1])}
-                        stroke="#1a73e8"
-                        strokeWidth={Math.max(lw * 5, 0.6)}
-                        strokeOpacity={0.5}
-                        pointerEvents="stroke"
-                        style={{ cursor: "ew-resize" }}
-                      >
-                        <title>Drag to slide the divider</title>
-                      </line>
-                    ))}
+                    {viewing &&
+                      boxes.slice(1).map((b, j) => (
+                        <line
+                          key={`d${j}`}
+                          className="kp-sdiv-hit"
+                          data-sdiv={`${i}|${j}`}
+                          data-view={viewData}
+                          x1={sx(b[0][0])}
+                          y1={sy(b[0][1])}
+                          x2={sx(b[3][0])}
+                          y2={sy(b[3][1])}
+                          stroke="#1a73e8"
+                          strokeWidth={Math.max(lw * 5, 0.6)}
+                          strokeOpacity={0.5}
+                          pointerEvents="stroke"
+                          style={{ cursor: "ew-resize" }}
+                        >
+                          <title>Drag to slide the divider</title>
+                        </line>
+                      ))}
                   </g>
                 )}
                 {cur && st.thisChart?.on !== false && (

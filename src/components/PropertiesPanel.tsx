@@ -3280,6 +3280,7 @@ function PlanStyleEditor({ p }: { p: Panel }) {
           <option value="0.8 1.2">Dotted</option>
         </select>
       </label>
+      <DividerGap p={p} />
       <h4>KP blocks</h4>
       <label className="check">
         <input
@@ -3738,5 +3739,59 @@ function DataEntry({ d, events }: { d: Dataset; events?: Panel }) {
         )}
       </fieldset>
     </li>
+  );
+}
+
+/** Gap between the sections of a divided chart, changed live while dragging the slider. */
+function DividerGap({ p }: { p: Panel }) {
+  const gap = dividerStyle(p).gap;
+  const s = useEditor.getState;
+  const apply = (v: number) =>
+    s().updateGesture((t) => ({
+      ...t,
+      panels: t.panels.map((q) =>
+        q.id === p.id
+          ? {
+              ...q,
+              plan: {
+                ...planStyle(q),
+                divider: { ...dividerStyle(q), gap: Math.max(0, v) },
+              },
+            }
+          : q,
+      ),
+    }));
+  const live = (v: number) => {
+    s().beginGesture();
+    apply(v);
+    s().endGesture();
+  };
+  return (
+    <label className="field" data-divider-gap>
+      <span>Gap between sections ({gap.toFixed(1)} mm)</span>
+      <span className="row2">
+        <input
+          type="range"
+          min={0}
+          max={10}
+          step={0.1}
+          value={gap}
+          onPointerDown={() => s().beginGesture()}
+          onPointerUp={() => s().endGesture()}
+          onChange={(e) =>
+            s().gestureBase ? apply(+e.target.value) : live(+e.target.value)
+          }
+        />
+        <input
+          type="number"
+          min={0}
+          step={0.1}
+          value={gap}
+          onChange={(e) =>
+            Number.isFinite(+e.target.value) && live(+e.target.value)
+          }
+        />
+      </span>
+    </label>
   );
 }
