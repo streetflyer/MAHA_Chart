@@ -39,10 +39,15 @@ import { useProject } from "../state/project";
 import { autoSurveyDate } from "../model/video";
 import { surveyDateOf } from "../model/tokens";
 import {
+  boxOf,
+  boxesOverlap,
   chartGeometry,
   distanceBeforeStart,
   nearestChainage,
+  sectionPlaces,
+  sectionsEnd,
 } from "../model/route";
+import type { SectionPlace } from "../model/types";
 import {
   editSheet,
   planPanel,
@@ -170,6 +175,21 @@ interface ViewBox {
 type Drag =
   | { type: "evlabel"; id: string; start: Pt; dx0: number; dy0: number }
   | { type: "mlabel"; id: string; start: Pt; dx0: number; dy0: number }
+  | {
+      /** A sectioned chart: turn a section (and the ones after it), move it, or slide a divider. */
+      type: "section";
+      what: "turn" | "move" | "divider";
+      index: number;
+      j: number;
+      start: Pt;
+      g0: [number, number];
+      place0: SectionPlace[];
+      div0: number[];
+      along: number;
+      /** Paper: the divider is dragged in the plan view (paper mm), not the key plan. */
+      paper?: number;
+      toGrid?: (q: Pt) => [number, number];
+    }
   | {
       type: "pts";
       id: string;
@@ -775,6 +795,55 @@ export function SheetView({
       }
       tb.exit();
     }
+    // A chart in sections: turn, move or resize its sections (key plan view mode), or slide
+    // a divider in the plan view.
+    const secEl = document
+      .elementsFromPoint(e.clientX, e.clientY)
+      .map((x) => x.closest("[data-section],[data-sdiv],[data-pdiv]"))
+      .find(Boolean);
+    const secRoute = useSurvey.getState().route;
+    if (secEl && secRoute) {
+      const pdiv = secEl.getAttribute("data-pdiv");
+      const [iS, jS] = (
+        secEl.getAttribute("data-section") ??
+        secEl.getAttribute("data-sdiv") ??
+        `${sheetIndex}|${pdiv}`
+      ).split("|");
+      const index = Number(iS);
+      const j = Number(jS);
+      const sp = sectionPlaces(template, secRoute, index);
+      const f = sheetFrame(template, index);
+      const plan = planPanel(template);
+      if (sp && f?.sections && plan) {
+        const view = secEl.getAttribute("data-view")?.split(",").map(Number);
+        const toGrid = view
+          ? (q: Pt): [number, number] => [
+              view[0] + (q.x - view[3]) / view[2],
+              view[1] - (q.y - view[4]) / view[2],
+            ]
+          : undefined;
+        svgRef.current!.setPointerCapture(e.pointerId);
+        store().beginGesture();
+        setDrag({
+          type: "section",
+          what: secEl.hasAttribute("data-section")
+            ? e.shiftKey
+              ? "move"
+              : "turn"
+            : "divider",
+          index,
+          j,
+          start: at,
+          g0: toGrid ? toGrid(at) : [0, 0],
+          place0: sp.place,
+          div0: f.sections.div,
+          along: (plan.w * template.scale.horizontal) / 1000,
+          paper: pdiv !== null ? plan.w : undefined,
+          toGrid,
+        });
+        return;
+      }
+    }
     // Adjusting the key plan view: a drag on the map moves it; a click outside finishes.
     const kvs = useKeyplanView.getState();
     if (kvs.active && !frameEl) {
@@ -1143,6 +1212,89 @@ export function SheetView({
         ),
       }));
       if (!drag.moved) setDrag({ ...drag, moved: true });
+      return;
+    }
+    if (drag.type === "section") {
+      const route = useSurvey.getState().route;
+      if (!route) return;
+      const d = drag;
+      const half =
+        ((template.panels.find((q) => q.type === "plan")?.h ?? 0) *
+          template.scale.horizontal) /
+        2000;
+      const lengths = (div: number[]) => {
+        const c = [0, ...div, 1];
+        return c.slice(1).map((x, m) => (x - c[m]) * d.along);
+      };
+      let place = d.place0;
+      let div = d.div0;
+      if (d.what === "turn" && d.toGrid) {
+        const g = d.toGrid(at);
+        const pv = d.place0[d.j];
+        const a0 = Math.atan2(d.g0[1] - pv.n, d.g0[0] - pv.e);
+        const a1 = Math.atan2(g[1] - pv.n, g[0] - pv.e);
+        const da = a1 - a0;
+        const c = Math.cos(da);
+        const s = Math.sin(da);
+        // This section and the ones after it turn together about its start.
+        place = d.place0.map((q, m) =>
+          m < d.j
+            ? q
+            : {
+                e: pv.e + (q.e - pv.e) * c - (q.n - pv.n) * s,
+                n: pv.n + (q.e - pv.e) * s + (q.n - pv.n) * c,
+                a: q.a + da,
+              },
+        );
+      } else if (d.what === "move" && d.toGrid) {
+        const g = d.toGrid(at);
+        place = d.place0.map((q, m) =>
+          m === d.j
+            ? { ...q, e: q.e + g[0] - d.g0[0], n: q.n + g[1] - d.g0[1] }
+            : q,
+        );
+        // A section always keeps overlapping its neighbours.
+        const L = lengths(div);
+        const box = (m: number) => boxOf(place[m], L[m], half);
+        const ok = [d.j - 1, d.j + 1]
+          .filter((m) => m >= 0 && m < place.length)
+          .every((m) => boxesOverlap(box(d.j), box(m)));
+        if (!ok) return;
+      } else if (d.what === "divider") {
+        // How far the divider moved, as a share of the plan view's width.
+        let df: number;
+        if (d.paper) df = (at.x - d.start.x) / d.paper;
+        else if (d.toGrid) {
+          const g = d.toGrid(at);
+          const a = d.place0[d.j].a;
+          df =
+            ((g[0] - d.g0[0]) * Math.cos(a) + (g[1] - d.g0[1]) * Math.sin(a)) /
+            d.along;
+        } else return;
+        const lo = (d.div0[d.j - 1] ?? 0) + 0.04;
+        const hi = (d.div0[d.j + 1] ?? 1) - 0.04;
+        const nd = Math.min(hi, Math.max(lo, d.div0[d.j] + df));
+        div = d.div0.map((x, m) =>
+          m === d.j ? Math.round(nd * 1000) / 1000 : x,
+        );
+        // The sections after the divider move along with it.
+        const shift = (div[d.j] - d.div0[d.j]) * d.along;
+        const a = d.place0[d.j].a;
+        place = d.place0.map((q, m) =>
+          m <= d.j
+            ? q
+            : {
+                ...q,
+                e: q.e + Math.cos(a) * shift,
+                n: q.n + Math.sin(a) * shift,
+              },
+        );
+      }
+      store().updateGesture((t) => {
+        const next = editSheet(t, d.index, { sections: { div, place } });
+        const end = sectionsEnd(next, route, d.index);
+        return end === null ? next : editSheet(next, d.index, { end });
+      });
       return;
     }
     if (drag.type === "frameFree") {
@@ -1560,7 +1712,8 @@ export function SheetView({
       drag.type === "rotate" ||
       drag.type === "north" ||
       drag.type === "callout" ||
-      drag.type === "pts"
+      drag.type === "pts" ||
+      drag.type === "section"
     ) {
       store().endGesture();
       useKeyplanView.getState().setRotating(false);

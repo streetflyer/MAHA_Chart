@@ -51,6 +51,7 @@ import {
   kpMarkGap,
   planStyle,
   withLineEnd,
+  dividerStyle,
 } from "../model/planStyle";
 import {
   chartGeometry,
@@ -480,6 +481,7 @@ export function KpPanelData({
     : [];
   // Matchlines, when the plan view's matchline settings tick this panel.
   const plan = planPanel(t);
+  const div = dividerStyle(plan);
   const ms = plan ? planStyle(plan).match : undefined;
   const matchXs: { x: number; text: string }[] = [];
   if (route && ms?.panels?.[p.id]) {
@@ -539,8 +541,9 @@ export function KpPanelData({
           y1={p.y}
           x2={x}
           y2={p.y + p.h}
-          stroke="#000"
-          strokeWidth={0.35}
+          stroke={div.color}
+          strokeWidth={div.width}
+          strokeDasharray={div.dash.trim() || undefined}
         />
       ))}
       <defs>

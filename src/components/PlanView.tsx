@@ -5,7 +5,7 @@ import {
   matchLabel,
   matchSpecs,
 } from "../model/matchlines";
-import { sheetCount, sheetRange } from "../model/scale";
+import { sheetCount, sheetFrame, sheetRange } from "../model/scale";
 import {
   chartGeometry,
   chartSegments,
@@ -26,6 +26,7 @@ import {
   DEFAULT_PLAN,
   kpInterval,
   planStyle,
+  dividerStyle,
   withLineEnd,
   kpMarkGap,
 } from "../model/planStyle";
@@ -216,6 +217,8 @@ export function PlanView({
   const routeColor = before?.color ?? st.routeColor;
   const routeWidth = before?.kind === "route" ? before.width : st.routeWidth;
   const clipId = `plan-clip-${p.id}`;
+  const divSt = dividerStyle(p);
+  const sectioned = !!sheetFrame(template, sheetIndex)?.sections;
   return (
     <g pointerEvents="none">
       <defs>
@@ -298,16 +301,30 @@ export function PlanView({
         </g>
       ))}
       {parts.slice(1).map((v, j) => (
-        <line
-          key={`sep${j}`}
-          className="segment-join"
-          x1={v.rect.x}
-          y1={v.rect.y}
-          x2={v.rect.x}
-          y2={v.rect.y + v.rect.h}
-          stroke="#000"
-          strokeWidth={0.35}
-        />
+        <g key={`sep${j}`}>
+          <line
+            className="segment-join"
+            x1={v.rect.x}
+            y1={v.rect.y}
+            x2={v.rect.x}
+            y2={v.rect.y + v.rect.h}
+            stroke={divSt.color}
+            strokeWidth={divSt.width}
+            strokeDasharray={divSt.dash.trim() || undefined}
+          />
+          {sectioned && (
+            // Drag the divider sideways to make the sections on either side longer or shorter.
+            <rect
+              className="row-hit pdiv-hit"
+              data-pdiv={j}
+              x={v.rect.x - 1}
+              y={v.rect.y}
+              width={2}
+              height={v.rect.h}
+              pointerEvents="all"
+            />
+          )}
+        </g>
       ))}
       {ctx && (
         <DrawingEditOverlay
@@ -400,7 +417,10 @@ function Matchlines({
       const d = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]);
       if (d > 1e-9) [lx, ly] = [(pb[0] - pa[0]) / d, (pb[1] - pa[1]) / d];
     }
-    const L = Math.hypot(rect.w, rect.h);
+    // As long as the chart box is high, centred on the line: the same segment in both
+    // charts (and the key plan), never run on across an angled neighbour.
+    const plan = template.panels.find((q) => q.id === panelId);
+    const L = (plan?.h ?? rect.h) / 2;
     const seg = clip(
       [c[0] - lx * L, c[1] - ly * L],
       [c[0] + lx * L, c[1] + ly * L],

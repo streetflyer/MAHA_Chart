@@ -7,7 +7,7 @@ import {
   autoSheets,
   chartFrames,
   fitSegments,
-  fitSegmentsN,
+  sectionsEnd,
 } from "../model/route";
 import {
   deleteSheet,
@@ -1371,38 +1371,35 @@ function ChartTabs({ onNotice }: { onNotice(m: string): void }) {
     y: number;
     i: number;
   } | null>(null);
-  const fitCurve = async (i: number, ask = false) => {
+  /** Cut the chart box into equal sections and lay them along the curve. */
+  const fitCurve = async (i: number) => {
     if (!route) return;
-    // Start where the chart's plan view shows the line now (it may have been panned).
     const from = chartKpRange(template, i).start * 1000;
-    let fit = fitSegments(template, route, i, 0.97, 12, from);
-    if (ask) {
-      const v = await askText(
-        `Fit Chart ${i + 1} to the curved line: number of segments in the chart (the automatic fit makes ${(fit?.segments.length ?? 0) + 1}; fewer segments allow more curve in each)`,
-        String((fit?.segments.length ?? 1) + 1),
-      );
-      const n = parseInt(v ?? "", 10);
-      if (!(n >= 1)) return;
-      fit = n === 1 ? null : fitSegmentsN(template, route, i, n, from);
-      if (n === 1) {
-        st().commit((t) => fitSheet(t, i, undefined, undefined));
-        onNotice(`Chart ${i + 1} is one straight frame again.`);
-        return;
-      }
-    }
-    if (!fit) {
-      onNotice("No line on this chart.");
+    const auto = fitSegments(template, route, i, 0.97, 12, from);
+    const v = await askText(
+      `Fit Chart ${i + 1} to the curved line: number of sections (the box is cut into equal parts placed along the line; then slide the dividers or move the sections)`,
+      String(Math.max(2, (auto?.segments.length ?? 1) + 1)),
+    );
+    const n = parseInt(v ?? "", 10);
+    if (!(n >= 1)) return;
+    if (n === 1) {
+      st().commit((t) => fitSheet(t, i, undefined, undefined));
+      onNotice(`Chart ${i + 1} is one straight frame again.`);
       return;
     }
-    if (!fit.segments.length && !ask) {
-      onNotice(`Chart ${i + 1}: the line is already straight enough.`);
-      return;
-    }
-    const f = fit;
-    st().commit((t) => fitSheet(t, i, f.segments, f.end, f.start));
+    const div = Array.from({ length: n - 1 }, (_, j) => (j + 1) / n);
+    const cut = { sections: { div }, rotation: 0, panU: 0, panV: 0 };
+    st().commit((t) => {
+      let next = editSheet(fitSheet(t, i, undefined, undefined, from), i, cut);
+      // The chart ends where its last section ends; the charts after it move along.
+      const end = sectionsEnd(next, route, i);
+      if (end !== null)
+        next = editSheet(fitSheet(next, i, undefined, end, from), i, cut);
+      return next;
+    });
     st().setSheet(i);
     onNotice(
-      `Chart ${i + 1} fitted to the curve in ${f.segments.length + 1} segments, KP ${(f.start / 1000).toFixed(3)} to ${(f.end / 1000).toFixed(3)}. The charts after it moved along.`,
+      `Chart ${i + 1} cut into ${n} sections along the curve. Slide a divider in the plan view, or double-click the key plan to turn a section (drag) or move it (Shift+drag).`,
     );
   };
   return (
@@ -1414,18 +1411,15 @@ function ChartTabs({ onNotice }: { onNotice(m: string): void }) {
           onClose={() => setMenu(null)}
           items={[
             {
-              label: "Fit to curved line",
+              label: "Fit to curved line…",
               disabled: !route,
               action: () => void fitCurve(menu.i),
             },
             {
-              label: "Fit to curved line in a number of segments…",
-              disabled: !route,
-              action: () => void fitCurve(menu.i, true),
-            },
-            {
               label: "Straighten (undo the fit)",
-              disabled: !sheetFrame(template, menu.i)?.segments?.length,
+              disabled:
+                !sheetFrame(template, menu.i)?.segments?.length &&
+                !sheetFrame(template, menu.i)?.sections,
               action: () =>
                 st().commit((t) => fitSheet(t, menu.i, undefined, undefined)),
             },

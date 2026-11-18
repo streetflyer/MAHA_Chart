@@ -155,6 +155,13 @@ export function editSheet(
     const old = sheetRange(t, index);
     sheets[index].end = patch.start + (old.end - old.start) * 1000;
   }
+  // Sections placed by hand stay on the ground; moving the chart lays them along the line again.
+  if (
+    patch.start !== undefined &&
+    sheets[index].sections?.place &&
+    patch.sections === undefined
+  )
+    sheets[index].sections = { div: sheets[index].sections!.div };
   // A chart fitted to a curve moves with its segments.
   const segs = sheets[index].segments;
   if (patch.start !== undefined && segs && patch.segments === undefined) {
@@ -280,6 +287,7 @@ export function fitSheet(
     ...me,
     start: start ?? me.start,
     segments: segments?.length ? segments : undefined,
+    sections: undefined,
     end,
     rotation: segments?.length ? 0 : me.rotation,
     panU: segments?.length ? 0 : me.panU,

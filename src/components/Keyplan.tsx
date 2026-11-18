@@ -1,4 +1,5 @@
 import { PointSetsLayer } from "./PointSetsLayer";
+import { sectionBoxes } from "../model/route";
 import { useEffect, useMemo, useState } from "react";
 import { useEditor } from "../state/store";
 import { useKeyplanView, viewFitting } from "../state/keyplanView";
@@ -347,14 +348,64 @@ export function Keyplan({
                   onPointerLeave: () => setZone(false),
                 }
               : {};
+            // A chart in sections: each section's own box instead of one outline.
+            const boxes = route ? sectionBoxes(template, route, i) : null;
+            const ptsOf = (b: [number, number][]) =>
+              b
+                .map(([e, n]) => `${sx(e).toFixed(2)},${sy(n).toFixed(2)}`)
+                .join(" ");
+            const viewData = [view.minE, view.maxN, k, area.x, area.y].join(
+              ",",
+            );
             return (
               <g key={i}>
-                <polygon
-                  points={pts}
-                  fill={cur && st.hatch?.on ? `url(#${hatchId})` : "none"}
-                  stroke={cur ? st.currentColor : st.boundaryColor}
-                  strokeWidth={cur ? lw * 2.4 : lw * 1.6}
-                />
+                {(boxes ?? [f]).map((b, j) => (
+                  <polygon
+                    key={j}
+                    data-section-box={boxes ? `${i}|${j}` : undefined}
+                    points={boxes ? ptsOf(b) : pts}
+                    fill={cur && st.hatch?.on ? `url(#${hatchId})` : "none"}
+                    stroke={cur ? st.currentColor : st.boundaryColor}
+                    strokeWidth={cur ? lw * 2.4 : lw * 1.6}
+                  />
+                ))}
+                {boxes && cur && viewing && (
+                  <g>
+                    {boxes.map((b, j) => (
+                      <polygon
+                        key={`s${j}`}
+                        className="kp-section-hit"
+                        data-section={`${i}|${j}`}
+                        data-view={viewData}
+                        points={ptsOf(b)}
+                        fill="transparent"
+                        pointerEvents="all"
+                        style={{ cursor: "grab" }}
+                      >
+                        <title>{`Section ${j + 1}: drag to turn it about its start (the sections after it follow); Shift+drag to move it`}</title>
+                      </polygon>
+                    ))}
+                    {boxes.slice(1).map((b, j) => (
+                      <line
+                        key={`d${j}`}
+                        className="kp-sdiv-hit"
+                        data-sdiv={`${i}|${j}`}
+                        data-view={viewData}
+                        x1={sx(b[0][0])}
+                        y1={sy(b[0][1])}
+                        x2={sx(b[3][0])}
+                        y2={sy(b[3][1])}
+                        stroke="#1a73e8"
+                        strokeWidth={Math.max(lw * 5, 0.6)}
+                        strokeOpacity={0.5}
+                        pointerEvents="stroke"
+                        style={{ cursor: "ew-resize" }}
+                      >
+                        <title>Drag to slide the divider</title>
+                      </line>
+                    ))}
+                  </g>
+                )}
                 {cur && st.thisChart?.on !== false && (
                   <ThisChartLabel
                     f={f}

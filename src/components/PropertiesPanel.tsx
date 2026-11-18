@@ -88,6 +88,7 @@ import { withMatchPair } from "./matchPicking";
 import { useMatchPick } from "../state/matchPick";
 import { enterMode, exitMode } from "../state/mode";
 import { planStyle } from "./PlanView";
+import { dividerStyle } from "../model/planStyle";
 import { DrawingEditPanel, DrawingLook } from "./DrawingProps";
 import { BarShape } from "./scaleBars";
 import {
@@ -3241,6 +3242,44 @@ function PlanStyleEditor({ p }: { p: Panel }) {
         st={{ ...DEFAULT_MATCHLINES, ...st.match }}
         onChange={(m) => set({ match: { ...st.match, ...m } })}
       />
+      <h4>Section dividers</h4>
+      <p className="hint">
+        The line between the sections of a chart fitted to a curved line.
+      </p>
+      <div className="row2">
+        <label className="field">
+          <span>Colour</span>
+          <ColourBox
+            value={dividerStyle(p).color}
+            onChange={(c) => set({ divider: { ...dividerStyle(p), color: c } })}
+          />
+        </label>
+        <Field
+          label="Width"
+          type="number"
+          step={0.05}
+          suffix="mm"
+          value={dividerStyle(p).width}
+          onCommit={(v) =>
+            num(v) > 0 &&
+            set({ divider: { ...dividerStyle(p), width: num(v) } })
+          }
+        />
+      </div>
+      <label className="field">
+        <span>Line style</span>
+        <select
+          value={dividerStyle(p).dash}
+          onChange={(e) =>
+            set({ divider: { ...dividerStyle(p), dash: e.target.value } })
+          }
+        >
+          <option value="">Continuous</option>
+          <option value="4 1.5 0.8 1.5">Dash-dot</option>
+          <option value="4 2">Dashed</option>
+          <option value="0.8 1.2">Dotted</option>
+        </select>
+      </label>
       <h4>KP blocks</h4>
       <label className="check">
         <input

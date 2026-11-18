@@ -60,3 +60,11 @@ export function withLineEnd(
 /** Ground metres a KP block needs from the next, so two never overprint. */
 export const kpMarkGap = (st: PlanStyle, scale: number) =>
   (st.kpBlockSize * 1.6 * scale) / 1000;
+
+export const DEFAULT_DIVIDER = { color: "#000000", width: 0.35, dash: "" };
+
+/** The section divider look of a plan view (also used by the panels below it). */
+export const dividerStyle = (p: Panel | undefined) => ({
+  ...DEFAULT_DIVIDER,
+  ...(p ? planStyle(p).divider : undefined),
+});

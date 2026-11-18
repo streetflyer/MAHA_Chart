@@ -221,6 +221,13 @@ export interface Panel {
   plan?: PlanStyle;
 }
 
+/** The line drawn where a sectioned chart's plan view (and profiles) change section. */
+export interface DividerStyle {
+  color: string;
+  width: number;
+  dash: string;
+}
+
 export interface PlanStyle {
   routeColor: string;
   /** Line width in mm. */
@@ -262,6 +269,8 @@ export interface PlanStyle {
   match?: Partial<MatchlineStyle>;
   /** Text boxes with a leader arrow pointing at a coordinate (tie-in points, structures). */
   callouts?: Callout[];
+  /** Section dividers of a chart fitted to a curve. */
+  divider?: DividerStyle;
 }
 
 /** One line of a text box: the arrow's easting or northing, or a typed value (heading, depth...). */
@@ -666,6 +675,18 @@ export interface SheetFrame {
    * follow its stretch of line, at the chart's scale.
    */
   segments?: number[];
+  /**
+   * "Fit to curved line" in sections: the chart box cut into rectangles at `div` (fractions
+   * of the plan view's width), each placed along the line (auto) or where the user put it:
+   * `place` holds each section's left-middle point (grid m) and direction (radians).
+   */
+  sections?: { div: number[]; place?: SectionPlace[] };
+}
+
+export interface SectionPlace {
+  e: number;
+  n: number;
+  a: number;
 }
 
 export interface PaperSettings {

@@ -5,7 +5,7 @@ import {
   sheetRange,
   sheetRotation,
 } from "./scale";
-import type { ChartTemplate, SheetFrame } from "./types";
+import type { ChartTemplate, SectionPlace, SheetFrame } from "./types";
 
 /** A survey line in grid coordinates (metres), with running chainage along it. */
 export interface Route {
@@ -336,6 +336,12 @@ export function gridToPlan(
 export function chartFrames(t: ChartTemplate, r: Route): [number, number][][] {
   const frames: [number, number][][] = [];
   for (let i = 0; i < sheetCount(t); i++) {
+    // A chart in sections: the outline round all its boxes.
+    const sb = sectionBoxes(t, r, i);
+    if (sb) {
+      frames.push(convexHull(sb.flat()));
+      continue;
+    }
     const segs = chartSegments(t, r, i);
     if (segs) {
       // A chart fitted to a curve: the boxes of its segments as one bent outline.
@@ -524,6 +530,7 @@ export function chartSegments(
   i: number,
 ): ChartSegment[] | null {
   const f = sheetFrame(t, i);
+  if (f?.sections && t.kind !== "northUp") return sectionSegments(t, r, i);
   if (!f?.segments?.length || t.kind === "northUp") return null;
   const plan = planPanel(t);
   if (!plan) return null;
@@ -717,4 +724,222 @@ export function fitSegmentsN(
     } else hi = mid;
   }
   return best;
+}
+
+/* ---------- Charts fitted to a curve in sections ---------- */
+
+/** Section lengths (m) of a sectioned chart: the plan view's width cut at the dividers. */
+export function sectionLengths(t: ChartTemplate, div: number[]): number[] {
+  const plan = planPanel(t);
+  if (!plan) return [];
+  const along = (plan.w * t.scale.horizontal) / 1000;
+  const cuts = [0, ...div, 1];
+  return cuts.slice(1).map((c, j) => (c - cuts[j]) * along);
+}
+
+/** The chainage (m) after `c` where the line is `len` metres in a straight line from `p`. */
+function chainAtChord(r: Route, c: number, p: [number, number], len: number) {
+  const step = Math.max(0.5, len / 200);
+  let prev = c;
+  for (let s = c + step; s <= r.length + step; s += step) {
+    const q = pointAt(r, Math.min(s, r.length));
+    if (Math.hypot(q[0] - p[0], q[1] - p[1]) >= len) {
+      let lo = prev;
+      let hi = Math.min(s, r.length);
+      for (let k = 0; k < 30; k++) {
+        const mid = (lo + hi) / 2;
+        const m = pointAt(r, mid);
+        if (Math.hypot(m[0] - p[0], m[1] - p[1]) >= len) hi = mid;
+        else lo = mid;
+      }
+      return hi;
+    }
+    prev = s;
+    if (s >= r.length) break;
+  }
+  return null;
+}
+
+/**
+ * Where each section of a sectioned chart sits: placed by the user, or along the line
+ * (each section's chord joins the line at both ends, the next one starts where it ends).
+ * `chain` gives each section's start chainage on the line when it is placed automatically.
+ */
+export function sectionPlaces(
+  t: ChartTemplate,
+  r: Route,
+  i: number,
+): {
+  place: SectionPlace[];
+  lengths: number[];
+  chain: (number | null)[];
+} | null {
+  const f = sheetFrame(t, i);
+  if (!f?.sections) return null;
+  const lengths = sectionLengths(t, f.sections.div);
+  if (f.sections.place?.length === lengths.length)
+    return {
+      place: f.sections.place,
+      lengths,
+      chain: lengths.map(() => null),
+    };
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+  let c = Math.max(0, f.start - k0);
+  let p = pointAt(r, c);
+  let a = 0;
+  const place: SectionPlace[] = [];
+  const chain: (number | null)[] = [];
+  for (const len of lengths) {
+    const c2 = c === null ? null : chainAtChord(r, c, p, len);
+    if (c2 !== null) {
+      const q = pointAt(r, c2);
+      a = Math.atan2(q[1] - p[1], q[0] - p[0]);
+    }
+    place.push({ e: p[0], n: p[1], a });
+    chain.push(c);
+    p = [p[0] + Math.cos(a) * len, p[1] + Math.sin(a) * len];
+    c = c2 ?? r.length;
+  }
+  return { place, lengths, chain };
+}
+
+/** The four corners (grid m) of each section's box. */
+export function sectionBoxes(
+  t: ChartTemplate,
+  r: Route,
+  i: number,
+): [number, number][][] | null {
+  const sp = sectionPlaces(t, r, i);
+  const plan = planPanel(t);
+  if (!sp || !plan) return null;
+  const h = (plan.h * t.scale.horizontal) / 1000 / 2;
+  return sp.place.map((pl, j) => boxOf(pl, sp.lengths[j], h));
+}
+
+export function boxOf(
+  pl: SectionPlace,
+  len: number,
+  h: number,
+): [number, number][] {
+  const u = [Math.cos(pl.a), Math.sin(pl.a)];
+  const v = [-u[1], u[0]];
+  return [
+    [pl.e - v[0] * h, pl.n - v[1] * h],
+    [pl.e + u[0] * len - v[0] * h, pl.n + u[1] * len - v[1] * h],
+    [pl.e + u[0] * len + v[0] * h, pl.n + u[1] * len + v[1] * h],
+    [pl.e + v[0] * h, pl.n + v[1] * h],
+  ];
+}
+
+/** Do two convex boxes overlap (separating axis test)? */
+export function boxesOverlap(
+  a: [number, number][],
+  b: [number, number][],
+): boolean {
+  for (const poly of [a, b])
+    for (let k = 0; k < poly.length; k++) {
+      const p = poly[k];
+      const q = poly[(k + 1) % poly.length];
+      const nx = -(q[1] - p[1]);
+      const ny = q[0] - p[0];
+      const span = (pts: [number, number][]) => {
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (const [x, y] of pts) {
+          const d = x * nx + y * ny;
+          lo = Math.min(lo, d);
+          hi = Math.max(hi, d);
+        }
+        return [lo, hi];
+      };
+      const [a0, a1] = span(a);
+      const [b0, b1] = span(b);
+      // Sections that only touch along an edge (a straight run) still count as joined.
+      const eps = 1e-6 * (Math.abs(a0) + Math.abs(a1) + 1);
+      if (a1 < b0 - eps || b1 < a0 - eps) return false;
+    }
+  return true;
+}
+
+/** KP (m) at the far end of a sectioned chart's last section. */
+export function sectionsEnd(t: ChartTemplate, r: Route, i: number) {
+  const sp = sectionPlaces(t, r, i);
+  if (!sp) return null;
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+  const last = sp.place[sp.place.length - 1];
+  const len = sp.lengths[sp.lengths.length - 1];
+  return (
+    k0 +
+    nearestChainage(
+      r,
+      last.e + Math.cos(last.a) * len,
+      last.n + Math.sin(last.a) * len,
+    )
+  );
+}
+
+/** A sectioned chart's sections as segments: each its own box, side by side on paper. */
+function sectionSegments(
+  t: ChartTemplate,
+  r: Route,
+  i: number,
+): ChartSegment[] | null {
+  const sp = sectionPlaces(t, r, i);
+  const plan = planPanel(t);
+  const f = sheetFrame(t, i);
+  if (!sp || !plan || !f?.sections) return null;
+  const k = 1000 / t.scale.horizontal;
+  const k0 = (parseFloat(t.fields.START_KP ?? "0") || 0) * 1000;
+  const kpOf = (j: number) => {
+    if (j === 0) return f.start;
+    const c = sp.chain[j];
+    if (c !== null && c !== undefined) return k0 + c;
+    return k0 + nearestChainage(r, sp.place[j].e, sp.place[j].n);
+  };
+  const end = sectionsEnd(t, r, i) ?? sheetRange(t, i).end * 1000;
+  const cuts = [0, ...f.sections.div, 1];
+  return sp.place.map((pl, j) => ({
+    kp0: kpOf(j),
+    kp1: j + 1 < sp.place.length ? kpOf(j + 1) : end,
+    geo: {
+      origin: [pl.e, pl.n],
+      u: [Math.cos(pl.a), Math.sin(pl.a)],
+      along: sp.lengths[j],
+      across: plan.h / k,
+      northUp: false,
+    },
+    rect: {
+      x: plan.x + cuts[j] * plan.w,
+      y: plan.y,
+      w: (cuts[j + 1] - cuts[j]) * plan.w,
+      h: plan.h,
+    },
+  }));
+}
+
+/** Convex hull of points, anticlockwise. */
+export function convexHull(pts: [number, number][]): [number, number][] {
+  const p = [...pts].sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (p.length < 3) return p;
+  const cross = (o: number[], a: number[], b: number[]) =>
+    (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const lower: [number, number][] = [];
+  for (const q of p) {
+    while (
+      lower.length >= 2 &&
+      cross(lower[lower.length - 2], lower[lower.length - 1], q) <= 0
+    )
+      lower.pop();
+    lower.push(q);
+  }
+  const upper: [number, number][] = [];
+  for (const q of [...p].reverse()) {
+    while (
+      upper.length >= 2 &&
+      cross(upper[upper.length - 2], upper[upper.length - 1], q) <= 0
+    )
+      upper.pop();
+    upper.push(q);
+  }
+  return [...lower.slice(0, -1), ...upper.slice(0, -1)];
 }
