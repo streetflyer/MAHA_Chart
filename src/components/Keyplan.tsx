@@ -1,3 +1,4 @@
+import { PointSetsLayer } from "./PointSetsLayer";
 import { useEffect, useMemo, useState } from "react";
 import { useEditor } from "../state/store";
 import { useKeyplanView, viewFitting } from "../state/keyplanView";
@@ -261,6 +262,10 @@ export function Keyplan({
   const sy = (n: number) => area.y + (view.maxN - n) * k;
   const project = (e: number, n: number): [number, number] => [sx(e), sy(n)];
   const clipId = `kp-clip-${p.id}`;
+  const keySets =
+    template.panels
+      .find((q) => q.type === "plan")
+      ?.pointSets?.filter((x) => x.keyplan) ?? [];
   const hatchId = `kp-hatch-${p.id}`;
   const lw = Math.max(0.12, Math.min(area.w, area.h) / 300);
 
@@ -309,6 +314,16 @@ export function Keyplan({
             project={projectBg}
             mmPerM={k}
             widthScale={lw * 3.3}
+          />
+        )}
+        {keySets.length > 0 && (
+          <PointSetsLayer
+            panelId={p.id}
+            sets={keySets}
+            project={project}
+            k0={(parseFloat(template.fields.START_KP ?? "0") || 0) * 1000}
+            interactive={false}
+            scale={0.6}
           />
         )}
         {route && routeShown && (

@@ -7,11 +7,13 @@ import { nearestChainage } from "../model/route";
 import { sheetCount, sheetRange } from "../model/scale";
 import { useSurvey } from "../state/surveyData";
 import { useEditor } from "../state/store";
+import { EventTableView } from "./EventTableView";
 
 /** A data window: one tab per sheet of the file, and one per dataset made from it on the chart. */
 interface Viewer {
   title: string;
-  tabs: Table[];
+  /** `events`: the id of an events data set, shown with filters and tick boxes. */
+  tabs: (Table & { events?: string })[];
   note?: string;
 }
 
@@ -119,7 +121,7 @@ export function datasetsOf(name: string): Dataset[] {
 
 /** Open the window with a file's contents and, when it is charted, its data as charted. */
 export async function showData(file: File | null, name: string) {
-  const tabs: Table[] = [];
+  const tabs: Viewer["tabs"] = [];
   let note: string | undefined;
   const ext = name.toLowerCase().split(".").pop() ?? "";
   if (file) {
@@ -145,7 +147,14 @@ export async function showData(file: File | null, name: string) {
     }
   } else
     note = "The file isn't open: open the project folder again to read it.";
-  for (const d of datasetsOf(name)) tabs.push(datasetTable(d));
+  for (const d of datasetsOf(name))
+    tabs.push(
+      d.kind === "events"
+        ? { name: `On the chart: ${d.name}`, rows: [], events: d.id }
+        : datasetTable(d),
+    );
+  // The charted listing (with its filters) comes first.
+  tabs.sort((a, b) => Number(!!b.events) - Number(!!a.events));
   useViewer.setState({ v: { title: name, tabs, note } });
 }
 
@@ -206,6 +215,7 @@ export function moveToData(name: string): string {
 
 export function DataViewerHost() {
   const v = useViewer((s) => s.v);
+  const datasets = useSurvey((s) => s.datasets);
   const [tab, setTab] = useState(0);
   useEffect(() => setTab(0), [v]);
   if (!v) return null;
@@ -235,7 +245,16 @@ export function DataViewerHost() {
             ))}
           </div>
         )}
-        {tb ? (
+        {tb?.events ? (
+          (() => {
+            const d = datasets.find((x) => x.id === tb.events);
+            return d?.kind === "events" ? (
+              <EventTableView d={d} onAdded={close} />
+            ) : (
+              <p>This data is no longer on the chart.</p>
+            );
+          })()
+        ) : tb ? (
           <>
             <div className="dv-table">
               <table>

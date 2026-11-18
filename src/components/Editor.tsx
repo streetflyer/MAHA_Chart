@@ -66,6 +66,7 @@ import { useSmoothTool } from "../state/smoothTool";
 import { eventLabelMenu } from "./eventLabelEdit";
 import { codeDefMenu, legendSymMenu } from "./legendEdit";
 import { useLegendEdit } from "../state/legendEdit";
+import { pointMenu } from "./pointSetEdit";
 import { useScope } from "../state/scope";
 import { longSectionMenu } from "./longSectionMenu";
 import { CodeDefsDialog } from "./CodeDefsDialog";
@@ -482,6 +483,10 @@ export function Editor({ onExit }: { onExit(): void }) {
         y: clientY,
         items: longSectionMenu(target.code ?? ""),
       });
+      return;
+    }
+    if (target.kind === "pointitem") {
+      setMenu({ x: clientX, y: clientY, items: pointMenu(target.id ?? "") });
       return;
     }
     if (target.kind === "legendsym") {

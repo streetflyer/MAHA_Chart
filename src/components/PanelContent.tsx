@@ -23,12 +23,14 @@ import {
   dataEventCodes,
   editCodeLines,
   dataLegend,
+  pointSetLegend,
   groupsWithData,
   type DataLegendItem,
 } from "../model/legendData";
 import type { CpSymbol } from "../model/datasets";
 import { planStyle } from "../model/planStyle";
 import { applyChartEdits } from "../model/legendScope";
+import { Marker, MarkerHatch } from "./Marker";
 import { useLegendEdit } from "../state/legendEdit";
 import { useEditor } from "../state/store";
 
@@ -697,11 +699,14 @@ export function useLegendItems(p: Panel, kpRange?: [number, number]) {
         codes: p.eventCodes ?? "",
       };
     const evp = eventPanels?.find((q) => q.rows?.length);
-    const data = dataLegend(
-      datasets,
-      plan ? planStyle(plan).kpColor : "#e00000",
-      evp ? evp.h / evp.rows!.length : 8,
-    )
+    const data = [
+      ...dataLegend(
+        datasets,
+        plan ? planStyle(plan).kpColor : "#e00000",
+        evp ? evp.h / evp.rows!.length : 8,
+      ),
+      ...pointSetLegend(plan),
+    ]
       .map((d) => ({
         ...d,
         ...ld.overrides[d.key],
@@ -1235,6 +1240,29 @@ function SymbolBody({
           <path
             d={`M${xa} ${top} V${bot} M${xb} ${top} V${bot}`}
             style={{ stroke: lc, strokeWidth: 0.25, fill: "none" }}
+          />
+        </g>
+      );
+    }
+    case "marker": {
+      const hid = `lgh-${it.id.replace(/[^\w-]/g, "_")}`;
+      return (
+        <g>
+          {it.markerFill === "hatch" && (
+            <defs>
+              <MarkerHatch id={hid} color={it.fill ?? it.color} />
+            </defs>
+          )}
+          <Marker
+            shape={it.markerShape ?? "circle"}
+            x={x + w / 2}
+            y={cy}
+            s={it.size ?? 2.4}
+            color={it.color}
+            width={it.lineWidth ?? 0.25}
+            fill={it.markerFill}
+            fillColor={it.fill}
+            hatchId={hid}
           />
         </g>
       );

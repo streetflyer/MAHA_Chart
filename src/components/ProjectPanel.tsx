@@ -718,7 +718,9 @@ export function ProjectPanel({ onNotice }: { onNotice(m: string): void }) {
                 <li
                   key={n}
                   className="missing"
-                  title="Saved in the project file; open the project folder again to read it"
+                  title="Saved in the project file; open the project folder again to read it. Double-click to show its data as charted; right-click for more."
+                  onDoubleClick={() => void showData(null, n)}
+                  onContextMenu={(e) => fileMenu(e, sel.path, n)}
                 >
                   {charted(n) ? "✓ " : ""}
                   {n}

@@ -2,6 +2,9 @@ import { editSessionAt } from "./KpPanels";
 import { keyplanStyle } from "./Keyplan";
 import { enterMode } from "../state/mode";
 import { codeDefAt, editLegendAt, legendSymAt } from "./legendEdit";
+import { editPointText, setOf, splitPts, withSet } from "./pointSetEdit";
+import { labelOffset } from "./PointSetsLayer";
+import type { PointSet } from "../model/pointSets";
 import {
   panView,
   useKeyplanView,
@@ -137,7 +140,8 @@ export interface ContextTarget {
     | "evlabel"
     | "codedef"
     | "longsection"
-    | "legendsym";
+    | "legendsym"
+    | "pointitem";
   id?: string;
   code?: string;
   rowId?: string;
@@ -166,6 +170,15 @@ interface ViewBox {
 type Drag =
   | { type: "evlabel"; id: string; start: Pt; dx0: number; dy0: number }
   | { type: "mlabel"; id: string; start: Pt; dx0: number; dy0: number }
+  | {
+      type: "pts";
+      id: string;
+      label: boolean;
+      start: Pt;
+      s0: PointSet;
+      unproject: (x: number, y: number) => [number, number];
+      moved?: boolean;
+    }
   | {
       type: "move";
       start: Pt;
@@ -456,7 +469,9 @@ export function SheetView({
   /** The matchline label or north arrow under the pointer, even with the edit overlay on top of it. */
   function planItemUnder(e: { clientX: number; clientY: number }) {
     for (const x of document.elementsFromPoint(e.clientX, e.clientY)) {
-      const hit = x.closest("[data-mlabel],[data-north],[data-callout]");
+      const hit = x.closest(
+        "[data-pts],[data-ptslabel],[data-mlabel],[data-north],[data-callout]",
+      );
       if (hit) return hit;
     }
     return null;
@@ -574,6 +589,25 @@ export function SheetView({
     const pit = planItemUnder(e);
     if (pit) {
       svgRef.current!.setPointerCapture(e.pointerId);
+      // A plotted point or its description: drag to move (the description moves with its point).
+      const ptsId =
+        pit.getAttribute("data-pts") ?? pit.getAttribute("data-ptslabel");
+      if (ptsId) {
+        const s0 = setOf(template, ptsId);
+        const pj = planProjection.get(splitPts(ptsId).panelId);
+        if (s0 && pj) {
+          store().beginGesture();
+          return setDrag({
+            type: "pts",
+            id: ptsId,
+            label: pit.hasAttribute("data-ptslabel"),
+            start: at,
+            s0,
+            unproject: pj.unproject,
+          });
+        }
+        return;
+      }
       const co = pit.getAttribute("data-callout");
       if (co) {
         const { panelId, cid, part } = splitCallout(co);
@@ -1147,6 +1181,39 @@ export function SheetView({
       });
       return;
     }
+    if (drag.type === "pts") {
+      const ddx = at.x - drag.start.x;
+      const ddy = at.y - drag.start.y;
+      if (!drag.moved && Math.hypot(ddx, ddy) < 0.4) return;
+      drag.moved = true;
+      const { key } = splitPts(drag.id);
+      const s0 = drag.s0;
+      const r1 = (v: number) => Math.round(v * 100) / 100;
+      let next: PointSet;
+      if (drag.label) {
+        const o = labelOffset(s0, key);
+        next = {
+          ...s0,
+          labelAt: {
+            ...s0.labelAt,
+            [key]: { dx: r1(o.dx + ddx), dy: r1(o.dy + ddy) },
+          },
+        };
+      } else {
+        const [e0, n0] = drag.unproject(0, 0);
+        const [e1, n1] = drag.unproject(ddx, ddy);
+        const m = s0.moves?.[key] ?? { de: 0, dn: 0 };
+        next = {
+          ...s0,
+          moves: {
+            ...s0.moves,
+            [key]: { de: r1(m.de + e1 - e0), dn: r1(m.dn + n1 - n0) },
+          },
+        };
+      }
+      store().updateGesture((t) => withSet(t, drag.id, () => next));
+      return;
+    }
     if (drag.type === "mlabel") {
       const id = drag.id;
       const dx = Math.round((drag.dx0 + at.x - drag.start.x) * 10) / 10;
@@ -1492,7 +1559,8 @@ export function SheetView({
       drag.type === "frameFree" ||
       drag.type === "rotate" ||
       drag.type === "north" ||
-      drag.type === "callout"
+      drag.type === "callout" ||
+      drag.type === "pts"
     ) {
       store().endGesture();
       useKeyplanView.getState().setRotating(false);
@@ -1561,6 +1629,9 @@ export function SheetView({
         id: ttl.getAttribute("data-ptitle")!,
       });
     const pDbl = planItemUnder(e);
+    const ptsDbl =
+      pDbl?.getAttribute("data-ptslabel") ?? pDbl?.getAttribute("data-pts");
+    if (ptsDbl) return void editPointText(ptsDbl);
     const coDbl = pDbl?.getAttribute("data-callout");
     if (coDbl) {
       void editCalloutPart(coDbl);
@@ -1852,6 +1923,13 @@ export function SheetView({
         id: `${panelId}|${cid}`,
       });
     }
+    const ptsEl =
+      planEl?.getAttribute("data-pts") ?? planEl?.getAttribute("data-ptslabel");
+    if (ptsEl)
+      return onContextMenu(e.clientX, e.clientY, at, {
+        kind: "pointitem",
+        id: ptsEl,
+      });
     if (planEl) {
       const ml = planEl.getAttribute("data-mlabel");
       const id = ml ?? `${planEl.getAttribute("data-north")}|north`;

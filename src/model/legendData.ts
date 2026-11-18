@@ -1,3 +1,4 @@
+import type { PointSet } from "./pointSets";
 import { isBurialLink, linkLook } from "./events";
 import type { Dataset } from "./datasets";
 import type {
@@ -326,3 +327,22 @@ export function editCodeLines(
 
 export const groupsWithData = (items: DataLegendItem[]) =>
   new Set<LegendGroup>(items.map((i) => i.group));
+
+/** One legend line per point set of the plan view, drawn with its symbol. */
+export function pointSetLegend(plan: { pointSets?: PointSet[] } | undefined) {
+  return (plan?.pointSets ?? []).map(
+    (s): DataLegendItem => ({
+      id: `data:pts:${s.id}`,
+      key: `pts:${s.id}`,
+      group: "plan",
+      symbol: "marker",
+      label: s.name,
+      color: s.color,
+      markerShape: s.shape,
+      markerFill: s.fill,
+      fill: s.fillColor,
+      size: s.size,
+      lineWidth: s.width,
+    }),
+  );
+}

@@ -31,6 +31,7 @@ export const LEGEND_SYMBOLS: Record<LegendSymbol, string> = {
   box: "Filled box",
   circle: "Circle",
   pipeBand: "Pipe band (top / bottom of product)",
+  marker: "Point symbol (circle, x, +, triangle, square)",
   drawing: "Drawing object",
 };
 

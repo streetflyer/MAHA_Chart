@@ -2370,3 +2370,133 @@ button.measure-on:hover {
 .context-menu li.cols:hover {
   background: none;
 }
+
+/* Data window: Excel-style filters and row ticks. */
+.dv-table thead tr.head td {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+.dv-col {
+  position: relative;
+}
+.dv-filter-btn {
+  margin-left: 4px;
+  padding: 0 3px;
+  font-size: 10px;
+  line-height: 14px;
+  min-height: 0;
+}
+.dv-filter-btn.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.dv-filter-pop {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 260px;
+  padding: 8px;
+  background: var(--chrome);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px #0003;
+  font-weight: normal;
+}
+.dv-filter-pop > button {
+  text-align: left;
+}
+.dv-values {
+  max-height: 220px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  padding: 4px;
+}
+.dv-values label {
+  white-space: nowrap;
+}
+.dv-range {
+  display: flex;
+  gap: 6px;
+}
+.dv-range input {
+  width: 80px;
+}
+.dv-tick {
+  width: 22px;
+}
+.dv-table tr.off td {
+  opacity: 0.45;
+}
+.dv-foot {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 6px;
+}
+.dv-foot .hint {
+  flex: 1;
+}
+.point-set-dialog {
+  width: min(640px, 96vw);
+  max-height: 92vh;
+  overflow: auto;
+}
+.psd-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+}
+.psd-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.psd-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.psd-shapes {
+  display: flex;
+  gap: 4px;
+}
+.psd-shapes button {
+  padding: 2px;
+}
+.psd-shapes button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.psd-cols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-bottom: 6px;
+}
+label.psd-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+.psd-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 6px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+}
+p.warn {
+  background: #fef3c7;
+  color: #7c2d12;
+  padding: 6px 8px;
+  border-radius: 4px;
+}

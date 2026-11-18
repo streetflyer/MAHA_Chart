@@ -1,3 +1,4 @@
+import type { MarkerShape, PointSet } from "./pointSets";
 // All geometry is in millimetres on the paper, origin top-left, y pointing down.
 
 export type PanelType =
@@ -208,6 +209,8 @@ export interface Panel {
   legendData?: LegendData;
   /** Changes made for one chart only: chart index → item id → new wording, look or hidden. */
   legendChart?: Record<string, Record<string, LegendChartEdit>>;
+  /** Plan view: events plotted as symbols ("Add to plan view" in the data window). */
+  pointSets?: PointSet[];
   /** Code + description lines shown as "EVENT CODE DEFINITIONS" in the legend. */
   eventCodes?: string;
   /** Revision history rows, newest first (title block). */
@@ -442,6 +445,7 @@ export type LegendSymbol =
   | "box"
   | "circle"
   | "pipeBand"
+  | "marker"
   | "drawing";
 
 /** A drawing object turned into a legend symbol: lines centred on 0 with the longer side 1 (x right, y down). */
@@ -467,6 +471,9 @@ export interface LegendItem {
   linked?: boolean;
   /** Added by the user (kept beside the items built from imported data). */
   custom?: boolean;
+  /** Symbol "marker": its shape, fill and fill colour (point sets in the plan view). */
+  markerShape?: MarkerShape;
+  markerFill?: "none" | "solid" | "hatch";
   /** Drawn right below this item (a duplicate made from the right-click menu). */
   after?: string;
   /** Extra look for data-built symbols: band / pipe fill, outline, CP symbol. */

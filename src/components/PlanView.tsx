@@ -37,6 +37,7 @@ export { DEFAULT_PLAN, planStyle };
 import { niceGrid } from "./Keyplan";
 import { linesPath, routePath } from "./linework";
 import { LineworkLayer } from "./LineworkLayer";
+import { PointSetsLayer } from "./PointSetsLayer";
 import { Callouts, inverseOf, planProjection } from "./Callouts";
 import { hoverSources } from "../state/hoverInfo";
 import { rulerSources } from "../state/ruler";
@@ -272,6 +273,15 @@ export function PlanView({
               project={v.project}
               rect={v.rect}
               st={st}
+            />
+          )}
+          {!!p.pointSets?.length && (
+            <PointSetsLayer
+              panelId={p.id}
+              sets={p.pointSets}
+              project={v.project}
+              k0={k0h}
+              interactive
             />
           )}
           {route && st.match?.on && (

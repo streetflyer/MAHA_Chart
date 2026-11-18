@@ -6,7 +6,7 @@ import { useSymbolEdit } from "../state/symbolEdit";
 import type { MenuItem } from "./ContextMenu";
 import { LEGEND_GROUPS } from "../model/presets";
 import type { LegendGroup, LegendItem, Panel } from "../model/types";
-import { dataLegend } from "../model/legendData";
+import { dataLegend, pointSetLegend } from "../model/legendData";
 import { planStyle } from "../model/planStyle";
 import { newId } from "../model/ids";
 import {
@@ -294,11 +294,14 @@ function baseItem(p: Panel, itemId: string): LegendItem | undefined {
   const t = useEditor.getState().template;
   const plan = t?.panels.find((q) => q.type === "plan");
   const evp = t?.panels.find((q) => q.type === "events" && q.rows?.length);
-  const d = dataLegend(
-    useSurvey.getState().datasets,
-    plan ? planStyle(plan).kpColor : "#e00000",
-    evp ? evp.h / evp.rows!.length : 8,
-  ).find((x) => x.id === itemId);
+  const d = [
+    ...dataLegend(
+      useSurvey.getState().datasets,
+      plan ? planStyle(plan).kpColor : "#e00000",
+      evp ? evp.h / evp.rows!.length : 8,
+    ),
+    ...pointSetLegend(plan),
+  ].find((x) => x.id === itemId);
   if (!d) return undefined;
   const o = p.legendData?.overrides[d.key];
   return { ...d, ...o, label: o?.label ?? d.label };
