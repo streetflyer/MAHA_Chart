@@ -1,7 +1,7 @@
 import { LEGEND_SYMBOLS } from "../model/presets";
 import type { LegendItem, SymbolLook } from "../model/types";
 import { useSymbolEdit } from "../state/symbolEdit";
-import { useScope } from "../state/scope";
+import { useScope, type Scope } from "../state/scope";
 import { writeLegendItem } from "./legendEdit";
 import { clearChartEdit } from "../model/legendScope";
 import type { LegendChartEdit } from "../model/types";
@@ -37,9 +37,18 @@ export function SymbolDialog() {
   ) : null;
 }
 
-function Inner({ panelId, itemId }: { panelId: string; itemId: string }) {
+function Inner({
+  panelId,
+  itemId,
+  scope: picked,
+}: {
+  panelId: string;
+  itemId: string;
+  scope?: Scope;
+}) {
   const close = useSymbolEdit((s) => s.close);
-  const scope = useScope((x) => x.scope);
+  const globalScope = useScope((x) => x.scope);
+  const scope = picked ?? globalScope;
   const panel = useEditor((s) =>
     s.template?.panels.find((p) => p.id === panelId),
   );
@@ -49,10 +58,10 @@ function Inner({ panelId, itemId }: { panelId: string; itemId: string }) {
   const isData = itemId.startsWith("data:");
   const key = itemId.slice(5);
   const patch = (look: Partial<SymbolLook>) =>
-    writeLegendItem(panelId, itemId, look as LegendChartEdit);
+    writeLegendItem(panelId, itemId, look as LegendChartEdit, scope);
   const reset = () => {
     const ed = useEditor.getState();
-    if (useScope.getState().scope === "chart")
+    if (scope === "chart")
       return ed.updatePanel(
         panelId,
         clearChartEdit(panel, ed.sheetIndex, itemId),

@@ -15,7 +15,7 @@ import {
   hasChartEdit,
 } from "../model/legendScope";
 import type { LegendChartEdit } from "../model/types";
-import { useScope } from "../state/scope";
+import { useScope, type Scope } from "../state/scope";
 import { scopeGate } from "./scopeGate";
 
 /**
@@ -26,11 +26,12 @@ export function writeLegendItem(
   panelId: string,
   itemId: string,
   patch: LegendChartEdit,
+  scope: Scope = useScope.getState().scope,
 ) {
   const ed = useEditor.getState();
   const p = ed.template?.panels.find((q) => q.id === panelId);
   if (!p) return;
-  if (useScope.getState().scope === "chart")
+  if (scope === "chart")
     return ed.updatePanel(
       p.id,
       chartEditPatch(p, ed.sheetIndex, itemId, patch),
@@ -257,7 +258,8 @@ export function legendSymAt(
   clientX: number,
   clientY: number,
 ): { panelId: string; itemId: string } | null {
-  const el = [...document.querySelectorAll("svg.sheet [data-lsym]")].find(
+  // The whole row counts, so the pointer need not be right on the symbol.
+  const el = [...document.querySelectorAll("svg.sheet [data-lrow]")].find(
     (t) => {
       const r = t.getBoundingClientRect();
       return (
@@ -269,7 +271,7 @@ export function legendSymAt(
     },
   );
   const panel = el && legendOf(el);
-  const itemId = el?.getAttribute("data-lsym");
+  const itemId = el?.getAttribute("data-lrow");
   return panel && itemId ? { panelId: panel.id, itemId } : null;
 }
 
@@ -302,18 +304,19 @@ function baseItem(p: Panel, itemId: string): LegendItem | undefined {
   return { ...d, ...o, label: o?.label ?? d.label };
 }
 
-/** Right-click menu of a legend symbol: edit, duplicate (drawn right below), remove. */
+/**
+ * Right-click menu of a legend row: two lists side by side, "This chart only" on the left and
+ * "All charts" on the right, each with Edit, Duplicate (drawn right below) and Remove.
+ */
 export function legendSymMenu(panelId: string, itemId: string): MenuItem[] {
   const ed = useEditor.getState();
   const p = ed.template?.panels.find((q) => q.id === panelId);
   if (!p) return [];
   const chart = ed.sheetIndex;
-  const onlyHere = useScope.getState().scope === "chart";
-  const dup = async (thisChart: boolean) => {
-    if (!thisChart && !(await scopeGate())) return;
-    const q = useEditor
-      .getState()
-      .template?.panels.find((x) => x.id === panelId);
+  const panel = () =>
+    useEditor.getState().template?.panels.find((x) => x.id === panelId);
+  const dup = (sc: Scope) => {
+    const q = panel();
     const it = q && resolvedItem(q, itemId, true);
     if (!q || !it) return;
     const copy = { ...it } as LegendItem & Record<string, unknown>;
@@ -324,50 +327,48 @@ export function legendSymMenu(panelId: string, itemId: string): MenuItem[] {
       id: newId(),
       custom: true,
       after: itemId,
-      chart:
-        thisChart || useScope.getState().scope === "chart" ? chart : undefined,
+      chart: sc === "chart" ? chart : undefined,
     };
     const list = [...(q.legend ?? [])];
     const at = list.findIndex((x) => x.id === itemId);
     list.splice(at < 0 ? list.length : at + 1, 0, own);
     useEditor.getState().updatePanel(q.id, { legend: list });
   };
-  const remove = async () => {
-    if (!(await scopeGate())) return;
-    const q = useEditor
-      .getState()
-      .template?.panels.find((x) => x.id === panelId);
+  const remove = (sc: Scope) => {
+    const q = panel();
     if (!q) return;
-    if (useScope.getState().scope === "chart")
-      return writeLegendItem(q.id, itemId, { hidden: true });
-    if (itemId.startsWith("data:"))
-      writeLegendItem(q.id, itemId, { hidden: true });
-    else
-      useEditor.getState().updatePanel(q.id, {
-        legend: (q.legend ?? [])
-          .filter((x) => x.id !== itemId)
-          // Copies of a removed item stay where it was.
-          .map((x) => (x.after === itemId ? { ...x, after: undefined } : x)),
-      });
+    if (sc === "chart" || itemId.startsWith("data:"))
+      return writeLegendItem(q.id, itemId, { hidden: true }, sc);
+    useEditor.getState().updatePanel(q.id, {
+      legend: (q.legend ?? [])
+        .filter((x) => x.id !== itemId)
+        // Copies of a removed item stay where it was.
+        .map((x) => (x.after === itemId ? { ...x, after: undefined } : x)),
+    });
   };
-  const where = onlyHere ? " (this chart only)" : "";
-  const items: MenuItem[] = [
-    { label: `Edit…${where}`, action: () => openSymbol(panelId, itemId) },
-    { label: `Duplicate${where}`, action: () => void dup(false) },
+  const col = (sc: Scope): MenuItem[] => {
+    const items: MenuItem[] = [
+      {
+        label: "Edit…",
+        action: () => useSymbolEdit.getState().open(panelId, itemId, sc),
+      },
+      { label: "Duplicate", action: () => dup(sc) },
+      { label: "Remove", action: () => remove(sc) },
+    ];
+    if (sc === "chart" && hasChartEdit(p, chart, itemId))
+      items.push("separator", {
+        label: "Use the all-charts version",
+        action: () => ed.updatePanel(p.id, clearChartEdit(p, chart, itemId)),
+      });
+    return items;
+  };
+  return [
+    {
+      label: "",
+      columns: [
+        { title: "This chart only", items: col("chart") },
+        { title: "All charts", items: col("all") },
+      ],
+    },
   ];
-  if (!onlyHere)
-    items.push({
-      label: "Duplicate (this chart only)",
-      action: () => void dup(true),
-    });
-  if (hasChartEdit(p, chart, itemId))
-    items.push({
-      label: "Use the all-charts version",
-      action: () => ed.updatePanel(p.id, clearChartEdit(p, chart, itemId)),
-    });
-  items.push("separator", {
-    label: `Remove${where}`,
-    action: () => void remove(),
-  });
-  return items;
 }

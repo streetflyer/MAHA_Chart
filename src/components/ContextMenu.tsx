@@ -8,6 +8,8 @@ export type MenuItem =
       checked?: boolean;
       action?: () => void;
       submenu?: MenuItem[];
+      /** Side-by-side lists, each with a title (e.g. "This chart only" | "All charts"). */
+      columns?: { title: string; items: MenuItem[] }[];
     }
   | "separator";
 
@@ -69,6 +71,17 @@ function MenuList({ items, onClose }: { items: MenuItem[]; onClose(): void }) {
       {items.map((it, i) =>
         it === "separator" ? (
           <li key={i} className="sep" role="separator" />
+        ) : it.columns ? (
+          <li key={i} className="cols" role="none">
+            <div className="menu-cols">
+              {it.columns.map((c, j) => (
+                <div key={j} className="menu-col" data-menu-col={j}>
+                  <div className="menu-col-title">{c.title}</div>
+                  <MenuList items={c.items} onClose={onClose} />
+                </div>
+              ))}
+            </div>
+          </li>
         ) : (
           <li
             key={i}

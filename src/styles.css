@@ -2339,3 +2339,34 @@ button.measure-on:hover {
 .scope-tag[data-scope-tag="chart"] {
   background: #fde68a;
 }
+
+.lrow-hit {
+  pointer-events: all;
+}
+.lrow-hit:hover {
+  fill: rgba(250, 204, 21, 0.35);
+  stroke: #eab308;
+  stroke-width: 0.15;
+}
+.context-menu .menu-cols {
+  display: flex;
+  gap: 0;
+  padding: 0;
+}
+.context-menu .menu-col + .menu-col {
+  border-left: 1px solid var(--border);
+}
+.context-menu .menu-col-title {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px 2px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+.context-menu li.cols {
+  padding: 0;
+  display: block;
+}
+.context-menu li.cols:hover {
+  background: none;
+}

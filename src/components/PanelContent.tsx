@@ -865,6 +865,15 @@ function Legend({ p, tokens }: { p: Panel; tokens: Record<string, string> }) {
         const cy = y + rowH / 2;
         out.push(
           <g key={it.id} data-legend={it.id}>
+            {/* The whole row lights up under the pointer; click or right-click anywhere on it. */}
+            <rect
+              className="row-hit lrow-hit"
+              data-lrow={it.id}
+              x={x - 0.6}
+              y={y - 0.3}
+              width={colW + 1.2}
+              height={rowH + 0.6}
+            />
             <g data-lsym={it.id}>
               <LegendSymbolView it={it} x={x} cy={cy} w={sw} tokens={tokens} />
             </g>
