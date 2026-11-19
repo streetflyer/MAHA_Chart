@@ -545,6 +545,8 @@ export function Keyplan({
           }
           color={st.gridColor}
           lw={lw}
+          frameW={st.gridFrameWidth}
+          lineW={st.gridLineWidth}
           eLabel={st.eastingLabels}
           nLabel={st.northingLabels}
         />
@@ -831,6 +833,8 @@ function Grid({
   spacing,
   color,
   lw,
+  frameW,
+  lineW,
   eLabel,
   nLabel,
 }: {
@@ -843,6 +847,8 @@ function Grid({
   spacing: number;
   color: string;
   lw: number;
+  frameW?: number;
+  lineW?: number;
 }) {
   const es: number[] = [];
   const ns: number[] = [];
@@ -881,14 +887,14 @@ function Grid({
   const nyy = (y: number) =>
     Math.min(area.y + area.h - 0.3, Math.max(area.y + nl.fs * 0.85, y - 0.4));
   return (
-    <g stroke={color} fill={color} strokeWidth={lw * 1.4}>
+    <g stroke={color} fill={color} strokeWidth={lineW || lw * 1.4}>
       <rect
         x={area.x}
         y={area.y}
         width={area.w}
         height={area.h}
         fill="none"
-        strokeWidth={lw * 3}
+        strokeWidth={frameW || lw * 3}
       />
       {es.map((e) => {
         const x = sx(e);

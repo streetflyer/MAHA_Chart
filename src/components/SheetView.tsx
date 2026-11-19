@@ -1,3 +1,4 @@
+import { useImageCrop, useShownSrc } from "./imageLook";
 import { editSessionAt } from "./KpPanels";
 import { keyplanStyle } from "./Keyplan";
 import { enterMode } from "../state/mode";
@@ -1500,6 +1501,34 @@ export function SheetView({
       store().updateGesture((t) => editSheet(t, drag.index, { rotation: deg }));
       return;
     }
+    if (drag.type === "imgResize" && useImageCrop.getState().id === drag.id) {
+      // Cropping (like Word): a handle moves that side in or out; the picture keeps its size.
+      const o = drag.origin;
+      const c0 = o.crop ?? { l: 0, t: 0, r: 0, b: 0 };
+      const fullW = o.w / Math.max(0.05, 1 - c0.l - c0.r);
+      const fullH = o.h / Math.max(0.05, 1 - c0.t - c0.b);
+      const ddx = at.x - drag.start.x;
+      const ddy = at.y - drag.start.y;
+      const c = { ...c0 };
+      const clamp = (v: number, other: number) =>
+        Math.max(0, Math.min(0.95 - other, v));
+      if (drag.sx < 0) c.l = clamp(c0.l + ddx / fullW, c0.r);
+      if (drag.sx > 0) c.r = clamp(c0.r - ddx / fullW, c0.l);
+      if (drag.sy < 0) c.t = clamp(c0.t + ddy / fullH, c0.b);
+      if (drag.sy > 0) c.b = clamp(c0.b - ddy / fullH, c0.t);
+      const x = o.x + (c.l - c0.l) * fullW;
+      const y = o.y + (c.t - c0.t) * fullH;
+      const w = (1 - c.l - c.r) * fullW;
+      const h = (1 - c.t - c.b) * fullH;
+      const crop = c.l || c.t || c.r || c.b ? c : undefined;
+      store().updateGesture((t) => ({
+        ...t,
+        images: (t.images ?? []).map((im) =>
+          im.id === drag.id ? { ...im, x, y, w, h, crop } : im,
+        ),
+      }));
+      return;
+    }
     if (drag.type === "imgResize") {
       const o = drag.origin;
       let w = Math.max(3, o.w + drag.sx * (at.x - drag.start.x));
@@ -2346,6 +2375,12 @@ function ImageView({
   handle: number;
 }) {
   const r = imageRect(im, template);
+  const shown = useShownSrc(im);
+  const cropping = useImageCrop((s) => s.id === im.id) && selected;
+  const c = im.crop ?? { l: 0, t: 0, r: 0, b: 0 };
+  // While cropping, the whole picture shows faintly round the part that is kept.
+  const fullW = r.w / Math.max(0.05, 1 - c.l - c.r);
+  const fullH = r.h / Math.max(0.05, 1 - c.t - c.b);
   const corners = Object.entries(IMAGE_HANDLE_CURSORS).map(([dir, cur]) => {
     const [sx, sy] = dir.split(",").map(Number);
     return [
@@ -2358,9 +2393,23 @@ function ImageView({
   });
   return (
     <g className="image-item">
+      {cropping && (
+        <image
+          className="guide crop-ghost"
+          href={im.src}
+          x={r.x - c.l * fullW}
+          y={r.y - c.t * fullH}
+          width={fullW}
+          height={fullH}
+          preserveAspectRatio="none"
+          opacity={0.3}
+          pointerEvents="none"
+        />
+      )}
       <g data-item={im.id} data-kind="image" style={{ cursor: "move" }}>
         <image
-          href={im.src}
+          data-transparent={im.transparent ? "1" : undefined}
+          href={shown}
           x={r.x}
           y={r.y}
           width={r.w}
@@ -2382,7 +2431,7 @@ function ImageView({
         corners.map(([sx, sy, x, y, cur]) => (
           <rect
             key={`${sx}${sy}`}
-            className="handle"
+            className={cropping ? "handle crop-handle" : "handle"}
             data-img-handle={im.id}
             data-dir={`${sx},${sy}`}
             x={x - handle / 2}

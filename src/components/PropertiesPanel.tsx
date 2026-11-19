@@ -1,3 +1,4 @@
+import { cornerColour, DEFAULT_TRANSPARENT, useImageCrop } from "./imageLook";
 import { KpMatchControl } from "./KpMatchControl";
 import { drawingNoOf } from "../model/tokens";
 import { pointsOf, pointsPatch } from "../model/cpEdit";
@@ -2269,10 +2270,189 @@ function ImageProps({ im }: { im: ImageItem }) {
   const s = useEditor.getState();
   const set = (patch: Partial<ImageItem>) => s.updateImage(im.id, patch);
   const ratio = im.h / im.w;
+  const cropping = useImageCrop((x) => x.id === im.id);
+  // Leaving the image (or the app's export) ends cropping.
+  useEffect(
+    () => () => {
+      if (useImageCrop.getState().id === im.id)
+        useImageCrop.setState({ id: null });
+    },
+    [im.id],
+  );
+  // Esc or Enter finishes cropping, as in Word.
+  useEffect(() => {
+    if (!cropping) return;
+    const k = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Enter")
+        useImageCrop.setState({ id: null });
+    };
+    window.addEventListener("keydown", k);
+    return () => window.removeEventListener("keydown", k);
+  }, [cropping]);
+  const c = im.crop ?? { l: 0, t: 0, r: 0, b: 0 };
+  /** Change the crop of one side (in %), keeping the picture's size: the box grows or shrinks. */
+  const setCrop = (side: "l" | "t" | "r" | "b", pct: number) => {
+    const fullW = im.w / Math.max(0.05, 1 - c.l - c.r);
+    const fullH = im.h / Math.max(0.05, 1 - c.t - c.b);
+    const n = { ...c, [side]: Math.max(0, Math.min(0.9, pct / 100)) };
+    if (n.l + n.r > 0.95 || n.t + n.b > 0.95) return;
+    set({
+      crop: n.l || n.t || n.r || n.b ? n : undefined,
+      x: im.x + (n.l - c.l) * fullW,
+      y: im.y + (n.t - c.t) * fullH,
+      w: (1 - n.l - n.r) * fullW,
+      h: (1 - n.t - n.b) * fullH,
+    });
+  };
+  const tr = im.transparent;
+  /** Live while dragging the tolerance slider: one undo step for the whole drag. */
+  const liveTol = (v: number) =>
+    s.updateGesture((t) => ({
+      ...t,
+      images: (t.images ?? []).map((x) =>
+        x.id === im.id
+          ? { ...x, transparent: { ...x.transparent, tolerance: v } }
+          : x,
+      ),
+    }));
   return (
     <aside className="props">
       <h3>Image</h3>
       {im.name && <p className="muted">{im.name}</p>}
+      <h4>Crop</h4>
+      <div className="row2">
+        <button
+          type="button"
+          data-crop-toggle
+          className={cropping ? "primary" : undefined}
+          onClick={() => useImageCrop.setState({ id: cropping ? null : im.id })}
+          title="Like Word's Crop: drag the black handles on the picture to cut a side off (drag back out to bring it back)"
+        >
+          {cropping ? "Done cropping" : "Crop"}
+        </button>
+        <button
+          type="button"
+          disabled={!im.crop}
+          onClick={() => {
+            const fullW = im.w / Math.max(0.05, 1 - c.l - c.r);
+            const fullH = im.h / Math.max(0.05, 1 - c.t - c.b);
+            set({
+              crop: undefined,
+              x: im.x - c.l * fullW,
+              y: im.y - c.t * fullH,
+              w: fullW,
+              h: fullH,
+            });
+          }}
+        >
+          Reset crop
+        </button>
+      </div>
+      <div className="row2">
+        <Field
+          label="Left"
+          type="number"
+          suffix="%"
+          value={Math.round(c.l * 1000) / 10}
+          onCommit={(v) => setCrop("l", num(v))}
+        />
+        <Field
+          label="Right"
+          type="number"
+          suffix="%"
+          value={Math.round(c.r * 1000) / 10}
+          onCommit={(v) => setCrop("r", num(v))}
+        />
+      </div>
+      <div className="row2">
+        <Field
+          label="Top"
+          type="number"
+          suffix="%"
+          value={Math.round(c.t * 1000) / 10}
+          onCommit={(v) => setCrop("t", num(v))}
+        />
+        <Field
+          label="Bottom"
+          type="number"
+          suffix="%"
+          value={Math.round(c.b * 1000) / 10}
+          onCommit={(v) => setCrop("b", num(v))}
+        />
+      </div>
+      <h4>Background</h4>
+      <label className="check">
+        <input
+          type="checkbox"
+          data-transparent-toggle
+          checked={!!tr}
+          onChange={(e) =>
+            set({
+              transparent: e.target.checked
+                ? { ...DEFAULT_TRANSPARENT }
+                : undefined,
+            })
+          }
+        />{" "}
+        Make the background transparent
+      </label>
+      {tr && (
+        <>
+          <div className="row2">
+            <label className="field">
+              <span>See-through colour</span>
+              <select
+                value={tr.color ? "pick" : "auto"}
+                onChange={async (e) =>
+                  set({
+                    transparent: {
+                      ...tr,
+                      color:
+                        e.target.value === "auto"
+                          ? undefined
+                          : await cornerColour(im.src),
+                    },
+                  })
+                }
+              >
+                <option value="auto">The picture's corner colour</option>
+                <option value="pick">Choose a colour</option>
+              </select>
+            </label>
+            {tr.color && (
+              <label className="field">
+                <span>Colour</span>
+                <ColourBox
+                  value={tr.color}
+                  onChange={(col) =>
+                    set({ transparent: { ...tr, color: col } })
+                  }
+                />
+              </label>
+            )}
+          </div>
+          <label className="field">
+            <span>
+              Tolerance ({tr.tolerance}%): how close a colour must be to go
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={60}
+              step={1}
+              value={tr.tolerance}
+              onPointerDown={() => s.beginGesture()}
+              onPointerUp={() => s.endGesture()}
+              onChange={(e) =>
+                useEditor.getState().gestureBase
+                  ? liveTol(+e.target.value)
+                  : set({ transparent: { ...tr, tolerance: +e.target.value } })
+              }
+            />
+          </label>
+        </>
+      )}
+      <h4>Size and place</h4>
       <p className="muted">
         Drag to move. Drag a corner to resize in proportion (Shift to stretch),
         or a side handle to stretch one way.
@@ -2632,6 +2812,28 @@ function KeyplanEditor({ p }: { p: Panel }) {
         value={st.gridSpacing}
         onCommit={(v) => num(v) >= 0 && set({ gridSpacing: num(v) })}
       />
+      <div className="row2">
+        <Field
+          label="Grid frame width (0 = auto)"
+          type="number"
+          step={0.05}
+          suffix="mm"
+          value={st.gridFrameWidth ?? 0}
+          onCommit={(v) =>
+            num(v) >= 0 && set({ gridFrameWidth: num(v) || undefined })
+          }
+        />
+        <Field
+          label="Grid line width (0 = auto)"
+          type="number"
+          step={0.05}
+          suffix="mm"
+          value={st.gridLineWidth ?? 0}
+          onCommit={(v) =>
+            num(v) >= 0 && set({ gridLineWidth: num(v) || undefined })
+          }
+        />
+      </div>
       <div className="checks">
         <label className="check">
           <input

@@ -562,6 +562,8 @@ class DxfWriter {
     u: Pt,
     v: Pt,
     layer: string,
+    /** Show the picture's see-through parts as see-through. */
+    clear = false,
   ) {
     let def = this.imageDefs.find((d) => d.name === name)?.def;
     if (!def) {
@@ -586,7 +588,8 @@ class DxfWriter {
     this.g(13, px[0]);
     this.g(23, px[1]);
     this.g(340, def);
-    this.g(70, "3");
+    // 1 show, 2 show when not square to the screen, 8 see-through on.
+    this.g(70, clear ? "11" : "3");
     this.g(280, "0");
     this.g(281, "50");
     this.g(282, "50");
@@ -784,6 +787,8 @@ interface ImageJob {
   m: DOMMatrix;
   dx: number;
   layer: string;
+  /** The user made its background see-through: keep it so in AutoCAD too. */
+  clear: boolean;
 }
 
 function writeSheet(
@@ -848,6 +853,22 @@ function writeSheet(
       continue;
     const cs = getComputedStyle(el);
     if (cs.display === "none" || cs.visibility === "hidden") continue;
+    // Only what shows on the sheet goes in the file: anything hidden by its own or a parent's
+    // display, visibility or opacity is left out.
+    const cv = (
+      el as Element & {
+        checkVisibility?: (o: Record<string, boolean>) => boolean;
+      }
+    ).checkVisibility;
+    if (
+      cv &&
+      !cv.call(el, {
+        opacityProperty: true,
+        visibilityProperty: true,
+        contentVisibilityAuto: true,
+      })
+    )
+      continue;
     let hidden = false;
     for (let a: Element | null = el; a && a !== svg; a = a.parentElement) {
       if (
@@ -908,6 +929,7 @@ function writeSheet(
           m,
           dx,
           layer: layer === "SHEET" ? "IMAGES" : `${layer}_IMAGES`,
+          clear: im.hasAttribute("data-transparent"),
         });
       continue;
     }
@@ -1412,6 +1434,7 @@ function writeText(
 /** Read a picture into PNG bytes and its pixel size. */
 async function pictureOf(
   href: string,
+  clear = false,
 ): Promise<{ data: Uint8Array; px: [number, number] } | null> {
   try {
     const img = new Image();
@@ -1427,8 +1450,10 @@ async function pictureOf(
     // AutoCAD shows the see-through parts of a PNG as black: lay the picture on white
     // paper first, so it looks the way it does on the sheet.
     const ctx = c.getContext("2d")!;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, pw, ph);
+    if (!clear) {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, pw, ph);
+    }
     ctx.drawImage(img, 0, 0);
     const blob = await new Promise<Blob | null>((r) =>
       c.toBlob(r, "image/png"),
@@ -1468,16 +1493,16 @@ export async function chartsToDxf(
       writeSheet(svg, w, k * (paperW + 50), jobs);
       svg.style.setProperty("--px", px);
       for (const j of jobs) {
-        if (!files.has(j.href)) {
-          const pic = await pictureOf(j.href);
+        if (!files.has(j.href + j.clear)) {
+          const pic = await pictureOf(j.href, j.clear);
           files.set(
-            j.href,
+            j.href + j.clear,
             pic
               ? { name: `${imagePrefix}_image${files.size + 1}.png`, ...pic }
               : null,
           );
         }
-        const f = files.get(j.href);
+        const f = files.get(j.href + j.clear);
         if (!f) continue;
         // Fitted inside its box, keeping its shape (preserveAspectRatio "meet").
         const s = Math.min(j.box.w / f.px[0], j.box.h / f.px[1]);
@@ -1500,6 +1525,7 @@ export async function chartsToDxf(
           [(right[0] - corner[0]) / f.px[0], (right[1] - corner[1]) / f.px[0]],
           [(top[0] - corner[0]) / f.px[1], (top[1] - corner[1]) / f.px[1]],
           j.layer,
+          j.clear,
         );
       }
     }

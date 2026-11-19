@@ -2500,3 +2500,8 @@ p.warn {
   padding: 6px 8px;
   border-radius: 4px;
 }
+/* Word-style crop handles: solid black bars instead of white squares. */
+.handle.crop-handle {
+  fill: #111;
+  stroke: #fff;
+}

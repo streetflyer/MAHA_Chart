@@ -420,6 +420,10 @@ export interface KeyplanStyle {
   /** Grid spacing in metres; 0 picks a round value. */
   gridSpacing: number;
   gridColor: string;
+  /** Width (mm) of the grid frame round the key plan; unset = from the panel size. */
+  gridFrameWidth?: number;
+  /** Width (mm) of the grid ticks and crosses; unset = from the panel size. */
+  gridLineWidth?: number;
   showGrid: boolean;
   showNorthArrow: boolean;
   showBoundaries: boolean;
@@ -615,6 +619,10 @@ export interface ImageItem {
   /** data: URL, downscaled on import so templates stay small. */
   src: string;
   name?: string;
+  /** Cut off each side, as a share (0-1) of the original picture. */
+  crop?: { l: number; t: number; r: number; b: number };
+  /** One colour made see-through: `color` unset = the picture's corner colour; tolerance 0-100. */
+  transparent?: { color?: string; tolerance: number };
 }
 
 export interface TextItem {
