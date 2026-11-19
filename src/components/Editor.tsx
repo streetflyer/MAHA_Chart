@@ -54,6 +54,7 @@ import { chartsToPdf } from "../model/pdfExport";
 import { ThemeButton } from "./ThemeButton";
 import { ImportDialog, useImport } from "./ImportDialog";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { usePropsScroll } from "./propsScroll";
 import { PropsNav } from "./PropsNav";
 import { ProjectPanel } from "./ProjectPanel";
 import {
@@ -153,6 +154,7 @@ export function Editor({ onExit }: { onExit(): void }) {
   /** Writing a PDF/DXF flips through the charts: one export at a time. */
   const [exporting, setExporting] = useState(false);
   const propsRef = useRef<HTMLDivElement>(null);
+  usePropsScroll(propsRef);
   const s = useEditor.getState;
 
   const [showLoad, setShowLoad] = useState(false);

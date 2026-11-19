@@ -666,6 +666,15 @@ function writeSheet(svg: SVGSVGElement, w: DxfWriter, dx: number) {
         break;
       }
     }
+    // A pattern fill (hatch) goes in as its own lines, cut to the shape, on a _HATCH layer.
+    const fillRef = el.getAttribute("fill") ?? (el as SVGElement).style.fill;
+    const patId = /url\(\s*["']?#([^)"']+)/.exec(fillRef ?? "")?.[1];
+    if (patId) {
+      const pat = svg.querySelector(`pattern#${CSS.escape(patId)}`);
+      const closed = shapes.filter((s) => s.closed && s.pts.length > 2);
+      if (pat && closed.length)
+        writeHatch(pat as SVGPatternElement, g, P, closed, clipShift, layer, w);
+    }
     // Outline in the stroke colour; a filled shape with no stroke is outlined in its fill colour.
     const col = stroke ?? fill;
     if (!col) continue;
@@ -705,6 +714,169 @@ function writeSheet(svg: SVGSVGElement, w: DxfWriter, dx: number) {
           w.polyline(piece, layer, color);
       else w.polyline(s.pts, layer, color, s.closed && s.pts.length > 3);
     }
+  }
+}
+
+/** Inside the closed shapes (even-odd), in root coordinates. */
+function insideShapes(x: number, y: number, shapes: { pts: Pt[] }[]): boolean {
+  let inside = false;
+  for (const { pts } of shapes)
+    for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+      const [xi, yi] = pts[i];
+      const [xj, yj] = pts[j];
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
+        inside = !inside;
+    }
+  return inside;
+}
+
+/** The parts of segment a-b inside the shapes. */
+export function cutToShapes(a: Pt, b: Pt, shapes: { pts: Pt[] }[]): Pt[][] {
+  const dx = b[0] - a[0];
+  const dy = b[1] - a[1];
+  const ts = [0, 1];
+  for (const { pts } of shapes)
+    for (let i = 0; i < pts.length; i++) {
+      const p = pts[i];
+      const q = pts[(i + 1) % pts.length];
+      const ex = q[0] - p[0];
+      const ey = q[1] - p[1];
+      const den = dx * ey - dy * ex;
+      if (Math.abs(den) < 1e-12) continue;
+      const t = ((p[0] - a[0]) * ey - (p[1] - a[1]) * ex) / den;
+      const u = ((p[0] - a[0]) * dy - (p[1] - a[1]) * dx) / den;
+      if (t > 0 && t < 1 && u >= 0 && u <= 1) ts.push(t);
+    }
+  ts.sort((x, y) => x - y);
+  const out: Pt[][] = [];
+  for (let k = 0; k + 1 < ts.length; k++) {
+    const t0 = ts[k];
+    const t1 = ts[k + 1];
+    if (t1 - t0 < 1e-9) continue;
+    const tm = (t0 + t1) / 2;
+    if (insideShapes(a[0] + dx * tm, a[1] + dy * tm, shapes))
+      out.push([
+        [a[0] + dx * t0, a[1] + dy * t0],
+        [a[0] + dx * t1, a[1] + dy * t1],
+      ]);
+  }
+  return out;
+}
+
+/**
+ * Draw an SVG pattern fill as plain lines (and dots as small circles), the way DXF R12
+ * keeps a hatch: AutoCAD shows it as drawn, on its own layer so it can be turned off.
+ */
+function writeHatch(
+  pat: SVGPatternElement,
+  el: SVGGraphicsElement,
+  P: (x: number, y: number) => Pt,
+  shapes: { pts: Pt[] }[],
+  clip: Clip | null,
+  layer: string,
+  w: DxfWriter,
+) {
+  const pw = pat.width.baseVal.value;
+  const ph = pat.height.baseVal.value;
+  if (!(pw > 0 && ph > 0)) return;
+  const tm =
+    pat.patternTransform.baseVal.consolidate()?.matrix ?? new DOMMatrix();
+  const inv = tm.inverse();
+  let bb: DOMRect;
+  try {
+    bb = el.getBBox();
+  } catch {
+    return;
+  }
+  // The element's box in pattern space, to know which tiles to lay.
+  const corners = [
+    [bb.x, bb.y],
+    [bb.x + bb.width, bb.y],
+    [bb.x, bb.y + bb.height],
+    [bb.x + bb.width, bb.y + bb.height],
+  ].map(([x, y]) => new DOMPoint(x, y).matrixTransform(inv));
+  const i0 = Math.floor(Math.min(...corners.map((c) => c.x)) / pw) - 1;
+  const i1 = Math.ceil(Math.max(...corners.map((c) => c.x)) / pw) + 1;
+  const j0 = Math.floor(Math.min(...corners.map((c) => c.y)) / ph) - 1;
+  const j1 = Math.ceil(Math.max(...corners.map((c) => c.y)) / ph) + 1;
+  if ((i1 - i0) * (j1 - j0) > 40000) return; // far too fine to be a hatch
+  const toRoot = (x: number, y: number): Pt => {
+    const q = new DOMPoint(x, y).matrixTransform(tm);
+    return P(q.x, q.y);
+  };
+  const inClip = ([x, y]: Pt) =>
+    !clip || (x >= clip.x0 && x <= clip.x1 && y >= clip.y0 && y <= clip.y1);
+  const hl = `${layer}_HATCH`;
+  // Neighbouring tiles repeat the bits of line that cross their edges: write each once.
+  const seen = new Set<string>();
+  const once = (pts: Pt[]) => {
+    const k = pts.map(([x, y]) => `${x.toFixed(3)},${y.toFixed(3)}`).join(" ");
+    const r = [...pts]
+      .reverse()
+      .map(([x, y]) => `${x.toFixed(3)},${y.toFixed(3)}`)
+      .join(" ");
+    if (seen.has(k) || seen.has(r)) return false;
+    seen.add(k);
+    return true;
+  };
+  for (const child of pat.querySelectorAll("path, line, circle")) {
+    const cs = getComputedStyle(child);
+    const paint =
+      child.tagName === "circle"
+        ? cs.fill
+        : cs.stroke !== "none"
+          ? cs.stroke
+          : cs.fill;
+    const rgb = parseColour(paint);
+    if (!rgb) continue;
+    const color = aci([rgb[0], rgb[1], rgb[2]]);
+    if (child.tagName === "circle") {
+      const c = child as SVGCircleElement;
+      const r = c.r.baseVal.value;
+      for (let i = i0; i <= i1; i++)
+        for (let j = j0; j <= j1; j++) {
+          const ctr = toRoot(
+            c.cx.baseVal.value + i * pw,
+            c.cy.baseVal.value + j * ph,
+          );
+          if (!inClip(ctr) || !insideShapes(ctr[0], ctr[1], shapes)) continue;
+          const pts: Pt[] = [];
+          for (let k = 0; k <= 12; k++)
+            pts.push(
+              toRoot(
+                c.cx.baseVal.value +
+                  i * pw +
+                  r * Math.cos((k / 12) * 2 * Math.PI),
+                c.cy.baseVal.value +
+                  j * ph +
+                  r * Math.sin((k / 12) * 2 * Math.PI),
+              ),
+            );
+          w.polyline(pts, hl, color, true);
+        }
+      continue;
+    }
+    const segs: [Pt, Pt][] = [];
+    if (child.tagName === "line") {
+      const l = child as SVGLineElement;
+      segs.push([
+        [l.x1.baseVal.value, l.y1.baseVal.value],
+        [l.x2.baseVal.value, l.y2.baseVal.value],
+      ]);
+    } else
+      for (const sp of flattenPath(child.getAttribute("d") ?? ""))
+        for (let k = 0; k + 1 < sp.pts.length; k++)
+          segs.push([sp.pts[k], sp.pts[k + 1]]);
+    for (let i = i0; i <= i1; i++)
+      for (let j = j0; j <= j1; j++)
+        for (const [a, b] of segs)
+          for (const piece of cutToShapes(
+            toRoot(a[0] + i * pw, a[1] + j * ph),
+            toRoot(b[0] + i * pw, b[1] + j * ph),
+            shapes,
+          ))
+            for (const part of clip ? clipPolyline(piece, clip) : [piece])
+              if (part.length > 1 && once(part)) w.polyline(part, hl, color);
   }
 }
 

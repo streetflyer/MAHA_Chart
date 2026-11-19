@@ -19,3 +19,22 @@ describe("chartBoxesToDxf", () => {
     expect(d).not.toContain("-2050");
   });
 });
+
+describe("hatch lines cut to a shape", () => {
+  it("keeps only the parts inside", async () => {
+    const { cutToShapes } = await import("./dxfExport");
+    const sq = {
+      pts: [
+        [0, 0],
+        [10, 0],
+        [10, 10],
+        [0, 10],
+      ] as [number, number][],
+    };
+    const parts = cutToShapes([-5, 5], [15, 5], [sq]);
+    expect(parts).toHaveLength(1);
+    expect(parts[0][0][0]).toBeCloseTo(0);
+    expect(parts[0][1][0]).toBeCloseTo(10);
+    expect(cutToShapes([-5, 20], [15, 20], [sq])).toHaveLength(0);
+  });
+});

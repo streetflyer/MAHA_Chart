@@ -507,25 +507,10 @@ function PanelProps({ p }: { p: Panel }) {
   const parent = p.parentId
     ? template.panels.find((x) => x.id === p.parentId)
     : undefined;
-  // A click on the sheet shows the top of the settings; a click on a text box scrolls to its own section instead.
-  const selection = useEditor((st) => st.selection);
-  const top = useRef<HTMLElement>(null);
-  useEffect(() => {
-    const toTop = () => {
-      if (Date.now() - useCalloutFocus.getState().n < 1500) return;
-      top.current?.closest(".props-wrap")?.scrollTo({ top: 0 });
-    };
-    toTop();
-    // A click on the sheet that keeps this panel selected also goes back to the top.
-    const up = (e: PointerEvent) => {
-      if ((e.target as Element | null)?.closest?.("svg.sheet"))
-        setTimeout(toTop, 60);
-    };
-    document.addEventListener("pointerup", up);
-    return () => document.removeEventListener("pointerup", up);
-  }, [selection]);
+  // The settings never jump back to the top by themselves: the editor keeps where the
+  // user last scrolled them for each panel (see usePropsScroll).
   return (
-    <aside className="props" ref={top}>
+    <aside className="props">
       <h3>{PANEL_DEFAULTS[p.type].label}</h3>
       {p.type === "plan" && <DrawingEditPanel panelId={p.id} when="active" />}
       {parent && <p className="muted">Section of {parent.title}</p>}
