@@ -1424,7 +1424,12 @@ async function pictureOf(
     const c = document.createElement("canvas");
     c.width = pw;
     c.height = ph;
-    c.getContext("2d")!.drawImage(img, 0, 0);
+    // AutoCAD shows the see-through parts of a PNG as black: lay the picture on white
+    // paper first, so it looks the way it does on the sheet.
+    const ctx = c.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, pw, ph);
+    ctx.drawImage(img, 0, 0);
     const blob = await new Promise<Blob | null>((r) =>
       c.toBlob(r, "image/png"),
     );
