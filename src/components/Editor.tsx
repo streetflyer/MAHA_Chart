@@ -51,6 +51,7 @@ import { withGridLine } from "../model/kpGrid";
 import { clearChartData } from "../state/chartData";
 import { chartBoxesToDxf, chartsToDxf } from "../model/dxfExport";
 import { chartsToPdf } from "../model/pdfExport";
+import { zipStore } from "../model/tables";
 import { ThemeButton } from "./ThemeButton";
 import { ImportDialog, useImport } from "./ImportDialog";
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -933,16 +934,6 @@ export function Editor({ onExit }: { onExit(): void }) {
     try {
       for (const sheets of files) {
         const { width, height } = template.paper;
-        const blob = fmt
-          ? new Blob([await chartsToDxf(width, height, sheets, draw)], {
-              type: "application/dxf",
-            })
-          : new Blob(
-              [(await chartsToPdf(width, height, sheets, draw)) as BlobPart],
-              { type: "application/pdf" },
-            );
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
         // Named by the drawing number: 33DJ100160-LCV-CH-002.001.pdf, or …-002.001_to_003.pdf for several charts.
         const dn = (i: number) =>
           (drawingNoOf(template, i) || `${base}_chart${i + 1}`).replace(
@@ -950,10 +941,32 @@ export function Editor({ onExit }: { onExit(): void }) {
             "_",
           );
         const last = sheets[sheets.length - 1];
-        a.download =
+        const stem =
           sheets.length > 1
-            ? `${dn(sheets[0])}_to_${dn(last).split(".").pop()}.${ext}`
-            : `${dn(sheets[0])}.${ext}`;
+            ? `${dn(sheets[0])}_to_${dn(last).split(".").pop()}`
+            : dn(sheets[0]);
+        let blob: Blob;
+        let name = `${stem}.${ext}`;
+        if (fmt) {
+          const dxf = await chartsToDxf(width, height, sheets, draw, stem);
+          if (dxf.images.length) {
+            // Logos: AutoCAD keeps pictures as files next to the drawing, so the DXF and
+            // its PNGs go together in one zip; unzip into one folder and open the DXF.
+            const parts = new Map<string, Uint8Array>([
+              [`${stem}.dxf`, new TextEncoder().encode(dxf.text)],
+            ]);
+            for (const im of dxf.images) parts.set(im.name, im.data);
+            blob = zipStore(parts);
+            name = `${stem}_dxf.zip`;
+          } else blob = new Blob([dxf.text], { type: "application/dxf" });
+        } else
+          blob = new Blob(
+            [(await chartsToPdf(width, height, sheets, draw)) as BlobPart],
+            { type: "application/pdf" },
+          );
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
         a.click();
         saved.push(a.download);
         setTimeout(() => URL.revokeObjectURL(a.href), 4000);

@@ -1,13 +1,16 @@
 /**
- * Save the chart as an AutoCAD DXF (R12, ASCII), in paper millimetres with the
+ * Save the chart as an AutoCAD 2018 DXF (ASCII), in paper millimetres with the
  * origin at the sheet's bottom-left corner. It is written from the drawn sheet
- * itself, so what is on screen is what goes in the file: lines and polylines,
- * outlines of circles and curves, filled boxes as SOLIDs, and text as TEXT with
- * its height, rotation and colour. Everything clipped to a panel on screen is
- * clipped to it in the file too. Logos (images) are left out.
+ * itself, so what is on screen is what goes in the file: lines and polylines with
+ * their dash pattern (a real linetype), line weight and true colour, outlines of
+ * circles and curves, coloured fills and hatch patterns as HATCH objects, text as
+ * TEXT, and logos as IMAGEs pointing at PNG files saved beside the DXF. Everything
+ * clipped to a panel on screen is clipped to it in the file too.
  */
 
 import { ACI } from "./aci";
+import { DXF_TEMPLATE } from "./dxfTemplate";
+import { clipPolygon } from "./matchlines";
 
 type Pt = [number, number];
 interface Clip {
@@ -320,58 +323,148 @@ function clipPolyline(pts: Pt[], c: Clip): Pt[][] {
 
 // --- Writing ----------------------------------------------------------------------
 
+/** How a DXF entity looks beyond its layer: colour (index and true colour), linetype, lineweight, see-through. */
+export interface Look {
+  aci: number;
+  /** True colour 0xRRGGBB. */
+  rgb?: number;
+  /** Dash pattern in drawing units: dashes positive, gaps negative, 0 = dot. */
+  dash?: number[];
+  /** Line weight in mm (rounded to AutoCAD's list). */
+  lw?: number;
+  /** 0..1, 1 = solid. */
+  alpha?: number;
+}
+
+/** A family of parallel hatch lines, in sheet coordinates (y down). */
+export interface HatchFamily {
+  /** Direction of the lines. */
+  dir: Pt;
+  /** A point the lines pass through. */
+  base: Pt;
+  /** Spacing between neighbouring lines, square to them. */
+  gap: number;
+  /** Dashes along each line (empty = continuous). */
+  dash: number[];
+}
+
+const LINEWEIGHTS = [
+  0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106,
+  120, 140, 158, 200, 211,
+];
+
+type Pair = [number, string];
+
+function templatePairs(): Pair[] {
+  const l = DXF_TEMPLATE.split("\n");
+  const out: Pair[] = [];
+  for (let i = 0; i + 1 < l.length; i += 2) out.push([Number(l[i]), l[i + 1]]);
+  return out;
+}
+
+/**
+ * Writes an AutoCAD 2018 DXF (AC1032, the newest DXF version): layers, real linetypes
+ * for dashed lines, line weights and true colours, editable HATCH objects, and raster
+ * images that point at picture files saved next to the DXF.
+ */
 class DxfWriter {
-  private out: string[] = [];
+  private ents: Pair[] = [];
   readonly layers = new Map<string, number>();
+  private ltypes = new Map<string, number[]>();
+  readonly images: { name: string; data: Uint8Array }[] = [];
+  private imageDefs: { name: string; def: string }[] = [];
+  private seed: number;
+  private msp: string;
   constructor(
     private readonly paperH: number,
     /** Real-world coordinates (y up) in metres, instead of paper mm with y flipped. */
     private readonly ground = false,
-  ) {}
-  private g(code: number, v: string | number) {
-    this.out.push(String(code), typeof v === "number" ? fmt(v) : v);
+  ) {
+    const t = templatePairs();
+    const k = t.findIndex(([c, v]) => c === 9 && v === "$HANDSEED");
+    this.seed = parseInt(t[k + 1][1], 16);
+    // The model space block record owns every entity.
+    let ms = "17";
+    for (let i = 0; i < t.length; i++)
+      if (t[i][0] === 2 && t[i][1] === "*Model_Space") {
+        for (let j = i; j > 0 && !(t[j][0] === 0); j--)
+          if (t[j][0] === 5) ms = t[j][1];
+        break;
+      }
+    this.msp = ms;
   }
-  private head(type: string, layer: string, color: number) {
-    this.g(0, type);
-    this.g(8, layer);
-    if (!this.layers.has(layer)) this.layers.set(layer, 7);
-    this.g(62, color);
+  private handle(): string {
+    return (this.seed++).toString(16).toUpperCase();
+  }
+  private g(code: number, v: string | number, to: Pair[] = this.ents) {
+    to.push([code, typeof v === "number" ? fmt(v) : v]);
   }
   private y(v: number) {
     return this.ground ? v : this.paperH - v;
   }
-  polyline(pts: Pt[], layer: string, color: number, closed = false, width = 0) {
+  private look(c: number | Look): Look {
+    return typeof c === "number" ? { aci: c } : c;
+  }
+  private ltypeName(dash: number[]): string {
+    const name =
+      "MC_" + dash.map((d) => fmt(Math.abs(d)).replace(".", "p")).join("_");
+    if (!this.ltypes.has(name)) this.ltypes.set(name, dash);
+    return name;
+  }
+  private head(type: string, layer: string, color: number | Look, lt = true) {
+    const l = this.look(color);
+    this.g(0, type);
+    this.g(5, this.handle());
+    this.g(330, this.msp);
+    this.g(100, "AcDbEntity");
+    this.g(8, layer);
+    if (!this.layers.has(layer)) this.layers.set(layer, 7);
+    if (lt && l.dash?.length) this.g(6, this.ltypeName(l.dash));
+    this.g(62, l.aci);
+    if (l.lw !== undefined) {
+      const want = l.lw * 100;
+      let best = 0;
+      for (const w of LINEWEIGHTS)
+        if (Math.abs(w - want) < Math.abs(best - want)) best = w;
+      this.g(370, best);
+    }
+    if (l.rgb !== undefined) this.g(420, String(l.rgb));
+    if (l.alpha !== undefined && l.alpha < 0.999)
+      this.g(440, String(0x02000000 | Math.round(255 * Math.max(0, l.alpha))));
+  }
+  polyline(
+    pts: Pt[],
+    layer: string,
+    color: number | Look,
+    closed = false,
+    width = 0,
+  ) {
     if (pts.length < 2) return;
     if (pts.length === 2 && !closed && !width) {
       this.head("LINE", layer, color);
+      this.g(100, "AcDbLine");
       this.g(10, pts[0][0]);
       this.g(20, this.y(pts[0][1]));
+      this.g(30, 0);
       this.g(11, pts[1][0]);
       this.g(21, this.y(pts[1][1]));
+      this.g(31, 0);
       return;
     }
-    this.head("POLYLINE", layer, color);
-    this.g(66, 1);
-    this.g(10, 0);
-    this.g(20, 0);
-    this.g(30, 0);
-    this.g(70, closed ? 1 : 0);
-    if (width) {
-      this.g(40, width);
-      this.g(41, width);
-    }
+    this.head("LWPOLYLINE", layer, color);
+    this.g(100, "AcDbPolyline");
+    this.g(90, String(pts.length));
+    // 128: the dash pattern runs on round the corners instead of restarting at each vertex.
+    this.g(70, String((closed ? 1 : 0) | 128));
+    if (width) this.g(43, width);
     for (const [x, y] of pts) {
-      this.g(0, "VERTEX");
-      this.g(8, layer);
       this.g(10, x);
       this.g(20, this.y(y));
-      this.g(30, 0);
     }
-    this.g(0, "SEQEND");
-    this.g(8, layer);
   }
-  solid(p: Pt[], layer: string, color: number) {
-    this.head("SOLID", layer, color);
+  solid(p: Pt[], layer: string, color: number | Look) {
+    this.head("SOLID", layer, color, false);
+    this.g(100, "AcDbTrace");
     // SOLID corners go 1-2-4-3.
     const order = [p[0], p[1], p[3], p[2]];
     order.forEach(([x, y], k) => {
@@ -380,6 +473,63 @@ class DxfWriter {
       this.g(30 + k, 0);
     });
   }
+  /** A HATCH over closed rings: solid when `families` is empty, else lines. */
+  hatch(
+    rings: Pt[][],
+    layer: string,
+    color: number | Look,
+    families: HatchFamily[] = [],
+  ) {
+    const rs = rings.filter((r) => r.length > 2);
+    if (!rs.length) return;
+    this.head("HATCH", layer, color, false);
+    this.g(100, "AcDbHatch");
+    this.g(10, 0);
+    this.g(20, 0);
+    this.g(30, 0);
+    this.g(210, 0);
+    this.g(220, 0);
+    this.g(230, 1);
+    const solid = !families.length;
+    this.g(2, solid ? "SOLID" : "MC_HATCH");
+    this.g(70, solid ? "1" : "0");
+    this.g(71, "0");
+    this.g(91, String(rs.length));
+    for (const r of rs) {
+      this.g(92, "3"); // external polyline boundary
+      this.g(72, "0");
+      this.g(73, "1");
+      this.g(93, String(r.length));
+      for (const [x, y] of r) {
+        this.g(10, x);
+        this.g(20, this.y(y));
+      }
+      this.g(97, "0");
+    }
+    this.g(75, "0");
+    this.g(76, solid ? "1" : "2");
+    if (!solid) {
+      this.g(52, 0);
+      this.g(41, 1);
+      this.g(77, "0");
+      this.g(78, String(families.length));
+      for (const f of families) {
+        const fy = this.ground ? 1 : -1;
+        const d = Math.hypot(f.dir[0], f.dir[1]) || 1;
+        const ux = f.dir[0] / d;
+        const uy = (fy * f.dir[1]) / d;
+        this.g(53, (Math.atan2(uy, ux) * 180) / Math.PI);
+        this.g(43, f.base[0]);
+        this.g(44, this.y(f.base[1]));
+        // Offset to the next line, square to this one (stored turned, as AutoCAD keeps it).
+        this.g(45, -uy * f.gap);
+        this.g(46, ux * f.gap);
+        this.g(79, String(f.dash.length));
+        for (const x of f.dash) this.g(49, x);
+      }
+    }
+    this.g(98, "0");
+  }
   text(
     x: number,
     y: number,
@@ -387,92 +537,220 @@ class DxfWriter {
     rot: number,
     s: string,
     layer: string,
-    color: number,
+    color: number | Look,
   ) {
-    this.head("TEXT", layer, color);
+    this.head("TEXT", layer, color, false);
+    this.g(100, "AcDbText");
     this.g(10, x);
     this.g(20, this.y(y));
     this.g(30, 0);
     this.g(40, h);
     this.g(1, encodeText(s));
     if (Math.abs(rot) > 1e-6) this.g(50, rot);
+    this.g(7, "Standard");
+    this.g(100, "AcDbText");
+  }
+  /**
+   * A picture, as AutoCAD keeps it: an IMAGE that points to a file next to the DXF.
+   * `corner` is the picture's bottom-left on the sheet; `u` and `v` one pixel across and up.
+   */
+  image(
+    name: string,
+    data: Uint8Array,
+    px: [number, number],
+    corner: Pt,
+    u: Pt,
+    v: Pt,
+    layer: string,
+  ) {
+    let def = this.imageDefs.find((d) => d.name === name)?.def;
+    if (!def) {
+      def = this.handle();
+      this.imageDefs.push({ name, def });
+      this.images.push({ name, data });
+    }
+    const reactor = this.handle();
+    const fy = this.ground ? 1 : -1;
+    this.head("IMAGE", layer, 7, false);
+    this.g(100, "AcDbRasterImage");
+    this.g(90, "0");
+    this.g(10, corner[0]);
+    this.g(20, this.y(corner[1]));
+    this.g(30, 0);
+    this.g(11, u[0]);
+    this.g(21, fy * u[1]);
+    this.g(31, 0);
+    this.g(12, v[0]);
+    this.g(22, fy * v[1]);
+    this.g(32, 0);
+    this.g(13, px[0]);
+    this.g(23, px[1]);
+    this.g(340, def);
+    this.g(70, "3");
+    this.g(280, "0");
+    this.g(281, "50");
+    this.g(282, "50");
+    this.g(283, "0");
+    this.g(360, reactor);
+    this.g(71, "1");
+    this.g(91, "2");
+    this.g(14, -0.5);
+    this.g(24, -0.5);
+    this.g(14, px[0] - 0.5);
+    this.g(24, px[1] - 0.5);
+    this.g(290, "0");
+    // The reactor ties the image to its definition.
+    const imgHandle = this.lastEntityHandle();
+    this.reactors.push({ reactor, image: imgHandle, def });
+    this.pixels.set(def, px);
+  }
+  private reactors: { reactor: string; image: string; def: string }[] = [];
+  private pixels = new Map<string, [number, number]>();
+  private lastEntityHandle(): string {
+    for (let i = this.ents.length - 1; i >= 0; i--)
+      if (this.ents[i][0] === 0) return this.ents[i + 1][1];
+    return "0";
   }
   toString(): string {
-    const head = [
-      "0",
-      "SECTION",
-      "2",
-      "HEADER",
-      "9",
-      "$ACADVER",
-      "1",
-      "AC1009",
-      "9",
-      "$INSUNITS",
-      "70",
-      this.ground ? "6" : "4",
-      "9",
-      "$MEASUREMENT",
-      "70",
-      "1",
-      "0",
-      "ENDSEC",
-    ];
-    const tables = [
-      "0",
-      "SECTION",
-      "2",
-      "TABLES",
-      "0",
-      "TABLE",
-      "2",
-      "LAYER",
-      "70",
-      String(this.layers.size),
-    ];
-    for (const [name, c] of this.layers)
-      tables.push(
-        "0",
-        "LAYER",
-        "2",
-        name,
-        "70",
-        "0",
-        "62",
-        String(c),
-        "6",
-        "CONTINUOUS",
-      );
-    tables.push("0", "ENDTAB", "0", "ENDSEC");
-    return [
-      ...head,
-      ...tables,
-      "0",
-      "SECTION",
-      "2",
-      "ENTITIES",
-      ...this.out,
-      "0",
-      "ENDSEC",
-      "0",
-      "EOF",
-      "",
-    ].join("\r\n");
+    const t = templatePairs();
+    const out: Pair[] = [];
+    // Handles of the tables and the root dictionary, read from the template.
+    const tableHandle = (name: string) => {
+      for (let i = 0; i + 2 < t.length; i++)
+        if (
+          t[i][0] === 0 &&
+          t[i][1] === "TABLE" &&
+          t[i + 1][0] === 2 &&
+          t[i + 1][1] === name
+        )
+          return t[i + 2][1];
+      return "0";
+    };
+    const ltypeOwner = tableHandle("LTYPE");
+    const layerOwner = tableHandle("LAYER");
+    // The template's layer "0" gives the plot style and material every layer refers to.
+    const layer0: Pair[] = [];
+    for (let i = 0; i < t.length; i++)
+      if (t[i][0] === 0 && t[i][1] === "LAYER") {
+        let j = i + 1;
+        while (t[j][0] !== 0) j++;
+        const rec = t.slice(i, j);
+        if (rec.some(([c, v]) => c === 2 && v === "0")) {
+          layer0.push(...rec);
+          break;
+        }
+      }
+    const ltypeRecords = (): Pair[] => {
+      const o: Pair[] = [];
+      for (const [name, dash] of this.ltypes) {
+        o.push([0, "LTYPE"], [5, this.handle()], [330, ltypeOwner]);
+        o.push(
+          [100, "AcDbSymbolTableRecord"],
+          [100, "AcDbLinetypeTableRecord"],
+        );
+        o.push([2, name], [70, "0"], [3, name.replace(/_/g, " ")], [72, "65"]);
+        o.push([73, String(dash.length)]);
+        o.push([40, fmt(dash.reduce((a, d) => a + Math.abs(d), 0))]);
+        for (const d of dash) o.push([49, fmt(d)], [74, "0"]);
+      }
+      return o;
+    };
+    const layerRecords = (): Pair[] => {
+      const o: Pair[] = [];
+      for (const [name, c] of this.layers) {
+        if (name === "0") continue;
+        for (const [code, v] of layer0)
+          o.push([
+            code,
+            code === 5
+              ? this.handle()
+              : code === 330
+                ? layerOwner
+                : code === 2
+                  ? name
+                  : code === 62
+                    ? String(c)
+                    : v,
+          ]);
+      }
+      return o;
+    };
+    const lt = ltypeRecords();
+    const la = layerRecords();
+    // Image objects: a dictionary of picture definitions in the root dictionary, plus raster settings.
+    const imgDict = this.imageDefs.length ? this.handle() : "";
+    const imgVars = this.imageDefs.length ? this.handle() : "";
+    let section = "";
+    let table = "";
+    let rootDone = false;
+    let lastDict = -100;
+    for (let i = 0; i < t.length; i++) {
+      const [c, v] = t[i];
+      if (c === 0 && v === "SECTION") section = t[i + 1][1];
+      if (c === 0 && v === "TABLE") table = t[i + 1][1];
+      if (c === 9 && v === "$HANDSEED") {
+        out.push(t[i]);
+        out.push([5, "%SEED%"]);
+        i++;
+        continue;
+      }
+      if (c === 0 && v === "ENDTAB") {
+        if (table === "LTYPE") for (const e of lt) out.push(e);
+        if (table === "LAYER") for (const e of la) out.push(e);
+      }
+      if (c === 0 && v === "ENDSEC" && section === "ENTITIES")
+        for (const e of this.ents) out.push(e);
+      if (c === 0 && v === "ENDSEC" && section === "OBJECTS" && imgDict) {
+        out.push([0, "DICTIONARY"], [5, imgDict], [330, "A"]);
+        out.push([100, "AcDbDictionary"], [281, "1"]);
+        for (const d of this.imageDefs) out.push([3, d.name], [350, d.def]);
+        out.push([0, "RASTERVARIABLES"], [5, imgVars], [330, "A"]);
+        out.push([100, "AcDbRasterVariables"], [90, "0"], [70, "0"]);
+        out.push([71, "1"], [72, "3"]);
+        for (const d of this.imageDefs) {
+          const px = this.pixels.get(d.def) ?? [1, 1];
+          out.push([0, "IMAGEDEF"], [5, d.def], [102, "{ACAD_REACTORS"]);
+          out.push([330, imgDict]);
+          for (const r of this.reactors.filter((x) => x.def === d.def))
+            out.push([330, r.reactor]);
+          out.push([102, "}"], [330, imgDict], [100, "AcDbRasterImageDef"]);
+          out.push([90, "0"], [1, d.name], [10, fmt(px[0])], [20, fmt(px[1])]);
+          out.push([11, "1"], [21, "1"], [280, "1"], [281, "0"]);
+        }
+        for (const r of this.reactors) {
+          out.push([0, "IMAGEDEF_REACTOR"], [5, r.reactor], [330, r.image]);
+          out.push([100, "AcDbRasterImageDefReactor"], [90, "2"]);
+          out.push([330, r.image]);
+        }
+      }
+      if (c === 0 && v === "DICTIONARY") lastDict = out.length;
+      out.push(t[i]);
+      // The root dictionary (first object, owner 0) lists the image dictionaries.
+      if (
+        imgDict &&
+        !rootDone &&
+        section === "OBJECTS" &&
+        c === 281 &&
+        lastDict > out.length - 8
+      ) {
+        out.push([3, "ACAD_IMAGE_DICT"], [350, imgDict]);
+        out.push([3, "ACAD_IMAGE_VARS"], [350, imgVars]);
+        rootDone = true;
+      }
+    }
+    const seed = this.seed.toString(16).toUpperCase();
+    const lines: string[] = [];
+    for (const [c, v] of out) lines.push(String(c), v === "%SEED%" ? seed : v);
+    return lines.join("\r\n") + "\r\n";
   }
 }
 
 const fmt = (v: number) =>
   Math.abs(v) < 1e-9 ? "0" : String(Math.round(v * 10000) / 10000);
 
-/** DXF R12 is 8-bit: anything outside ASCII goes as \U+XXXX, which AutoCAD reads. */
+/** DXF 2007 and later is UTF-8: characters such as ° and ± go in as they are. */
 function encodeText(s: string): string {
-  return [...s.replace(/\s+/g, " ")]
-    .map((ch) =>
-      ch.charCodeAt(0) < 128
-        ? ch
-        : `\\U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`,
-    )
-    .join("");
+  return s.replace(/\s+/g, " ");
 }
 
 const SKIP = [
@@ -498,7 +776,22 @@ function layerOf(el: Element): string {
 }
 
 /** Write one drawn sheet (the svg.sheet element) into the writer, shifted by dx along x. */
-function writeSheet(svg: SVGSVGElement, w: DxfWriter, dx: number) {
+/** A picture on the sheet, to be read into a file after the sheet is walked. */
+interface ImageJob {
+  href: string;
+  /** Box the picture is fitted into (preserveAspectRatio meet), in the image's own units. */
+  box: { x: number; y: number; w: number; h: number };
+  m: DOMMatrix;
+  dx: number;
+  layer: string;
+}
+
+function writeSheet(
+  svg: SVGSVGElement,
+  w: DxfWriter,
+  dx: number,
+  images: ImageJob[] = [],
+) {
   const rootInv = svg.getScreenCTM()?.inverse();
   if (!rootInv) return;
   const toRoot = (el: SVGGraphicsElement) =>
@@ -544,7 +837,7 @@ function writeSheet(svg: SVGSVGElement, w: DxfWriter, dx: number) {
   };
 
   const walker = svg.querySelectorAll(
-    "line, polyline, polygon, rect, circle, ellipse, path, text",
+    "line, polyline, polygon, rect, circle, ellipse, path, text, image",
   );
   for (const el of walker) {
     if (el.closest("defs, clipPath, mask, pattern, marker")) continue;
@@ -579,18 +872,52 @@ function writeSheet(svg: SVGSVGElement, w: DxfWriter, dx: number) {
     const layer = layerOf(el);
     const stroke = shown(cs, "stroke");
     const fill = shown(cs, "fill");
+    const scale = Math.hypot(m.a, m.b) || 1;
+    const rgbOf = (c: number[]) => (c[0] << 16) | (c[1] << 8) | c[2];
+    const opacity = parseFloat(cs.opacity || "1");
+    // The line's look: true colour, dash pattern as a linetype, paper line weight.
+    const lineLook = (c: number[]): Look => {
+      const da = (cs.strokeDasharray || "none")
+        .split(/[\s,]+/)
+        .map((v) => parseFloat(v) * scale)
+        .filter((v) => Number.isFinite(v));
+      const pat = da.length % 2 ? [...da, ...da] : da;
+      return {
+        aci: aci([c[0], c[1], c[2]]),
+        rgb: rgbOf(c),
+        dash:
+          pat.length && pat.some((v) => v > 0)
+            ? pat.map((v, k) => (k % 2 ? -Math.max(v, 0.01) : v))
+            : undefined,
+        lw: (parseFloat(cs.strokeWidth) || 0) * scale,
+      };
+    };
+
+    if (el.tagName === "image") {
+      const im = el as SVGImageElement;
+      const href = im.href.baseVal || im.getAttribute("xlink:href") || "";
+      if (href)
+        images.push({
+          href,
+          box: {
+            x: im.x.baseVal.value,
+            y: im.y.baseVal.value,
+            w: im.width.baseVal.value,
+            h: im.height.baseVal.value,
+          },
+          m,
+          dx,
+          layer: layer === "SHEET" ? "IMAGES" : `${layer}_IMAGES`,
+        });
+      continue;
+    }
 
     if (el.tagName === "text") {
       if (!fill) continue;
-      writeText(
-        el as SVGTextElement,
-        m,
-        dx,
-        clipShift,
-        w,
-        layer,
-        aci([fill[0], fill[1], fill[2]]),
-      );
+      writeText(el as SVGTextElement, m, dx, clipShift, w, layer, {
+        aci: aci([fill[0], fill[1], fill[2]]),
+        rgb: rgbOf(fill),
+      });
       continue;
     }
 
@@ -623,14 +950,6 @@ function writeSheet(svg: SVGSVGElement, w: DxfWriter, dx: number) {
         const rh = r.height.baseVal.value;
         if (!rw || !rh) continue;
         const pts = [P(x, y), P(x + rw, y), P(x + rw, y + rh), P(x, y + rh)];
-        // A coloured box goes in as a SOLID (white boxes are just paper).
-        if (
-          fill &&
-          !(fill[0] > 245 && fill[1] > 245 && fill[2] > 245) &&
-          !clipShift &&
-          !el.classList.contains("paper")
-        )
-          w.solid(pts, layer, aci([fill[0], fill[1], fill[2]]));
         shapes.push({ pts: [...pts, pts[0]], closed: true });
         break;
       }
@@ -666,21 +985,56 @@ function writeSheet(svg: SVGSVGElement, w: DxfWriter, dx: number) {
         break;
       }
     }
-    // A pattern fill (hatch) goes in as its own lines, cut to the shape, on a _HATCH layer.
+    // The closed shapes, cut to the panel they sit in, carry the fill.
+    const closed = shapes.filter((s) => s.closed && s.pts.length > 2);
+    const rings = closed
+      .map((s) =>
+        clipShift
+          ? clipPolygon(s.pts, [
+              [clipShift.x0, clipShift.y0],
+              [clipShift.x1, clipShift.y0],
+              [clipShift.x1, clipShift.y1],
+              [clipShift.x0, clipShift.y1],
+            ])
+          : s.pts,
+      )
+      .filter((r) => r.length > 2);
+    // A pattern fill goes in as an editable HATCH (lines it can't describe: cut lines on a _HATCH layer).
     const fillRef = el.getAttribute("fill") ?? (el as SVGElement).style.fill;
     const patId = /url\(\s*["']?#([^)"']+)/.exec(fillRef ?? "")?.[1];
     if (patId) {
       const pat = svg.querySelector(`pattern#${CSS.escape(patId)}`);
-      const closed = shapes.filter((s) => s.closed && s.pts.length > 2);
-      if (pat && closed.length)
-        writeHatch(pat as SVGPatternElement, g, P, closed, clipShift, layer, w);
-    }
+      if (pat && rings.length)
+        writePattern(
+          pat as SVGPatternElement,
+          g,
+          P,
+          rings,
+          clipShift,
+          layer,
+          w,
+        );
+    } else if (
+      // A coloured fill is a solid HATCH in its true colour (white is just paper).
+      fill &&
+      rings.length &&
+      !(fill[0] > 245 && fill[1] > 245 && fill[2] > 245) &&
+      !el.classList.contains("paper")
+    )
+      w.hatch(rings, layer, {
+        aci: aci([fill[0], fill[1], fill[2]]),
+        rgb: rgbOf(fill),
+        alpha:
+          opacity * (parseFloat(cs.fillOpacity || "1") || 1) * (fill[3] ?? 1),
+      });
     // Outline in the stroke colour; a filled shape with no stroke is outlined in its fill colour.
     const col = stroke ?? fill;
     if (!col) continue;
     if (!stroke && fill && fill[0] > 245 && fill[1] > 245 && fill[2] > 245)
       continue;
-    const color = aci([col[0], col[1], col[2]]);
+    const color: Look = stroke
+      ? lineLook(col)
+      : { aci: aci([col[0], col[1], col[2]]), rgb: rgbOf(col) };
     for (const s of shapes) {
       // Dots drawn as zero-length round-capped strokes: keep them as tiny circles' worth of line.
       if (
@@ -703,7 +1057,7 @@ function writeSheet(svg: SVGSVGElement, w: DxfWriter, dx: number) {
             [x + r, y],
           ],
           layer,
-          color,
+          { ...color, dash: undefined },
           false,
           r * 2,
         );
@@ -761,6 +1115,139 @@ export function cutToShapes(a: Pt, b: Pt, shapes: { pts: Pt[] }[]): Pt[][] {
       ]);
   }
   return out;
+}
+
+/**
+ * An SVG pattern fill as an editable HATCH: each straight line in the pattern tile makes a
+ * family of parallel lines (spacing from how the tile repeats), dots make dotted lines, and a
+ * filled tile a solid hatch. Anything else is drawn as cut lines instead.
+ */
+function writePattern(
+  pat: SVGPatternElement,
+  el: SVGGraphicsElement,
+  P: (x: number, y: number) => Pt,
+  rings: Pt[][],
+  clip: Clip | null,
+  layer: string,
+  w: DxfWriter,
+) {
+  const pw = pat.width.baseVal.value;
+  const ph = pat.height.baseVal.value;
+  if (!(pw > 0 && ph > 0)) return;
+  const tm =
+    pat.patternTransform.baseVal.consolidate()?.matrix ?? new DOMMatrix();
+  const toRoot = (x: number, y: number): Pt => {
+    const q = new DOMPoint(x, y).matrixTransform(tm);
+    return P(q.x, q.y);
+  };
+  const o = toRoot(0, 0);
+  const A = toRoot(pw, 0);
+  const B = toRoot(0, ph);
+  const va: Pt = [A[0] - o[0], A[1] - o[1]];
+  const vb: Pt = [B[0] - o[0], B[1] - o[1]];
+  // Spacing of a family of lines with direction u: the nearest repeat of the tile across them.
+  const gapFor = (u: Pt) => {
+    let best = Infinity;
+    for (let i = -3; i <= 3; i++)
+      for (let j = -3; j <= 3; j++) {
+        const v: Pt = [i * va[0] + j * vb[0], i * va[1] + j * vb[1]];
+        const c = Math.abs(u[0] * v[1] - u[1] * v[0]);
+        if (c > 1e-6 && c < best) best = c;
+      }
+    return best;
+  };
+  const byColour = new Map<string, { look: Look; fams: HatchFamily[] }>();
+  let unknown = false;
+  for (const child of pat.children) {
+    const cs = getComputedStyle(child);
+    const op =
+      parseFloat(cs.opacity || "1") *
+      parseFloat(child.getAttribute("opacity") ?? "1");
+    if (child.tagName === "rect") {
+      const c = parseColour(cs.fill);
+      if (c)
+        w.hatch(rings, `${layer}_HATCH`, {
+          aci: aci([c[0], c[1], c[2]]),
+          rgb: (c[0] << 16) | (c[1] << 8) | c[2],
+          alpha: op * (c[3] ?? 1),
+        });
+      continue;
+    }
+    const paint = child.tagName === "circle" ? cs.fill : cs.stroke;
+    const c = parseColour(paint);
+    if (!c) continue;
+    const key = c.slice(0, 3).join(",");
+    const entry = byColour.get(key) ?? {
+      look: {
+        aci: aci([c[0], c[1], c[2]]),
+        rgb: (c[0] << 16) | (c[1] << 8) | c[2],
+        alpha: op < 0.999 ? op : undefined,
+      },
+      fams: [],
+    };
+    byColour.set(key, entry);
+    if (child.tagName === "circle") {
+      const ci = child as SVGCircleElement;
+      const base = toRoot(ci.cx.baseVal.value, ci.cy.baseVal.value);
+      const u: Pt = [va[0], va[1]];
+      const len = Math.hypot(u[0], u[1]);
+      entry.fams.push({
+        dir: u,
+        base,
+        gap: gapFor([u[0] / len, u[1] / len]),
+        dash: [0, -len],
+      });
+      continue;
+    }
+    if (child.tagName !== "path" && child.tagName !== "line") {
+      unknown = true;
+      continue;
+    }
+    const segs: [Pt, Pt][] = [];
+    if (child.tagName === "line") {
+      const l = child as SVGLineElement;
+      segs.push([
+        [l.x1.baseVal.value, l.y1.baseVal.value],
+        [l.x2.baseVal.value, l.y2.baseVal.value],
+      ]);
+    } else
+      for (const sp of flattenPath(child.getAttribute("d") ?? ""))
+        for (let k = 0; k + 1 < sp.pts.length; k++)
+          segs.push([sp.pts[k], sp.pts[k + 1]]);
+    for (const [a, b] of segs) {
+      const ra = toRoot(a[0], a[1]);
+      const rb = toRoot(b[0], b[1]);
+      const len = Math.hypot(rb[0] - ra[0], rb[1] - ra[1]);
+      if (len < 1e-9) continue;
+      const u: Pt = [(rb[0] - ra[0]) / len, (rb[1] - ra[1]) / len];
+      // One family per direction (the corner bits of a tile repeat the same lines).
+      const same = entry.fams.find(
+        (f) =>
+          !f.dash.length && Math.abs(f.dir[0] * u[1] - f.dir[1] * u[0]) < 1e-6,
+      );
+      if (!same)
+        entry.fams.push({ dir: u, base: ra, gap: gapFor(u), dash: [] });
+    }
+  }
+  if (
+    unknown ||
+    [...byColour.values()].some((e) =>
+      e.fams.some((f) => !Number.isFinite(f.gap)),
+    )
+  ) {
+    writeHatch(
+      pat,
+      el,
+      P,
+      rings.map((pts) => ({ pts })),
+      clip,
+      layer,
+      w,
+    );
+    return;
+  }
+  for (const { look, fams } of byColour.values())
+    if (fams.length) w.hatch(rings, `${layer}_HATCH`, look, fams);
 }
 
 /**
@@ -887,7 +1374,7 @@ function writeText(
   clip: Clip | null,
   w: DxfWriter,
   layer: string,
-  color: number,
+  color: number | Look,
 ) {
   // Each line: the text element itself, or each tspan that starts a new line (has its own x or dy).
   const tspans = [...el.querySelectorAll("tspan")].filter(
@@ -922,14 +1409,49 @@ function writeText(
   }
 }
 
-/** The DXF text of the chart(s) drawn by `draw`, which is called once per chart and resolves with that chart's svg. */
+/** Read a picture into PNG bytes and its pixel size. */
+async function pictureOf(
+  href: string,
+): Promise<{ data: Uint8Array; px: [number, number] } | null> {
+  try {
+    const img = new Image();
+    img.decoding = "async";
+    img.src = href;
+    await img.decode();
+    const pw = img.naturalWidth;
+    const ph = img.naturalHeight;
+    if (!pw || !ph) return null;
+    const c = document.createElement("canvas");
+    c.width = pw;
+    c.height = ph;
+    c.getContext("2d")!.drawImage(img, 0, 0);
+    const blob = await new Promise<Blob | null>((r) =>
+      c.toBlob(r, "image/png"),
+    );
+    if (!blob) return null;
+    return { data: new Uint8Array(await blob.arrayBuffer()), px: [pw, ph] };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The DXF of the chart(s) drawn by `draw`, which is called once per chart and resolves with
+ * that chart's svg. Pictures (logos) come back as PNG files named `<imagePrefix>_imageN.png`,
+ * which the DXF points to: keep them in the same folder as the DXF.
+ */
 export async function chartsToDxf(
   paperW: number,
   paperH: number,
   sheets: number[],
   draw: (i: number) => Promise<SVGSVGElement | null>,
-): Promise<string> {
+  imagePrefix = "chart",
+): Promise<{ text: string; images: { name: string; data: Uint8Array }[] }> {
   const w = new DxfWriter(paperH);
+  const files = new Map<
+    string,
+    { name: string; data: Uint8Array; px: [number, number] } | null
+  >();
   let k = 0;
   for (const i of sheets) {
     const svg = await draw(i);
@@ -937,12 +1459,48 @@ export async function chartsToDxf(
       // Paper widths, not the on-screen one-pixel minimum.
       const px = svg.style.getPropertyValue("--px");
       svg.style.setProperty("--px", "0px");
-      writeSheet(svg, w, k * (paperW + 50));
+      const jobs: ImageJob[] = [];
+      writeSheet(svg, w, k * (paperW + 50), jobs);
       svg.style.setProperty("--px", px);
+      for (const j of jobs) {
+        if (!files.has(j.href)) {
+          const pic = await pictureOf(j.href);
+          files.set(
+            j.href,
+            pic
+              ? { name: `${imagePrefix}_image${files.size + 1}.png`, ...pic }
+              : null,
+          );
+        }
+        const f = files.get(j.href);
+        if (!f) continue;
+        // Fitted inside its box, keeping its shape (preserveAspectRatio "meet").
+        const s = Math.min(j.box.w / f.px[0], j.box.h / f.px[1]);
+        const fw = f.px[0] * s;
+        const fh = f.px[1] * s;
+        const fx = j.box.x + (j.box.w - fw) / 2;
+        const fy = j.box.y + (j.box.h - fh) / 2;
+        const P = (x: number, y: number): Pt => {
+          const q = new DOMPoint(x, y).matrixTransform(j.m);
+          return [q.x + j.dx, q.y];
+        };
+        const corner = P(fx, fy + fh);
+        const right = P(fx + fw, fy + fh);
+        const top = P(fx, fy);
+        w.image(
+          f.name,
+          f.data,
+          f.px,
+          corner,
+          [(right[0] - corner[0]) / f.px[0], (right[1] - corner[1]) / f.px[0]],
+          [(top[0] - corner[0]) / f.px[1], (top[1] - corner[1]) / f.px[1]],
+          j.layer,
+        );
+      }
     }
     k++;
   }
-  return w.toString();
+  return { text: w.toString(), images: w.images };
 }
 
 /**

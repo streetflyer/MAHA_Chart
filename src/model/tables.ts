@@ -358,7 +358,7 @@ function crc32(b: Uint8Array): number {
 }
 
 /** A zip with every entry stored (no compression): Excel opens it like any workbook. */
-function zipStore(files: Map<string, Uint8Array>): Blob {
+export function zipStore(files: Map<string, Uint8Array>): Blob {
   const enc = new TextEncoder();
   const parts: Uint8Array[] = [];
   const central: Uint8Array[] = [];
