@@ -67,3 +67,19 @@ describe("chart fitted to a curve by sections", () => {
     expect(end).toBeLessThanOrEqual(route.length + 1);
   });
 });
+
+describe("deleting a chart", () => {
+  it("stays deleted even when the line runs on past the last chart", async () => {
+    const { deleteSheet, sheetCount, insertSheet } = await import("./scale");
+    const t0 = alignmentSheetA1();
+    const t = {
+      ...t0,
+      fields: { ...t0.fields, START_KP: "0" },
+      scale: { ...t0.scale, routeLength: t0.scale.kpPerSheet * 1.5 },
+    };
+    expect(sheetCount(t)).toBe(2);
+    const one = deleteSheet(t, 1);
+    expect(sheetCount(one)).toBe(1);
+    expect(sheetCount(insertSheet(one, 0))).toBe(2);
+  });
+});

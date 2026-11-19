@@ -665,6 +665,11 @@ export interface ScaleSettings {
    * Absent while charts are spaced evenly from the start KP.
    */
   sheets?: SheetFrame[];
+  /**
+   * The user deleted a chart: the hand-placed list is the whole set, even if the
+   * line runs on past the last chart (no chart is added back to cover it).
+   */
+  fixedCount?: boolean;
   /** Charts fitted automatically to the loaded route (bends get shorter charts). Recomputed, never edited. */
   autoSheets?: SheetFrame[];
 }

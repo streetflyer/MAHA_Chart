@@ -159,6 +159,9 @@ export function normalize(
   ) {
     t = { ...t, scale: { ...t.scale, sheets: undefined } };
   }
+  // Back to automatic charts: the count follows the line again.
+  if (!t.scale.sheets && t.scale.fixedCount)
+    t = { ...t, scale: { ...t.scale, fixedCount: undefined } };
   return t;
 }
 

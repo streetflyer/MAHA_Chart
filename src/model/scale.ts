@@ -74,6 +74,8 @@ export function setKpPerSheet(t: ChartTemplate, metres: number): ChartTemplate {
 export function sheetCount(t: ChartTemplate): number {
   const { routeLength, kpPerSheet } = t.scale;
   const list = sheetList(t);
+  if (t.scale.sheets?.length && t.scale.fixedCount)
+    return t.scale.sheets.length;
   if (!(kpPerSheet > 0)) return Math.max(1, list?.length ?? 1);
   if (!list?.length && !(routeLength > 0)) return 1;
   // Keep adding charts until the end of the line is covered.
@@ -213,7 +215,8 @@ export function deleteSheet(t: ChartTemplate, index: number): ChartTemplate {
   const sheets = materializeSheets(t);
   if (sheets.length <= 1) return t;
   sheets.splice(index, 1);
-  return { ...t, scale: { ...t.scale, sheets } };
+  // Without this the chart would come straight back to cover the rest of the line.
+  return { ...t, scale: { ...t.scale, sheets, fixedCount: true } };
 }
 
 /** Keep typed-in scales tidy without snapping away a deliberate value. */
